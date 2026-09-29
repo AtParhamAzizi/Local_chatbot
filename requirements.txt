@@ -1,8 +1,14 @@
-flask
-flask-cors
-pymysql
-sentence-transformers
-torch
-numpy
-transformers
-PyMuPDF
+# Web application and API
+Flask>=3.0,<4
+Flask-Cors>=4.0,<6
+
+# Database
+PyMySQL>=1.1,<2
+
+# Retrieval and generation
+numpy>=1.26,<3
+torch>=2.2
+transformers>=4.51,<5
+
+# PDF text extraction
+PyMuPDF>=1.24,<2
