@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>مدیریت فایل‌های PDF</title>
+
+    <link
+        rel="stylesheet"
+        href="admin_pdf.css"
+    >
+
+</head>
+
+<body>
+
+<div class="wrap">
+
+    <!-- HEADER -->
+
+    <header>
+
+        <div>
+
+            <h1>
+                مدیریت دانش PDF
+            </h1>
+
+            <div class="sub">
+                آپلود، استخراج متن، chunking و بردارسازی فایل‌های PDF
+            </div>
+
+        </div>
+
+        <div class="stats">
+
+            <div class="stat">
+                <b id="statDocuments">–</b>
+                <span>تعداد PDF</span>
+            </div>
+
+            <div class="stat">
+                <b id="statChunks">–</b>
+                <span>تعداد chunk</span>
+            </div>
+
+            <div class="stat">
+                <b id="statEmbedded">–</b>
+                <span>بردارسازی</span>
+            </div>
+
+            <div class="stat">
+                <b id="statDim">–</b>
+                <span>ابعاد بردار</span>
+            </div>
+
+        </div>
+
+    </header>
+
+
+    <!-- UPLOAD -->
+
+    <div class="card">
+
+        <h2>
+            ۱. آپلود فایل PDF
+        </h2>
+
+        <div
+            class="dropzone"
+            id="dropzone"
+        >
+
+            <div class="icon">
+                📕
+            </div>
+
+            <p>
+                فایل PDF را اینجا رها کنید یا کلیک کنید
+            </p>
+
+            <p>
+                حداکثر حجم:
+                50 MB
+            </p>
+
+            <input
+                type="file"
+                id="fileInput"
+                accept=".pdf,application/pdf"
+                hidden
+            >
+
+        </div>
+
+
+        <div
+            class="file-info"
+            id="fileInfo"
+        ></div>
+
+
+        <div
+            class="pdf-preview"
+            id="pdfPreview"
+        ></div>
+
+
+        <div class="row">
+
+            <label class="checkbox">
+
+                <input
+                    type="checkbox"
+                    id="replaceDupes"
+                >
+
+                بازنویسی PDF تکراری
+
+            </label>
+
+        </div>
+
+
+        <div class="row">
+
+            <button
+                class="btn-primary"
+                id="uploadBtn"
+                disabled
+            >
+                شروع استخراج و بردارسازی
+            </button>
+
+            <button
+                class="btn-ghost"
+                id="clearBtn"
+            >
+                پاک کردن انتخاب
+            </button>
+
+        </div>
+
+
+        <div
+            class="result"
+            id="result"
+        ></div>
+
+    </div>
+
+
+    <!-- DOCUMENTS -->
+
+    <div class="card">
+
+        <h2>
+            ۲. فایل‌های PDF موجود
+        </h2>
+
+
+        <div class="toolbar">
+
+            <input
+                type="text"
+                id="searchInput"
+                placeholder="جستجو بر اساس نام فایل..."
+            >
+
+            <button
+                class="btn-ghost"
+                id="searchBtn"
+            >
+                جستجو
+            </button>
+
+        </div>
+
+
+        <div id="docsContainer">
+
+            <div class="empty">
+                در حال بارگذاری...
+            </div>
+
+        </div>
+
+
+        <div class="pager">
+
+            <button
+                class="btn-ghost"
+                id="prevBtn"
+            >
+                قبلی
+            </button>
+
+            <span id="pageInfo">
+                صفحه ۱
+            </span>
+
+            <button
+                class="btn-ghost"
+                id="nextBtn"
+            >
+                بعدی
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<script src="admin_pdf.js"></script>
+
+</body>
+
+</html>

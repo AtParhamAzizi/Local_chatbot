@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Dashboard</title>
+
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+
+<body>
+
+    <div class="app">
+
+        <!-- Main content -->
+        <main class="content">
+
+            <iframe
+                id="pageFrame"
+                src="admin/admin.html"
+                frameborder="0">
+            </iframe>
+
+        </main>
+
+
+        <!-- Right sidebar -->
+        <aside class="sidebar">
+
+            <div class="sidebar-header">
+                <h2>Menu</h2>
+            </div>
+
+            <nav class="menu">
+                <button
+                    class="menu-item active"
+                    data-page="admin/admin.html">
+                    Json Upload
+                </button>
+
+                <button
+                    class="menu-item active"
+                    data-page="admin/admin_pdf.html">
+                    Pdf Upload
+                </button>
+
+                <button
+                    class="menu-item"
+                    data-page="admin/adminchat.html">
+                    Chats
+                </button>
+
+                <button
+                    class="menu-item"
+                    data-page="admin/adminlogger.html">
+                    System Reports
+                </button>
+
+                <!-- <button
+                    class="menu-item"
+                    data-page="admin/settings.html">
+                    Settings
+                </button> -->
+
+            </nav>
+
+        </aside>
+
+    </div>
+
+    <script src="dashboard.js"></script>
+
+</body>
+</html>

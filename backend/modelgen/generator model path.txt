@@ -1,0 +1,4 @@
+1.download the model from : https://huggingface.co/Qwen/Qwen3-4B
+2.then add all files to this folder
+
+

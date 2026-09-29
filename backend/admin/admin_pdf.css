@@ -1,0 +1,587 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+
+    font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        Tahoma,
+        sans-serif;
+
+    background: #f5f5f5;
+
+    color: #333;
+
+    padding: 24px;
+
+    line-height: 1.6;
+}
+
+.wrap {
+
+    max-width: 1100px;
+
+    margin: 0 auto;
+}
+
+
+/* HEADER */
+
+header {
+
+    background: #fff;
+
+    border-radius: 12px;
+
+    padding: 20px 24px;
+
+    box-shadow:
+        0 2px 8px rgba(0,0,0,.06);
+
+    margin-bottom: 20px;
+
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    flex-wrap: wrap;
+
+    gap: 15px;
+}
+
+header h1 {
+
+    font-size: 20px;
+}
+
+header .sub {
+
+    font-size: 13px;
+
+    color: #888;
+
+    margin-top: 4px;
+}
+
+
+/* STATS */
+
+.stats {
+
+    display: flex;
+
+    gap: 10px;
+
+    flex-wrap: wrap;
+}
+
+.stat {
+
+    background: #f0f7ff;
+
+    border: 1px solid #d6e8ff;
+
+    border-radius: 10px;
+
+    padding: 8px 14px;
+
+    text-align: center;
+
+    min-width: 90px;
+}
+
+.stat b {
+
+    display: block;
+
+    font-size: 18px;
+
+    color: #007AFF;
+}
+
+.stat span {
+
+    font-size: 11px;
+
+    color: #667;
+}
+
+
+/* CARD */
+
+.card {
+
+    background: #fff;
+
+    border-radius: 12px;
+
+    padding: 20px 24px;
+
+    box-shadow:
+        0 2px 8px rgba(0,0,0,.06);
+
+    margin-bottom: 20px;
+}
+
+.card h2 {
+
+    font-size: 16px;
+
+    margin-bottom: 14px;
+}
+
+
+/* DROPZONE */
+
+.dropzone {
+
+    border:
+        2px dashed
+        #c8d4e0;
+
+    border-radius: 12px;
+
+    padding: 45px 16px;
+
+    text-align: center;
+
+    cursor: pointer;
+
+    transition: all .2s;
+
+    background: #fafcff;
+}
+
+.dropzone:hover,
+.dropzone.dragover {
+
+    border-color: #007AFF;
+
+    background: #f0f7ff;
+}
+
+.dropzone .icon {
+
+    font-size: 42px;
+}
+
+.dropzone p {
+
+    color: #667;
+
+    font-size: 14px;
+
+    margin-top: 7px;
+}
+
+
+/* FILE INFO */
+
+.file-info {
+
+    display: none;
+
+    margin-top: 14px;
+
+    padding: 12px 14px;
+
+    background: #f0f9f0;
+
+    border: 1px solid #cdeccd;
+
+    border-radius: 10px;
+
+    font-size: 14px;
+}
+
+.file-info.show {
+
+    display: block;
+}
+
+
+/* PDF PREVIEW */
+
+.pdf-preview {
+
+    display: none;
+
+    margin-top: 12px;
+
+    border: 1px solid #eee;
+
+    border-radius: 10px;
+
+    padding: 12px;
+
+    background: #fafafa;
+}
+
+.pdf-preview.show {
+
+    display: block;
+}
+
+
+/* ROW */
+
+.row {
+
+    display: flex;
+
+    gap: 12px;
+
+    align-items: center;
+
+    flex-wrap: wrap;
+
+    margin-top: 16px;
+}
+
+.checkbox {
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 6px;
+
+    font-size: 14px;
+
+    color: #555;
+
+    cursor: pointer;
+}
+
+
+/* BUTTONS */
+
+button {
+
+    font-family: inherit;
+
+    font-size: 14px;
+
+    border-radius: 8px;
+
+    cursor: pointer;
+
+    border: 1px solid transparent;
+
+    padding: 10px 20px;
+
+    transition: all .15s;
+}
+
+.btn-primary {
+
+    background: #007AFF;
+
+    color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+
+    background: #0066d6;
+}
+
+.btn-ghost {
+
+    background: #fff;
+
+    border-color: #d1d5db;
+
+    color: #444;
+}
+
+.btn-ghost:hover {
+
+    background: #f7f7f7;
+}
+
+.btn-danger {
+
+    background: #fff;
+
+    border-color: #f3c2c2;
+
+    color: #d33;
+
+    padding: 5px 12px;
+
+    font-size: 12px;
+}
+
+.btn-danger:hover {
+
+    background: #fdecec;
+}
+
+button:disabled {
+
+    opacity: .5;
+
+    cursor: not-allowed;
+}
+
+
+/* RESULT */
+
+.result {
+
+    display: none;
+
+    margin-top: 16px;
+
+    padding: 14px 16px;
+
+    border-radius: 10px;
+
+    font-size: 14px;
+}
+
+.result.show {
+
+    display: block;
+}
+
+.result.ok {
+
+    background: #eefbf0;
+
+    border: 1px solid #cdeccd;
+
+    color: #256029;
+}
+
+.result.err {
+
+    background: #fdecec;
+
+    border: 1px solid #f5c2c2;
+
+    color: #a02b2b;
+}
+
+.result ul {
+
+    margin:
+        8px 20px 0 0;
+
+    font-size: 13px;
+}
+
+
+/* TABLE */
+
+table {
+
+    width: 100%;
+
+    border-collapse: collapse;
+
+    font-size: 13px;
+}
+
+th,
+td {
+
+    padding: 9px 10px;
+
+    text-align: right;
+
+    border-bottom:
+        1px solid #f0f0f0;
+
+    vertical-align: middle;
+}
+
+th {
+
+    background: #fafafa;
+
+    font-weight: 600;
+}
+
+td.filename {
+
+    color: #007AFF;
+
+    max-width: 260px;
+}
+
+
+/* BADGE */
+
+.badge {
+
+    font-size: 11px;
+
+    padding: 3px 8px;
+
+    border-radius: 20px;
+}
+
+.badge.completed {
+
+    background: #e6f7ea;
+
+    color: #2a7a3f;
+}
+
+.badge.processing {
+
+    background: #fff5d9;
+
+    color: #946c00;
+}
+
+.badge.failed {
+
+    background: #fdecec;
+
+    color: #c0392b;
+}
+
+
+/* TOOLBAR */
+
+.toolbar {
+
+    display: flex;
+
+    gap: 10px;
+
+    margin-bottom: 14px;
+
+    flex-wrap: wrap;
+}
+
+.toolbar input {
+
+    flex: 1;
+
+    min-width: 200px;
+
+    padding: 9px 14px;
+
+    border:
+        1px solid #ddd;
+
+    border-radius: 8px;
+
+    font-family: inherit;
+
+    font-size: 14px;
+
+    outline: none;
+}
+
+.toolbar input:focus {
+
+    border-color: #007AFF;
+}
+
+
+/* PAGER */
+
+.pager {
+
+    display: flex;
+
+    justify-content: center;
+
+    align-items: center;
+
+    gap: 14px;
+
+    margin-top: 14px;
+
+    font-size: 14px;
+}
+
+.empty {
+
+    text-align: center;
+
+    color: #999;
+
+    padding: 30px 0;
+
+    font-size: 14px;
+}
+
+
+/* SPINNER */
+
+.spinner {
+
+    display: inline-block;
+
+    width: 14px;
+
+    height: 14px;
+
+    border:
+        2px solid
+        rgba(255,255,255,.4);
+
+    border-top-color: #fff;
+
+    border-radius: 50%;
+
+    animation:
+        spin .7s linear infinite;
+
+    vertical-align: -2px;
+
+    margin-left: 8px;
+}
+
+@keyframes spin {
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+
+/* MOBILE */
+
+@media (max-width: 700px) {
+
+    body {
+        padding: 10px;
+    }
+
+    .card {
+        padding: 16px;
+    }
+
+    header {
+        padding: 16px;
+    }
+
+    .stats {
+        width: 100%;
+    }
+
+    .stat {
+        flex: 1;
+    }
+
+    table {
+        min-width: 700px;
+    }
+
+    #docsContainer {
+        overflow-x: auto;
+    }
+}

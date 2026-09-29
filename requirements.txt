@@ -1,0 +1,8 @@
+flask
+flask-cors
+pymysql
+sentence-transformers
+torch
+numpy
+transformers
+PyMuPDF

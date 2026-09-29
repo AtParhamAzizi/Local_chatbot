@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>پنل مدیریت گفتگوها</title>
+<link rel="stylesheet" href="adminchat.css">
+</head>
+<body>
+
+<div class="admin-layout">
+
+    <aside class="sidebar">
+        <div class="sidebar-top">
+            <h1 class="sidebar-title">پنل مدیریت گفتگوها</h1>
+
+            <div class="toolbar">
+                <button id="refreshBtn" class="btn-refresh" type="button">بروزرسانی</button>
+                <label class="switch">
+                    <input type="checkbox" id="autoRefresh">
+                    <span>خودکار</span>
+                </label>
+            </div>
+
+            <input
+                type="search"
+                id="sessionSearch"
+                class="search-input"
+                placeholder="جستجو: شناسه کاربر، IP یا متن پیام..."
+                autocomplete="off"
+            >
+
+            <div class="stats-row" id="statsRow"></div>
+        </div>
+
+        <div class="session-list" id="sessionList">
+            <div class="empty">در حال بارگذاری…</div>
+        </div>
+    </aside>
+
+    <main class="chat-panel">
+        <header class="chat-panel-header">
+            <div class="chat-head-text">
+                <div class="chat-title" id="chatTitle">یک گفتگو را انتخاب کنید</div>
+                <div class="chat-meta" id="chatMeta"></div>
+            </div>
+            <div class="chat-head-badges" id="chatBadges"></div>
+        </header>
+
+        <div class="thread" id="thread">
+            <div class="empty-state">
+                برای مشاهده جزئیات، یک گفتگو را از فهرست سمت راست انتخاب کنید.
+            </div>
+        </div>
+    </main>
+
+</div>
+
+<script src="adminchat.js"></script>
+</body>
+</html>

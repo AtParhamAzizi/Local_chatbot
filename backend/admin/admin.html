@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>پنل مدیریت چت‌بات</title>
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>پنل مدیریت دانش چت‌بات</h1>
+      <div class="sub">آپلود و بردارسازی داده‌های پرسش و پاسخ</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="statTotal">–</b><span>کل رکوردها</span></div>
+      <div class="stat"><b id="statEmbedded">–</b><span>بردارسازی‌شده</span></div>
+      <div class="stat"><b id="statDim">–</b><span>ابعاد بردار</span></div>
+    </div>
+  </header>
+
+  <!-- ============ UPLOAD ============ -->
+  <div class="card">
+    <h2>۱. آپلود فایل JSON</h2>
+
+    <div class="dropzone" id="dropzone">
+      <div class="icon">📄</div>
+      <p>فایل JSON را اینجا رها کنید یا کلیک کنید</p>
+      <p><code>[{"question": "...", "answer": "..."}]</code></p>
+      <input type="file" id="fileInput" accept=".json,application/json" hidden>
+    </div>
+
+    <div class="file-info" id="fileInfo"></div>
+    <div class="preview" id="preview"></div>
+
+    <div class="row">
+      <label class="checkbox">
+        <input type="checkbox" id="replaceDupes">
+        بازنویسی رکوردهای تکراری (در غیر این صورت نادیده گرفته می‌شوند)
+      </label>
+    </div>
+
+    <div class="row">
+      <button class="btn-primary" id="uploadBtn" disabled>شروع بردارسازی و ذخیره</button>
+      <button class="btn-ghost" id="clearBtn">پاک کردن انتخاب</button>
+    </div>
+
+    <div class="result" id="result"></div>
+  </div>
+
+  <!-- ============ DOCUMENTS ============ -->
+  <div class="card">
+    <h2>۲. رکوردهای موجود</h2>
+    <div class="toolbar">
+      <input type="text" id="searchInput" placeholder="جستجو در سوال یا پاسخ...">
+      <button class="btn-ghost" id="searchBtn">جستجو</button>
+    </div>
+    <div id="docsContainer">
+      <div class="empty">در حال بارگذاری...</div>
+    </div>
+    <div class="pager">
+      <button class="btn-ghost" id="prevBtn">قبلی</button>
+      <span id="pageInfo">صفحه ۱</span>
+      <button class="btn-ghost" id="nextBtn">بعدی</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="admin.js">
+
+</script>
+</body>
+</html>

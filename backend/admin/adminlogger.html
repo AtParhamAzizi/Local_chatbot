@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="En" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>system loges </title>
+
+    <link
+        rel="stylesheet"
+        href="adminlogger.css"
+    >
+</head>
+
+<body>
+
+<div class="page">
+
+    <!-- ================= HEADER ================= -->
+
+    <header class="page-header">
+
+        <div class="header-content">
+
+            <h1>
+                 System Loges
+            </h1>
+
+
+        </div>
+
+        <button
+            id="refreshBtn"
+            class="refresh-btn"
+            type="button"
+        >
+            update
+        </button>
+
+    </header>
+
+
+    <!-- ================= STATS ================= -->
+
+    <section class="stats">
+
+        <div class="stat-card">
+
+            <span class="stat-title">
+                COUNT(logs)
+            </span>
+
+            <strong id="totalLogs">
+                0
+            </strong>
+
+        </div>
+
+
+        <div class="stat-card information-card">
+
+            <span class="stat-title">
+                information
+            </span>
+
+            <strong id="infoLogs">
+                0
+            </strong>
+
+        </div>
+
+
+        <div class="stat-card failed-card">
+
+            <span class="stat-title">
+                 failed
+            </span>
+
+            <strong id="failedLogs">
+                0
+            </strong>
+
+        </div>
+
+
+        <div class="stat-card warning-card">
+
+            <span class="stat-title">
+                warning
+            </span>
+
+            <strong id="warningLogs">
+                0
+            </strong>
+
+        </div>
+
+    </section>
+
+
+    <!-- ================= FILTERS ================= -->
+
+    <section class="filters">
+
+        <div class="search-container">
+
+            <input
+                id="searchInput"
+                type="text"
+                placeholder="Searching in logs..."
+                autocomplete="off"
+            >
+
+        </div>
+
+
+        <div class="filter-container">
+
+            <label for="levelFilter">
+                  Python
+            </label>
+
+            <select id="levelFilter">
+
+                <option value="">
+                    all files
+                </option>
+
+                <option value="admin">
+                    admin.py
+                </option>
+
+                <option value="user">
+                    user.py
+                </option>
+
+                <option value="interface">
+                    interface.py
+                </option>
+
+                <option value="database">
+                    database.py
+                </option>
+
+                <option value="main">
+                    main.py
+                </option>
+
+                <option value="generator">
+                    generator.py
+                </option>
+
+                <option value="logger">
+                    logger.py
+                </option>
+
+            </select>
+
+        </div>
+
+
+        <div class="filter-container">
+
+            <label for="warningFilter">
+                نوع لاگ
+            </label>
+
+            <select id="warningFilter">
+
+                <option value="">
+                    all
+                </option>
+
+                <option value="1">
+                    information
+                </option>
+
+                <option value="2">
+                    Failed
+                </option>
+
+                <option value="3">
+                    warning
+                </option>
+
+            </select>
+
+        </div>
+
+    </section>
+
+
+    <!-- ================= TABLE ================= -->
+
+    <section class="table-container">
+
+        <table>
+
+            <thead>
+
+                <tr>
+
+                    <th>
+                        ID
+                    </th>
+
+                    <th>
+                        file
+                    </th>
+
+                    <th>
+                        func
+                    </th>
+
+                    <th>
+                        message
+                    </th>
+
+                    <th>
+                        level
+                    </th>
+
+                    <th>
+                        time stamp
+                    </th>
+
+                </tr>
+
+            </thead>
+
+
+            <tbody id="logsTableBody">
+
+                <tr>
+
+                    <td
+                        colspan="6"
+                        class="loading"
+                    >
+                        loading logs from server...
+                    </td>
+
+                </tr>
+
+            </tbody>
+
+        </table>
+
+    </section>
+
+
+
+    <section class="pagination">
+
+        <button
+            id="prevBtn"
+            type="button"
+        >
+            pre
+        </button>
+
+
+        <span id="pageInfo">
+             page 1 of 1
+        </span>
+
+
+        <button
+            id="nextBtn"
+            type="button"
+        >
+            next
+        </button>
+
+    </section>
+
+</div>
+
+
+<script src="adminlogger.js"></script>
+
+</body>
+
+</html>

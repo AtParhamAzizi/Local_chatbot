@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>چت بات سامانه</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>چت سامانه پیام</h1>
+            <div class="connection-status" id="connectionStatus"></div>
+        </div>
+
+        <div class="chat-messages" id="chatMessages" dir="ltr">
+            <div class="message bot-message">
+                سلام من چت بات هوشمند سامانه پیام ایران هستم، چطور میتونم کمکتون کنم؟
+            </div>
+
+            <div id="quick-questions" class="quick-questions" dir="rtl">
+                <button class="quick-question-btn" onclick="sendQuickQuestion('سامانه پیام ایران چیست؟')">
+                    سامانه پیام ایران چیست؟</button>
+                <button class="quick-question-btn" onclick="sendQuickQuestion('در مرحله ثبت نام چه اطلاعاتی مورد نیاز است؟')">
+                    در مرحله ثبت نام چه اطلاعاتی مورد نیاز است؟</button>
+                <button class="quick-question-btn" onclick="sendQuickQuestion('پنجره ملی خدمات دولت هوشمند چیست؟')">
+                    پنجره ملی خدمات دولت هوشمند چیست؟</button>
+                <button class="quick-question-btn" onclick="sendQuickQuestion('آیا استفاده از خدمات پنجره ملی دولت هوشمند مشمول هزینه است؟')">
+                    آیا استفاده از خدمات پنجره ملی دولت هوشمند مشمول هزینه است؟</button>
+            </div>
+        </div>
+<!--        recommendation part            -->
+        <div class="recommended-questions" id="recommendedQuestions">
+        </div>
+
+        <div class="chat-input">
+            <input type="text" id="messageInput" placeholder="اینجا بنویسید..." autocomplete="off">
+            <button id="sendButton">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="sndbtnpath">
+                    <path d="M2 21L23 12L2 3V10L17 12L2 14V21Z" fill="white"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
