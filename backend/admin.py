@@ -15,9 +15,13 @@ from database import get_conn, init_db,hash_question, logger, sha256_bytes
 # from logger import logDrop
 
 
+from generator import set_generator_model
+from model_registry import get_active_model_id, get_model_catalog, set_active_model
+
 from interface import (
     embed_texts,
     embedding_dim,
+    set_embedding_model,
     ADMIN_DIR,
     ADMIN_PORT,
     MAX_UPLOAD_BYTES,
@@ -54,6 +58,37 @@ def admin_index():
 
 
 
+@admin_app.route('/admin/api/models', methods=['GET'])
+def admin_models():
+    return jsonify({
+        'active_model': get_active_model_id(),
+        'models': get_model_catalog(),
+    })
+
+
+@admin_app.route('/admin/api/models', methods=['POST'])
+def admin_set_model():
+    data = request.get_json(silent=True) or {}
+    model_id = str(data.get('model_id') or '').strip()
+
+    if not model_id:
+        return jsonify({'error': 'model_id is required'}), 400
+
+    try:
+        set_active_model(model_id)
+        set_embedding_model(model_id)
+        set_generator_model(model_id)
+        return jsonify({
+            'ok': True,
+            'active_model': get_active_model_id(),
+            'message': 'Model selection updated. New requests will use the selected model.',
+        })
+    except FileNotFoundError as exc:
+        return jsonify({'error': str(exc)}), 409
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:
+        return jsonify({'error': f'Unable to change model: {exc}'}), 500
 @admin_app.route('/admin/api/stats')
 def admin_stats():
     conn = get_conn()

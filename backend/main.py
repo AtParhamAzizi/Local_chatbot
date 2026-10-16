@@ -11,8 +11,8 @@ Loggerlevel = 'main'
 
 def main():
     init_db()
-    logger.logDrop(Loggerlevel, 'main', 'db initialized successfuly', 1)
     init_logger_table()
+    logger.logDrop(Loggerlevel, 'main', 'db initialized successfuly', 1)
     init_documents_table()
     init_documents_chunk_table()
     init_history_table()

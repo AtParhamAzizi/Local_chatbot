@@ -1,5 +1,6 @@
 import os
 import threading
+from model_registry import get_active_model_id, get_model_definition
 import torch
 from transformers import (
     AutoTokenizer,
@@ -11,11 +12,9 @@ from searchForAnswer import build_context
 Loggerlevel = 'generator'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-GENERATOR_MODEL = os.getenv(
-    'GEN_MODEL',
-    os.path.join(os.path.dirname(BASE_DIR), 'backend', 'modelgen'),
-)
-# GENERATOR_MODEL    = os.getenv('GEN_MODEL', 'modelgen')
+MODEL_ID = get_active_model_id()
+GENERATOR_MODEL = get_model_definition(MODEL_ID)['generator_path']
+
 MAX_NEW_TOKENS     = 512
 TEMPERATURE        = 0.3
 TOP_P              = 0.8
@@ -26,6 +25,7 @@ REPETITION_PENALTY = 1.05
 
 _gen_tokenizer = None
 _gen_model     = None
+_gen_device    = None
 _gen_lock      = threading.Lock()
 
 SYSTEM_PROMPT = (
@@ -35,9 +35,26 @@ SYSTEM_PROMPT = (
 )
 
 # def _load_generator():
+def set_generator_model(model_id):
+    global MODEL_ID, GENERATOR_MODEL, _gen_tokenizer, _gen_model, _gen_device
+    definition = get_model_definition(model_id)
+    with _gen_lock:
+        MODEL_ID = model_id
+        GENERATOR_MODEL = definition['generator_path']
+        _gen_tokenizer = None
+        _gen_model = None
+        _gen_device = None
+    return GENERATOR_MODEL
+
+
+def _sync_model_selection():
+    active_id = get_active_model_id()
+    if active_id != MODEL_ID:
+        set_generator_model(active_id)
 
 def _load_generator():
     global _gen_tokenizer, _gen_model, _gen_device
+    _sync_model_selection()
 
     if _gen_model is not None:
         return

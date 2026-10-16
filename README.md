@@ -9,6 +9,7 @@ The project now includes a refreshed **Liquid Glass** visual experience:
 - Translucent glass panels with blur, gradients, soft borders, and luminous accents across the user chat and administrator pages.
 - A clickable dark/light theme toggle on the frontend, dashboard, chat inspector, PDF/JSON tools, and system logs.
 - Theme selection persists across reloads and stays synchronized between admin pages.
+- The admin dashboard includes a Model Selection page for switching between Qwen3-4B and Gemma 4 E2B IT when both local model pairs are available.
 - Responsive layouts have been refined for desktop and mobile screens.
 
 ## Features
@@ -126,6 +127,7 @@ backend/
   main.py             Starts the user and admin Flask applications
   user.py             User-facing chat API
   admin.py            Administrator APIs and dashboard
+  model_registry.py   Persisted model selection and local model paths
   database.py         MySQL schema and connection helpers
   interface.py        Embedding model loading and configuration
   generator.py        Response-generation model loading

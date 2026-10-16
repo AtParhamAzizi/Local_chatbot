@@ -17,11 +17,13 @@ import numpy as np
 import torch
 import pymysql
 from transformers import AutoTokenizer, AutoModel
+from model_registry import get_active_model_id, get_model_definition
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-MODEL_PATH = os.path.join(BASE_DIR, 'model')     # local Qwen3 embedding model
+MODEL_ID   = get_active_model_id()
+MODEL_PATH = get_model_definition(MODEL_ID)['embedding_path']
 ADMIN_DIR  = os.path.join(BASE_DIR, 'admin')     # admin panel assets
 
 DB_CONFIG = {
@@ -50,9 +52,26 @@ _model     = None
 _dim       = None
 _lock      = threading.Lock()
 
+def set_embedding_model(model_id):
+    global MODEL_ID, MODEL_PATH, _tokenizer, _model, _dim
+    definition = get_model_definition(model_id)
+    with _lock:
+        MODEL_ID = model_id
+        MODEL_PATH = definition['embedding_path']
+        _tokenizer = None
+        _model = None
+        _dim = None
+    return MODEL_PATH
+
+
+def _sync_model_selection():
+    active_id = get_active_model_id()
+    if active_id != MODEL_ID:
+        set_embedding_model(active_id)
 
 def _load_model():
     global _tokenizer, _model, _dim
+    _sync_model_selection()
     if _model is not None:
         return
     with _lock:

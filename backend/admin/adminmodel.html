@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Selection</title>
+    <link rel="stylesheet" href="adminmodel.css">
+</head>
+<body>
+    <main class="page">
+        <header class="page-header">
+            <div>
+                <p class="eyebrow">RUNTIME CONFIGURATION</p>
+                <h1>Model selection</h1>
+                <p class="subtitle">Choose which local model powers embeddings and generated replies.</p>
+            </div>
+            <button id="refreshBtn" class="btn-secondary" type="button">Refresh</button>
+        </header>
+
+        <section class="active-banner" id="activeBanner">
+            Loading active model...
+        </section>
+
+        <section class="model-grid" id="modelGrid" aria-live="polite">
+            <div class="state">Loading available models...</div>
+        </section>
+
+        <section class="notice">
+            <strong>How switching works</strong>
+            <span>The selected model is saved locally. Existing model instances are released and the next request loads the new model.</span>
+        </section>
+
+        <div id="status" class="status" role="status"></div>
+    </main>
+
+    <script src="../theme.js"></script>
+    <script src="adminmodel.js"></script>
+</body>
+</html>
