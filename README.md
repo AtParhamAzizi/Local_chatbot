@@ -2,6 +2,15 @@
 
 A local, Persian-language retrieval-augmented generation (RAG) chatbot with a user chat interface and an administrator dashboard. It stores question-and-answer records, PDF knowledge-base chunks, chat history, feedback, and application logs in MySQL.
 
+## Latest UI Update
+
+The project now includes a refreshed **Liquid Glass** visual experience:
+
+- Translucent glass panels with blur, gradients, soft borders, and luminous accents across the user chat and administrator pages.
+- A clickable dark/light theme toggle on the frontend, dashboard, chat inspector, PDF/JSON tools, and system logs.
+- Theme selection persists across reloads and stays synchronized between admin pages.
+- Responsive layouts have been refined for desktop and mobile screens.
+
 ## Features
 
 - Semantic retrieval using the local `Qwen/Qwen3-Embedding-0.6B` embedding model.
@@ -71,7 +80,7 @@ A local, Persian-language retrieval-augmented generation (RAG) chatbot with a us
 5. Copy the user-interface assets into `backend/`. The Flask user app serves `index.html`, `style.css`, and `script.js` from that directory.
 
    ```powershell
-   Copy-Item frontend\index.html, frontend\style.css, frontend\script.js backend\
+   Copy-Item frontend\index.html, frontend\style.css, frontend\script.js, frontend\theme.js backend\
    ```
 
 ## Run
@@ -122,7 +131,7 @@ backend/
   generator.py        Response-generation model loading
   model/              Local embedding model files
   modelgen/           Local generation model files
-frontend/             Source user-interface assets
+frontend/             Source user-interface assets (including Liquid Glass theme assets)
 ```
 
 ## Notes
