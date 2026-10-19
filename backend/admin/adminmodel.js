@@ -28,9 +28,7 @@ function renderModels(models, activeId) {
         const status = model.available
             ? (model.active ? "Active" : "Available")
             : "Files missing";
-        const description = model.id === "qwen3-4b"
-            ? "Qwen3-4B generation and embedding model paths."
-            : "Gemma 4 E2B IT generation and embedding model paths.";
+        const description = `${model.label} generation with local embeddings.`;
         return `
             <article class="model-card ${model.active ? "active" : ""} ${model.available ? "" : "unavailable"}">
                 <div class="card-head">
@@ -40,7 +38,13 @@ function renderModels(models, activeId) {
                     </div>
                     <span class="badge ${model.active ? "active" : ""} ${model.available ? "" : "unavailable"}">${status}</span>
                 </div>
-                <p class="model-description">${description}</p>
+                <p class="model-description">${escapeHtml(description)}</p>
+                <dl class="model-paths">
+                    <dt>Embedding model</dt>
+                    <dd>${escapeHtml(model.embedding_path)}</dd>
+                    <dt>Generator model</dt>
+                    <dd>${escapeHtml(model.generator_path)}</dd>
+                </dl>
                 <div class="model-meta">
                     <span>Embeddings</span>
                     <span>Generation</span>

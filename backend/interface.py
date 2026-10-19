@@ -1,13 +1,4 @@
-"""
-interface.py — shared building blocks for the RAG chatbot.
 
-    * configuration (paths, DB, ports, thresholds)
-    * MySQL helpers
-    * local Qwen3-Embedding loader (via transformers)
-    * embed_texts() / embedding_dim()
-
-No Flask apps live here. See admin.py (port 8000) and user.py (port 5000).
-"""
 
 import os
 import hashlib
@@ -69,6 +60,19 @@ def _sync_model_selection():
     if active_id != MODEL_ID:
         set_embedding_model(active_id)
 
+def _model_hidden_size(model):
+    config = model.config
+    candidates = [config, getattr(config, 'text_config', None)]
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        hidden_size = getattr(candidate, 'hidden_size', None)
+        if hidden_size is not None:
+            return int(hidden_size)
+    raise AttributeError(
+        f'Unable to determine embedding dimension for {type(config).__name__}'
+    )
+
 def _load_model():
     global _tokenizer, _model, _dim
     _sync_model_selection()
@@ -79,12 +83,12 @@ def _load_model():
             return
         print(f'[model] loading from {MODEL_PATH} ...')
         _tokenizer = AutoTokenizer.from_pretrained(
-            MODEL_PATH, trust_remote_code=True, padding_side='left'
+            MODEL_PATH, trust_remote_code=True, padding_side='left', local_files_only=True
         )
         _model = AutoModel.from_pretrained(
-            MODEL_PATH, trust_remote_code=True, dtype=torch.float32
+            MODEL_PATH, trust_remote_code=True, dtype=torch.float32, local_files_only=True
         ).to('cpu').eval()
-        _dim = int(_model.config.hidden_size)
+        _dim = _model_hidden_size(_model)
         print(f'[model] ready  |  dim = {_dim}')
 
 

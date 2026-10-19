@@ -3,9 +3,10 @@ import threading
 from model_registry import get_active_model_id, get_model_definition
 import torch
 from transformers import (
+    AutoConfig,
     AutoTokenizer,
-    AutoModel,
     AutoModelForCausalLM,
+    AutoModelForImageTextToText,
 )
 from searchForAnswer import build_context
 
@@ -66,8 +67,7 @@ def _load_generator():
         if not os.path.isdir(GENERATOR_MODEL):
             raise FileNotFoundError(
                 f'GENERATOR_MODEL folder not found: {GENERATOR_MODEL}\n'
-                f'Download it with:\n'
-                f'  hf download Qwen/Qwen3-1.7B --local-dir "{GENERATOR_MODEL}"'
+                f'Place the selected model files in this folder.'
             )
         if not os.path.isfile(os.path.join(GENERATOR_MODEL, 'config.json')):
             raise FileNotFoundError(
@@ -90,10 +90,21 @@ def _load_generator():
             local_files_only=True,          # ← never hit the network
         )
 
-        _gen_model = AutoModelForCausalLM.from_pretrained(
+        config = AutoConfig.from_pretrained(
             GENERATOR_MODEL,
             trust_remote_code=True,
-            torch_dtype=_gen_dtype,
+            local_files_only=True,
+        )
+        model_class = (
+            AutoModelForImageTextToText
+            if config.model_type == 'qwen3_5'
+            else AutoModelForCausalLM
+        )
+        _gen_model = model_class.from_pretrained(
+            GENERATOR_MODEL,
+            config=config,
+            trust_remote_code=True,
+            dtype=_gen_dtype,
             local_files_only=True,          # ← never hit the network
         ).to(_gen_device).eval()
 

@@ -86,6 +86,10 @@ h1 { margin: 0; color: #f6fbff; font-size: 28px; letter-spacing: -.03em; }
 .badge.active { color: #a7f3d0; background: rgba(16,185,129,.16); }
 .badge.unavailable { color: #fecdd3; background: rgba(244,63,94,.14); }
 .model-description { min-height: 42px; color: #b7cbe0; line-height: 1.6; font-size: 13px; }
+.model-paths { margin: 0; color: var(--muted); font-size: 12px; }
+.model-paths dt { font-weight: 600; }
+.model-paths dd { margin: 4px 0 12px; font-family: Consolas, monospace; overflow-wrap: anywhere; }
+.model-paths dd:last-child { margin-bottom: 0; }
 .model-meta { display: flex; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 11px; }
 .model-meta span { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.05); }
 .select-btn { margin-top: auto; padding: 10px 14px; color: #061426; background: linear-gradient(135deg, #7dd3fc, #a78bfa); }

@@ -3,11 +3,24 @@ import os
 import tempfile
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SELECTION_FILE = os.path.join(BASE_DIR, 'model_selection.json')
+DEFAULT_MODEL_ID = 'qwen3.5-2b'
+QWEN_EMBEDDING_PATH = os.getenv(
+    'QWEN_EMBEDDING_PATH',
+    os.path.join(BASE_DIR, 'model', 'Qwen3-Embedding-0.6B'),
+)
 
 MODEL_DEFINITIONS = {
+    DEFAULT_MODEL_ID: {
+        'label': 'Qwen3.5-2B',
+        'embedding_path': QWEN_EMBEDDING_PATH,
+        'generator_path': os.getenv(
+            'QWEN35_GENERATOR_PATH',
+            os.getenv('GEN_MODEL', os.path.join(BASE_DIR, 'modelgen', 'qwen3.5-2B')),
+        ),
+    },
     'qwen3-4b': {
         'label': 'Qwen3-4B',
-        'embedding_path': os.getenv('QWEN_EMBEDDING_PATH', os.path.join(BASE_DIR, 'model')),
+        'embedding_path': QWEN_EMBEDDING_PATH,
         'generator_path': os.getenv('QWEN_GENERATOR_PATH', os.getenv('GEN_MODEL', os.path.join(BASE_DIR, 'modelgen'))),
     },
     'gemma-4-e2b-it': {
@@ -61,7 +74,7 @@ def model_available(model_id):
 
 
 def get_active_model_id():
-    requested = os.getenv('GEN_MODEL_ID') or _read_saved_id()
+    requested = _read_saved_id() or os.getenv('GEN_MODEL_ID')
     if requested in MODEL_DEFINITIONS and model_available(requested):
         return requested
 
@@ -69,7 +82,7 @@ def get_active_model_id():
         if model_available(model_id):
             return model_id
 
-    return requested if requested in MODEL_DEFINITIONS else 'qwen3-4b'
+    return requested if requested in MODEL_DEFINITIONS else DEFAULT_MODEL_ID
 
 
 def get_model_definition(model_id=None):

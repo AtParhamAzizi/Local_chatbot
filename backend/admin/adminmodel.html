@@ -12,7 +12,7 @@
             <div>
                 <p class="eyebrow">RUNTIME CONFIGURATION</p>
                 <h1>Model selection</h1>
-                <p class="subtitle">Choose which local model powers embeddings and generated replies.</p>
+                <p class="subtitle">Choose a local embedding and generation model pair.</p>
             </div>
             <button id="refreshBtn" class="btn-secondary" type="button">Refresh</button>
         </header>
@@ -27,7 +27,7 @@
 
         <section class="notice">
             <strong>How switching works</strong>
-            <span>The selected model is saved locally. Existing model instances are released and the next request loads the new model.</span>
+            <span>The first run uses Qwen3-Embedding-0.6B with Qwen3.5-2B. Changes made here are saved locally and reused on restart. Existing model instances are released and the next request loads the new model.</span>
         </section>
 
         <div id="status" class="status" role="status"></div>

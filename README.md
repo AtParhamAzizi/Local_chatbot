@@ -9,13 +9,13 @@ The project now includes a refreshed **Liquid Glass** visual experience:
 - Translucent glass panels with blur, gradients, soft borders, and luminous accents across the user chat and administrator pages.
 - A clickable dark/light theme toggle on the frontend, dashboard, chat inspector, PDF/JSON tools, and system logs.
 - Theme selection persists across reloads and stays synchronized between admin pages.
-- The admin dashboard includes a Model Selection page for switching between Qwen3-4B and Gemma 4 E2B IT when both local model pairs are available.
+- The admin dashboard includes a Model Selection page for switching between Qwen3.5-2B (the default), Qwen3-4B, and Gemma 4 E2B IT when their local model files are available.
 - Responsive layouts have been refined for desktop and mobile screens.
 
 ## Features
 
 - Semantic retrieval using the local `Qwen/Qwen3-Embedding-0.6B` embedding model.
-- Answer generation using the local `Qwen/Qwen3-4B` causal language model.
+- Answer generation using the local `Qwen/Qwen3.5-2B` model by default.
 - JSON question-and-answer ingestion through the administrator dashboard.
 - PDF upload, text extraction, chunking, embedding, search, and deletion.
 - Source metadata, recommended questions, chat-history recording, and feedback.
@@ -72,11 +72,13 @@ The project now includes a refreshed **Liquid Glass** visual experience:
 4. Download the model files into the expected local directories:
 
    ```text
-   backend/model/       Qwen/Qwen3-Embedding-0.6B
-   backend/modelgen/    Qwen/Qwen3-4B
+   backend/model/Qwen3-Embedding-0.6B/    Qwen/Qwen3-Embedding-0.6B
+   backend/modelgen/qwen3.5-2B/          Qwen/Qwen3.5-2B
    ```
 
-   Both directories must contain the corresponding Hugging Face model files, including `config.json`. The generator location can instead be set with `GEN_MODEL`.
+   Both directories must contain the corresponding Hugging Face model files, including `config.json`. Paths are resolved relative to `backend/`, regardless of the working directory. Override the embedding location with `QWEN_EMBEDDING_PATH` and the default generator location with `QWEN35_GENERATOR_PATH` or `GEN_MODEL`.
+
+   On the first run, the application selects Qwen3-Embedding-0.6B with Qwen3.5-2B. To change models later, open the admin **Model Selection** page (`http://localhost:8000/adminmodel.html`). The selection is saved in `backend/model_selection.json` and reused on restart, taking precedence over `GEN_MODEL_ID`. Qwen3-4B remains available when its generator files are placed directly in `backend/modelgen/` or configured with `QWEN_GENERATOR_PATH`; it shares the Qwen embedding model. Gemma paths can be configured with `GEMMA_EMBEDDING_PATH` and `GEMMA_GENERATOR_PATH`.
 
 5. Copy the user-interface assets into `backend/`. The Flask user app serves `index.html`, `style.css`, and `script.js` from that directory.
 
