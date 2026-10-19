@@ -141,7 +141,7 @@ def init_history_table():
             user_message TEXT NOT NULL,
             bot_response TEXT NOT NULL,
             feedback ENUM('like', 'dislike') DEFAULT NULL,
-            feedback_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            feedback_at TIMESTAMP NULL DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_user_id (user_id),
             INDEX idx_ip (ip_address),
@@ -172,4 +172,3 @@ class logger:
         conn.close()
 
 
-    

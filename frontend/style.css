@@ -157,11 +157,13 @@ body::after { right: -16vw; bottom: -18vw; background: #8b5cf6; }
 .typing-dots span:nth-child(3) { animation-delay: .4s; }
 @keyframes typing { 0%,60%,100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-4px); opacity: 1; } }
 
-.feedback-buttons { margin-top: 8px; display: flex; gap: 8px; }
+.feedback-buttons { margin-top: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .feedback-btn { padding: 5px 9px; border: 1px solid rgba(192,225,255,.2); border-radius: 9px; color: var(--muted); background: rgba(255,255,255,.06); cursor: pointer; font-size: 15px; transition: .2s ease; }
 .feedback-btn:hover,
 .feedback-btn.selected { color: var(--ink); border-color: rgba(125,211,252,.5); background: rgba(56,189,248,.16); }
 .feedback-btn:disabled { cursor: default; opacity: .7; }
+.feedback-status { flex-basis: 100%; color: var(--muted); font-size: 12px; }
+.feedback-status.error { color: #fb7185; }
 
 @media (max-width: 560px) {
     body { padding: 0; }

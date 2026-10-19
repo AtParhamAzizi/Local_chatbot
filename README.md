@@ -80,11 +80,7 @@ The project now includes a refreshed **Liquid Glass** visual experience:
 
    On the first run, the application selects Qwen3-Embedding-0.6B with Qwen3.5-2B. To change models later, open the admin **Model Selection** page (`http://localhost:8000/adminmodel.html`). The selection is saved in `backend/model_selection.json` and reused on restart, taking precedence over `GEN_MODEL_ID`. Qwen3-4B remains available when its generator files are placed directly in `backend/modelgen/` or configured with `QWEN_GENERATOR_PATH`; it shares the Qwen embedding model. Gemma paths can be configured with `GEMMA_EMBEDDING_PATH` and `GEMMA_GENERATOR_PATH`.
 
-5. Copy the user-interface assets into `backend/`. The Flask user app serves `index.html`, `style.css`, and `script.js` from that directory.
-
-   ```powershell
-   Copy-Item frontend\index.html, frontend\style.css, frontend\script.js, frontend\theme.js backend\
-   ```
+5. The Flask user app serves its assets directly from `frontend/`. No copying is required; changes to the chat interface and feedback controls are served from that directory.
 
 ## Run
 
@@ -117,8 +113,8 @@ PDF uploads are limited to 50 MB. JSON knowledge-base uploads are limited to 20 
 The user service exposes:
 
 - `GET /health` — service health check.
-- `POST /chat` — retrieves knowledge and generates a response. Send JSON with `message` and an optional `user_id`.
-- `POST /feedback` — records `like` or `dislike` feedback for a chat-history message.
+- `POST /chat` — retrieves knowledge and generates a response. Send JSON with `message` and an optional `user_id`. Every successful response includes a saved chat-history `message_id`, including fallback replies.
+- `POST /feedback` — send `{"message_id": 123, "feedback": "like"}` (or `"dislike"`) using the ID returned by `/chat`. Saves the rating and its timestamp in `chat_history`; submitting another rating updates the same message. Invalid requests return 400, missing messages return 404, and database failures return 503 so the UI can offer a retry.
 
 Administrator endpoints are available under `/admin/api/` on port 8000 for knowledge-base management, PDFs, logs, and chat history.
 

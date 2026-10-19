@@ -87,10 +87,9 @@
                         chatMessages.scrollTop = chatMessages.scrollHeight;
                         setTimeout(typeChar, typingSpeed);
                     } else {
-                        // if (messageId) {
-                        //     addFeedbackButtons(messageDiv, messageId);
-                        // }
-                        addFeedbackButtons(messageDiv,messageId)
+                        if (messageId) {
+                            addFeedbackButtons(messageDiv, messageId);
+                        }
                     }
                 }
 
@@ -142,23 +141,39 @@ function addFeedbackButtons(messageDiv, messageId) {
     const feedbackDiv = document.createElement('div');
     feedbackDiv.className = 'feedback-buttons';
     feedbackDiv.innerHTML = `
-        <button class="feedback-btn like-btn" data-feedback="like" title="پاسخ مفید بود">👍</button>
-        <button class="feedback-btn dislike-btn" data-feedback="dislike" title="پاسخ مفید نبود">👎</button>
+        <button type="button" class="feedback-btn like-btn" data-feedback="like" aria-pressed="false" title="پاسخ مفید بود">👍</button>
+        <button type="button" class="feedback-btn dislike-btn" data-feedback="dislike" aria-pressed="false" title="پاسخ مفید نبود">👎</button>
     `;
 
-    feedbackDiv.querySelectorAll('.feedback-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const feedback = btn.dataset.feedback;
-            // await sendFeedback(messageId, feedback);
-            if (messageId) {
-                await sendFeedback(messageId, feedback);
-                // await addMessage(data.reply, false, data.message_id)
-            } else {
-                console.warn('No message_id — feedback not saved to DB');
-            }
+    const feedbackStatus = document.createElement('span');
+    feedbackStatus.className = 'feedback-status';
+    feedbackStatus.setAttribute('role', 'status');
+    feedbackDiv.appendChild(feedbackStatus);
 
-            feedbackDiv.querySelectorAll('.feedback-btn').forEach(b => b.disabled = true);
-            btn.classList.add('selected');
+    const buttons = feedbackDiv.querySelectorAll('.feedback-btn');
+    buttons.forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (btn.classList.contains('selected')) return;
+
+            const feedback = btn.dataset.feedback;
+            buttons.forEach(button => { button.disabled = true; });
+            feedbackStatus.textContent = 'در حال ذخیره بازخورد...';
+            feedbackStatus.classList.remove('error');
+
+            try {
+                await sendFeedback(messageId, feedback);
+                buttons.forEach(button => {
+                    button.classList.toggle('selected', button === btn);
+                    button.setAttribute('aria-pressed', String(button === btn));
+                });
+                feedbackStatus.textContent = 'بازخورد شما ثبت شد.';
+            } catch (error) {
+                feedbackStatus.textContent = 'ثبت بازخورد ناموفق بود. دوباره تلاش کنید.';
+                feedbackStatus.classList.add('error');
+                console.error('Feedback error:', error);
+            } finally {
+                buttons.forEach(button => { button.disabled = false; });
+            }
         });
     });
 
@@ -167,20 +182,19 @@ function addFeedbackButtons(messageDiv, messageId) {
 }
 
 async function sendFeedback(messageId, feedback) {
-    try {
-        await fetch(`${BACKEND_URL}/feedback`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                message_id: messageId,
-                feedback: feedback
-            })
-        });
-        if (!res.ok) console.error('Feedback HTTP error:', res.status);
-
-    } catch (error) {
-        console.error('Feedback error:', error);
+    const response = await fetch(`${BACKEND_URL}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            message_id: messageId,
+            feedback: feedback
+        })
+    });
+    const data = await response.json();
+    if (!response.ok || data?.status !== 'ok') {
+        throw new Error(data?.error || 'Unable to save feedback');
     }
+    return data;
 }
 
 

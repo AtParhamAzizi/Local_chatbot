@@ -1,4 +1,5 @@
 from database import get_conn, get_client_ip
+import os
 import numpy as np
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -16,7 +17,8 @@ from interface import (
 Loggerlevel = 'user'
 
 
-ui_app = Flask('ui', static_folder=BASE_DIR, static_url_path='')
+FRONTEND_DIR = os.path.join(os.path.dirname(BASE_DIR), 'frontend')
+ui_app = Flask('ui', static_folder=FRONTEND_DIR, static_url_path='')
 CORS(ui_app, origins=["*"])
 
 
@@ -25,7 +27,7 @@ CORS(ui_app, origins=["*"])
 
 @ui_app.route('/')
 def ui_index():
-    return send_from_directory(BASE_DIR, 'index.html')
+    return send_from_directory(FRONTEND_DIR, 'index.html')
 
 
 @ui_app.route('/health')
@@ -130,47 +132,38 @@ def chat():
                 'برای ارتباط تلفنی می‌توانید با شماره 1649 تماس بگیرید.')
 
     if not hits:
-        return jsonify({
-            'reply': fallback,
-            'recommended_questions': [],
-        })
+        reply = fallback
+    else:
+        try:
+            reply = generate_reply(message, hits[:6])
+        except Exception as error:
+            print('[chat] generation failed:', error)
+            reply = hits[0].get('answer') or hits[0].get('content') or fallback
 
-    top_row = hits[0]
-    top_score = top_row['score']
-
-
-    context_results = hits[:6]
+    recommended = [hit['question'] for hit in hits[1:4] if hit.get('question')]
 
     try:
-        reply = generate_reply(message, context_results)
-    except Exception as e:
-        # Fallback to retrieved answer if generation fails
-        print('[chat] generation failed:', e)
-        reply = top_row.get('answer') or top_row.get('content') or fallback
-
-    recommended = [h['question'] for h in hits[1:4] if h.get('question')]
-
-#+_+_+_+_+_+_+_+_+_++_+_+_+___+_+_+_+_+_+++_+_+_+_+_+_+_+_+_++_++_+__+_+_+_+_+_+_+__+_+_+_+_+_+_++
-
-    conn = get_conn()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO chat_history (user_id, ip_address, user_message, bot_response, created_at)
-        VALUES (%s, %s, %s, %s, NOW())
-    """, (user_id, ip, message, reply))
-    conn.commit()
-    message_id = cursor.lastrowid
-    cursor.close()
-    conn.close()
-
-
-#+_+_+_+_+_+_+_+_+_++_+_+_+___+_+_+_+_+_+++_+_+_+_+_+_+_+_+_++_++_+__+_+_+_+_+_+_+__+_+_+_+_+_+_++
-
+        conn = get_conn()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO chat_history
+                        (user_id, ip_address, user_message, bot_response, feedback_at, created_at)
+                    VALUES (%s, %s, %s, %s, NULL, NOW())
+                """, (user_id, ip, message, reply))
+                message_id = cursor.lastrowid
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        ui_app.logger.exception('Unable to save chat history')
+        return jsonify({'error': 'Unable to save chat history. Please try again.'}), 503
 
     return jsonify({
+        'message_id': message_id,
         'reply': reply,
         'recommended_questions': recommended,
-        'score': round(top_score, 4),
+        'score': round(hits[0]['score'], 4) if hits else None,
         'sources': [
             {
                 'type': h['source_type'],
@@ -192,29 +185,40 @@ def chat():
 #+_+_+_+_+_+_+_+_+_++_+_+_+__+_+_+_+_+_+++_+_+_+_+_+_+_+_+_++_++_+__+_+_+_+_+_+_+__+_+_+_+_+_+_++
 @ui_app.route('/feedback', methods=['POST'])
 def feedback():
-    data = request.get_json()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'A JSON object is required'}), 400
+
     message_id = data.get('message_id')
     feedback_value = data.get('feedback')
+
+    if type(message_id) is not int or not 0 < message_id <= 9223372036854775807:
+        return jsonify({'error': 'message_id must be a positive integer'}), 400
 
     if feedback_value not in ('like', 'dislike'):
         return jsonify({'error': 'Invalid feedback'}), 400
 
-    conn = get_conn()
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE chat_history
-        SET feedback = %s, feedback_at = NOW()
-        WHERE id = %s
-    """, (feedback_value, message_id))
-    conn.commit()
-    affected = cursor.rowcount
-    cursor.close()
-    conn.close()
+    try:
+        conn = get_conn()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE chat_history
+                    SET feedback = %s, feedback_at = NOW()
+                    WHERE id = %s
+                """, (feedback_value, message_id))
+                if cursor.rowcount == 0:
+                    cursor.execute('SELECT id FROM chat_history WHERE id = %s', (message_id,))
+                    if cursor.fetchone() is None:
+                        return jsonify({'error': 'Message not found'}), 404
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        ui_app.logger.exception('Unable to save feedback')
+        return jsonify({'error': 'Unable to save feedback. Please try again.'}), 503
 
-    if affected == 0:
-        return jsonify({'error': 'Message not found'}), 404
-
-    return jsonify({'status': 'ok'})
+    return jsonify({'status': 'ok', 'message_id': message_id, 'feedback': feedback_value})
 
 
  
