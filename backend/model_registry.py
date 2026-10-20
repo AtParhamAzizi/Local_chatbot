@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+from database import logger
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SELECTION_FILE = os.path.join(BASE_DIR, 'model_selection.json')
 DEFAULT_MODEL_ID = 'qwen3.5-2b'
@@ -52,6 +53,7 @@ def _read_saved_id():
     return None
 
 
+@logger.operation
 def _write_saved_id(model_id):
     directory = os.path.dirname(SELECTION_FILE)
     fd, temp_path = tempfile.mkstemp(prefix='.model-selection-', dir=directory, text=True)
@@ -107,6 +109,7 @@ def get_model_catalog():
     return catalog
 
 
+@logger.operation
 def set_active_model(model_id):
     if model_id not in MODEL_DEFINITIONS:
         raise ValueError(f'Unknown model: {model_id}')
@@ -120,4 +123,5 @@ def set_active_model(model_id):
             f"{definition['label']} is unavailable. Missing config.json in: {', '.join(missing)}"
         )
     _write_saved_id(model_id)
+    logger.logDrop(f'Active model selection saved: {model_id}')
     return model_id

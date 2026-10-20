@@ -1,4 +1,4 @@
-from database import get_conn, get_client_ip
+from database import get_conn, get_client_ip, logger
 import os
 import numpy as np
 from flask import Flask, request, jsonify, send_from_directory
@@ -14,7 +14,6 @@ from interface import (
     UI_PORT,
     MIN_SCORE,
 )
-Loggerlevel = 'user'
 
 
 FRONTEND_DIR = os.path.join(os.path.dirname(BASE_DIR), 'frontend')
@@ -26,11 +25,13 @@ CORS(ui_app, origins=["*"])
 
 
 @ui_app.route('/')
+@logger.operation
 def ui_index():
     return send_from_directory(FRONTEND_DIR, 'index.html')
 
 
 @ui_app.route('/health')
+@logger.operation
 def health():
     return jsonify({'status': 'ok'})
 
@@ -92,6 +93,7 @@ from searchForAnswer import _search_pdf, _search_qa, build_context
     
 #     return combined[:k]
 
+@logger.operation
 def _retrieve_top(query: str, k: int = 6):
     qvec = np.asarray(embed_texts([query])[0], dtype=np.float32)
 
@@ -106,6 +108,7 @@ def _retrieve_top(query: str, k: int = 6):
 
 
 @ui_app.route('/chat', methods=['POST'])
+@logger.operation
 def chat():
     data    = request.get_json(silent=True) or {}
     message = (data.get('message') or '').strip()
@@ -132,12 +135,13 @@ def chat():
                 'برای ارتباط تلفنی می‌توانید با شماره 1649 تماس بگیرید.')
 
     if not hits:
+        logger.logDrop('No matching knowledge-base entries; returning the fallback reply', logger.WARNING)
         reply = fallback
     else:
         try:
             reply = generate_reply(message, hits[:6])
         except Exception as error:
-            print('[chat] generation failed:', error)
+            logger.logDrop(f'Generation failed; using a retrieved answer: {error}', logger.FAILED)
             reply = hits[0].get('answer') or hits[0].get('content') or fallback
 
     recommended = [hit['question'] for hit in hits[1:4] if hit.get('question')]
@@ -153,10 +157,11 @@ def chat():
                 """, (user_id, ip, message, reply))
                 message_id = cursor.lastrowid
             conn.commit()
+            logger.logDrop(f'Chat reply saved with message_id={message_id}')
         finally:
             conn.close()
-    except Exception:
-        ui_app.logger.exception('Unable to save chat history')
+    except Exception as error:
+        logger.logDrop(f'Unable to save chat history: {error}', logger.FAILED)
         return jsonify({'error': 'Unable to save chat history. Please try again.'}), 503
 
     return jsonify({
@@ -184,6 +189,7 @@ def chat():
 
 #+_+_+_+_+_+_+_+_+_++_+_+_+__+_+_+_+_+_+++_+_+_+_+_+_+_+_+_++_++_+__+_+_+_+_+_+_+__+_+_+_+_+_+_++
 @ui_app.route('/feedback', methods=['POST'])
+@logger.operation
 def feedback():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
@@ -212,10 +218,11 @@ def feedback():
                     if cursor.fetchone() is None:
                         return jsonify({'error': 'Message not found'}), 404
             conn.commit()
+            logger.logDrop(f'Feedback saved: message_id={message_id}, feedback={feedback_value}')
         finally:
             conn.close()
-    except Exception:
-        ui_app.logger.exception('Unable to save feedback')
+    except Exception as error:
+        logger.logDrop(f'Unable to save feedback: {error}', logger.FAILED)
         return jsonify({'error': 'Unable to save feedback. Please try again.'}), 503
 
     return jsonify({'status': 'ok', 'message_id': message_id, 'feedback': feedback_value})
@@ -236,7 +243,9 @@ def feedback():
 
 
 
+@logger.operation
 def user_run():
+    logger.logDrop(f'Starting the user service on port {UI_PORT}')
     ui_app.run(
         host='0.0.0.0',
         port=UI_PORT,

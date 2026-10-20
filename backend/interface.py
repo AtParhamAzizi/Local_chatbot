@@ -3,6 +3,7 @@
 import os
 import hashlib
 import threading
+from database import logger
 
 import numpy as np
 import torch
@@ -43,6 +44,7 @@ _model     = None
 _dim       = None
 _lock      = threading.Lock()
 
+@logger.operation
 def set_embedding_model(model_id):
     global MODEL_ID, MODEL_PATH, _tokenizer, _model, _dim
     definition = get_model_definition(model_id)
@@ -52,6 +54,7 @@ def set_embedding_model(model_id):
         _tokenizer = None
         _model = None
         _dim = None
+    logger.logDrop(f'Embedding selection changed to {model_id}')
     return MODEL_PATH
 
 
@@ -73,6 +76,7 @@ def _model_hidden_size(model):
         f'Unable to determine embedding dimension for {type(config).__name__}'
     )
 
+@logger.operation
 def _load_model():
     global _tokenizer, _model, _dim
     _sync_model_selection()
@@ -82,6 +86,7 @@ def _load_model():
         if _model is not None:
             return
         print(f'[model] loading from {MODEL_PATH} ...')
+        logger.logDrop(f'Loading embedding model from {MODEL_PATH}')
         _tokenizer = AutoTokenizer.from_pretrained(
             MODEL_PATH, trust_remote_code=True, padding_side='left', local_files_only=True
         )
@@ -90,6 +95,7 @@ def _load_model():
         ).to('cpu').eval()
         _dim = _model_hidden_size(_model)
         print(f'[model] ready  |  dim = {_dim}')
+        logger.logDrop(f'Embedding model ready with dimension {_dim}')
 
 
 def get_embedder():
@@ -102,11 +108,12 @@ def embedding_dim():
         _load_model()
         return _dim
     except Exception as e:
-        print('[model] not available:', e)
+        logger.logDrop(f'Embedding model unavailable: {e}', logger.FAILED)
         return None
 
 
 @torch.no_grad()
+@logger.operation
 def embed_texts(texts):
 
     tokenizer, model = get_embedder()

@@ -1,7 +1,7 @@
 import numpy as np
 import re
 # from interface import embed_texts
-from database import get_conn
+from database import get_conn, logger
 
 
 def _cosine_score(qvec, blob, embedding_dim):
@@ -33,6 +33,7 @@ def _lexical_overlap(query, content):
     return len(query_terms & content_terms) / len(query_terms)
 
 
+@logger.operation
 def _search_qa(qvec: np.ndarray, k: int = 5):
     conn = get_conn()
     try:
@@ -67,6 +68,7 @@ def _search_qa(qvec: np.ndarray, k: int = 5):
     return results[:k]
 
 
+@logger.operation
 def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = ''):
     conn = get_conn()
     try:
@@ -128,6 +130,7 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = ''):
 
 
 
+@logger.operation
 def build_context(results):
 
     context_parts = []

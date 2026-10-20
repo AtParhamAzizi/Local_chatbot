@@ -1,5 +1,6 @@
 import os
 import threading
+from database import logger
 from model_registry import get_active_model_id, get_model_definition
 import torch
 from transformers import (
@@ -10,7 +11,6 @@ from transformers import (
 )
 from searchForAnswer import build_context
 
-Loggerlevel = 'generator'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_ID = get_active_model_id()
@@ -36,6 +36,7 @@ SYSTEM_PROMPT = (
 )
 
 # def _load_generator():
+@logger.operation
 def set_generator_model(model_id):
     global MODEL_ID, GENERATOR_MODEL, _gen_tokenizer, _gen_model, _gen_device
     definition = get_model_definition(model_id)
@@ -45,6 +46,7 @@ def set_generator_model(model_id):
         _gen_tokenizer = None
         _gen_model = None
         _gen_device = None
+    logger.logDrop(f'Generator selection changed to {model_id}')
     return GENERATOR_MODEL
 
 
@@ -53,6 +55,7 @@ def _sync_model_selection():
     if active_id != MODEL_ID:
         set_generator_model(active_id)
 
+@logger.operation
 def _load_generator():
     global _gen_tokenizer, _gen_model, _gen_device
     _sync_model_selection()
@@ -83,6 +86,7 @@ def _load_generator():
             _gen_dtype  = torch.float32
 
         print(f'[gen] loading {GENERATOR_MODEL} on {_gen_device} ({_gen_dtype}) ...')
+        logger.logDrop(f'Loading generator {MODEL_ID} on {_gen_device} with {_gen_dtype}')
 
         _gen_tokenizer = AutoTokenizer.from_pretrained(
             GENERATOR_MODEL,
@@ -109,6 +113,7 @@ def _load_generator():
         ).to(_gen_device).eval()
 
         print(f'[gen] ready on {_gen_device}')
+        logger.logDrop(f'Generator {MODEL_ID} ready on {_gen_device}')
 
 
 
@@ -120,6 +125,7 @@ def get_generator():
 
 
 @torch.no_grad()
+@logger.operation
 def generate_reply(question: str, context_answers: list[str]) -> str:
     # tok, model = get_generator()
     tok, model, device = get_generator()

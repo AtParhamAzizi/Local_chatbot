@@ -49,20 +49,20 @@ The project now includes a refreshed **Liquid Glass** visual experience:
 
    | Variable | Default |
    | --- | --- |
-   | `DB_HOST` | `localhost` |
-   | `DB_PORT` | `3306` |
-   | `DB_USER` | `root` |
-   | `DB_PASS` | `159632@qw` |
-   | `DB_NAME` | `chatbot_db` |
+   | `DB_HOST` | `localhost or your ip address to mysql` |
+   | `DB_PORT` | `use your mysql port (default : 3306)` |
+   | `DB_USER` | `use you mySQl user` |
+   | `DB_PASS` | `password to login to your database` |
+   | `DB_NAME` | `chatbot database name` |
 
    Example for PowerShell:
 
    ```powershell
-   $env:DB_HOST = 'localhost'
-   $env:DB_PORT = '3306'
-   $env:DB_USER = 'chatbot_user'
-   $env:DB_PASS = 'change-me'
-   $env:DB_NAME = 'chatbot_db'
+   $env:DB_HOST = 'localhost or your ip address to mysql'
+   $env:DB_PORT = 'use your mysql port (default : 3306)'
+   $env:DB_USER = 'use you mySQl user'
+   $env:DB_PASS = 'password to login to your database'
+   $env:DB_NAME = 'chatbot database name'
 
    mysql -u root -p -e "CREATE DATABASE chatbot_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
    ```
@@ -133,6 +133,22 @@ backend/
   modelgen/           Local generation model files
 frontend/             Source user-interface assets (including Liquid Glass theme assets)
 ```
+
+## Logging
+
+Application logs are written to the MySQL `adminlogger` table by `logger.logDrop` in `backend/database.py`. The logger automatically records the calling file (including `.py`) in `_level` and the calling function in `_from`.
+
+```python
+from database import logger
+
+logger.logDrop('Operation completed', logger.INFORMATION)
+logger.logDrop('Using a fallback response', logger.WARNING)
+logger.logDrop('Operation failed', logger.FAILED)
+```
+
+Severity codes are **1 = information**, **2 = warning**, and **3 = failed**. The existing four-argument `logger.logDrop(level, log_from, message, warninglevel)` calls remain supported, but file and function names are inferred automatically. `@logger.operation` records completed operations, exceptions, and HTTP outcomes (4xx as warnings and 5xx as failures) without logging request bodies or model inputs. Coverage includes startup, database initialization, chat and feedback, retrieval, embeddings, generation, model changes, JSON/PDF tools, and administrator APIs.
+
+At startup, `init_logger_table()` upgrades existing `CHAR`/`VARCHAR` message columns to `TEXT` without removing existing logs. Database logging failures fall back to the console and do not interrupt application requests. View and filter logs on the admin **System Logs** page.
 
 ## Notes
 

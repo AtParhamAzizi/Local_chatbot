@@ -1,4 +1,5 @@
 backend/modelgen/gemma-4-E2B-it/
+*.pyc
 backend/model/gemma-4-E2B-it/
 backend/model_selection.json
 backend/__pycache__/

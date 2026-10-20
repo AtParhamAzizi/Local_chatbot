@@ -29,7 +29,6 @@ from interface import (
 )
 
 
-Loggerlevel = 'admin'
 
 admin_app = Flask('admin', static_folder=ADMIN_DIR, static_url_path='')
 
@@ -52,13 +51,14 @@ CORS(
 
 
 @admin_app.route('/')
+@logger.operation
 def admin_index():
-    logger.logDrop(Loggerlevel, 'admin_index', 'admin.html loaded succesfuly', 1)
     return send_from_directory(ADMIN_DIR, 'admin.html')
 
 
 
 @admin_app.route('/admin/api/models', methods=['GET'])
+@logger.operation
 def admin_models():
     return jsonify({
         'active_model': get_active_model_id(),
@@ -67,6 +67,7 @@ def admin_models():
 
 
 @admin_app.route('/admin/api/models', methods=['POST'])
+@logger.operation
 def admin_set_model():
     data = request.get_json(silent=True) or {}
     model_id = str(data.get('model_id') or '').strip()
@@ -90,6 +91,7 @@ def admin_set_model():
     except Exception as exc:
         return jsonify({'error': f'Unable to change model: {exc}'}), 500
 @admin_app.route('/admin/api/stats')
+@logger.operation
 def admin_stats():
     conn = get_conn()
 
@@ -101,7 +103,6 @@ def admin_stats():
             embedded = cur.fetchone()['c']
     finally:
         conn.close()
-        logger.logDrop(Loggerlevel, 'admin_stats', '/admin/api/stats loaded succesfuly', 1)
 
 
     return jsonify({
@@ -113,8 +114,9 @@ def admin_stats():
 
 
 @admin_app.route('/admin/api/upload', methods=['POST'])
+@logger.operation
 def admin_upload():
-    logger.logDrop(Loggerlevel, 'admin_upload', '/admin/api/uploade loaded succesfuly', 1)
+    logger.logDrop('Received a knowledge-base JSON upload')
     started = time.time()
 
     if 'file' not in request.files:
@@ -195,7 +197,7 @@ def admin_upload():
                             " WHERE id=%s",
                             (a, blob, dim, existing['id'])
                         )
-                        logger.logDrop(Loggerlevel, 'admin_upload', f'qa_documents table updated with (id = {existing['id']}, answer = {a}, embedding = something, embedding_dim = {dim})', 1)
+                        logger.logDrop(f"Updated knowledge-base record id={existing['id']}, embedding_dim={dim}")
                         updated += 1
                     else:
                         skipped += 1
@@ -207,10 +209,14 @@ def admin_upload():
                     "VALUES (%s, %s, %s, %s, %s)",
                     (q, a, h, blob, dim)
                 )
-                logger.logDrop(Loggerlevel, 'admin_upload', f'qa_documents table updated with (id = {existing['id']}, question = {q}, answer = {a}, embedding = something, embedding_dim = {dim})', 1)
+                logger.logDrop(f'Inserted knowledge-base record id={cur.lastrowid}, embedding_dim={dim}')
                 inserted += 1
     finally:
         conn.close()
+
+    logger.logDrop(f'JSON import completed: inserted={inserted}, updated={updated}, skipped={skipped}')
+    if errors:
+        logger.logDrop(f'JSON import ignored {len(errors)} invalid entries', logger.WARNING)
 
     return jsonify({
         'received':     len(payload),
@@ -225,6 +231,7 @@ def admin_upload():
 
 
 @admin_app.route('/admin/api/documents')
+@logger.operation
 def admin_documents():
     try:
         page     = max(1, int(request.args.get('page', 1)))
@@ -282,6 +289,7 @@ def admin_documents():
 
 
 @admin_app.route('/admin/api/documents/<int:doc_id>', methods=['DELETE'])
+@logger.operation
 def admin_delete(doc_id):
     conn = get_conn()
     try:
@@ -309,6 +317,7 @@ PDF_EMBED_BATCH_SIZE = 16
 
 
 
+@logger.operation
 def split_text(text, chunk_size=1200, overlap=200):
 
     # Remove layout noise introduced by PDF extraction before embedding.
@@ -361,6 +370,7 @@ def split_text(text, chunk_size=1200, overlap=200):
 
 
 @admin_app.route('/admin/api/pdf/upload', methods=['POST'])
+@logger.operation
 def admin_pdf_upload():
 
     started = time.time()
@@ -725,6 +735,7 @@ def admin_pdf_upload():
 
 
 @admin_app.route('/admin/api/pdf/documents')
+@logger.operation
 def admin_pdf_documents():
 
     try:
@@ -856,6 +867,7 @@ def admin_pdf_documents():
     '/admin/api/pdf/documents/<int:doc_id>',
     methods=['DELETE']
 )
+@logger.operation
 def admin_pdf_delete(doc_id):
 
     conn = get_conn()
@@ -893,6 +905,7 @@ def admin_pdf_delete(doc_id):
 
 
 @admin_app.route('/admin/api/pdf/stats')
+@logger.operation
 def admin_pdf_stats():
 
     conn = get_conn()
@@ -956,7 +969,9 @@ def admin_pdf_stats():
     })
 
 
+@logger.operation
 def admin_run():
+    logger.logDrop(f'Starting the admin service on port {ADMIN_PORT}')
     admin_app.run(
         host='0.0.0.0',
         port=ADMIN_PORT,
@@ -972,6 +987,7 @@ def admin_run():
 
 #logger api
 @admin_app.route("/admin/api/logs", methods=["GET"])
+@logger.operation
 def get_admin_logs():
     conn = None
     try:
@@ -998,7 +1014,7 @@ def get_admin_logs():
 
     except Exception as e:
 
-        print("get_admin_logs error:", e)
+        logger.logDrop(f'Unable to read application logs: {e}', logger.FAILED)
 
         return jsonify({
             "success": False,
@@ -1024,13 +1040,13 @@ def get_admin_logs():
 
 
 from flask import request, jsonify
-import logging
 
 # ============================================================
 # ADMIN CHAT API
 # ============================================================
 
 @admin_app.route('/admin/api/chat/sessions', methods=['GET'])
+@logger.operation
 def admin_chat_sessions():
 
     try:
@@ -1243,9 +1259,7 @@ def admin_chat_sessions():
 
     except Exception as e:
 
-        logging.exception(
-            "admin_chat_sessions failed"
-        )
+        logger.logDrop(f'Unable to list chat sessions: {e}', logger.FAILED)
 
         return jsonify({
             'error': 'خطا در دریافت گفتگوها',
@@ -1256,6 +1270,7 @@ def admin_chat_sessions():
 
 
 @admin_app.route('/admin/api/chat/messages', methods=['GET'])
+@logger.operation
 def admin_chat_messages():
     """
     Get messages belonging to a session.
@@ -1393,9 +1408,7 @@ def admin_chat_messages():
 
     except Exception as e:
 
-        logging.exception(
-            "admin_chat_messages failed"
-        )
+        logger.logDrop(f'Unable to list chat messages: {e}', logger.FAILED)
 
         return jsonify({
             'error': 'خطا در دریافت پیام‌ها',
@@ -1408,6 +1421,7 @@ def admin_chat_messages():
 # ============================================================
 
 @admin_app.route('/admin/api/chat/stats', methods=['GET'])
+@logger.operation
 def admin_chat_stats():
     """
     Get global chat statistics.
@@ -1506,9 +1520,7 @@ def admin_chat_stats():
 
     except Exception as e:
 
-        logging.exception(
-            "admin_chat_stats failed"
-        )
+        logger.logDrop(f'Unable to read chat statistics: {e}', logger.FAILED)
 
         return jsonify({
             'error': 'خطا در دریافت آمار',
@@ -1524,6 +1536,7 @@ def admin_chat_stats():
     '/admin/api/chat/sessions',
     methods=['DELETE']
 )
+@logger.operation
 def admin_chat_delete_session():
 
     try:
@@ -1598,9 +1611,7 @@ def admin_chat_delete_session():
 
     except Exception as e:
 
-        logging.exception(
-            "admin_chat_delete_session failed"
-        )
+        logger.logDrop(f'Unable to delete a chat session: {e}', logger.FAILED)
 
         return jsonify({
             'error': 'خطا در حذف گفتگو',
@@ -1616,6 +1627,7 @@ def admin_chat_delete_session():
     '/admin/api/chat/logs',
     methods=['DELETE']
 )
+@logger.operation
 def admin_chat_delete_message():
 
     try:
@@ -1675,9 +1687,7 @@ def admin_chat_delete_message():
 
     except Exception as e:
 
-        logging.exception(
-            "admin_chat_delete_message failed"
-        )
+        logger.logDrop(f'Unable to delete a chat message: {e}', logger.FAILED)
 
         return jsonify({
             'error': 'خطا در حذف پیام',

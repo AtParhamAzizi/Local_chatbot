@@ -119,7 +119,7 @@ async function loadLogs() {
              "logs": [
                  {
                      "id": 1,
-                     "_level": "database",
+                     "_level": "database.py",
                      "_from": "get_conn",
                      "message": "Database connected",
                      "warninglevel": 1,
@@ -197,11 +197,11 @@ function updateStats() {
 
         } else if (level === 2) {
 
-            failed++;
+            warning++;
 
         } else if (level === 3) {
 
-            warning++;
+            failed++;
         }
     }
 
@@ -256,7 +256,8 @@ function getFilteredLogs() {
                 log._level ?? ""
             )
             .trim()
-            .toLowerCase();
+            .toLowerCase()
+            .replace(/\.py$/, "");
 
 
         if (
@@ -535,13 +536,6 @@ function createLogRow(log) {
 
 function getStatus(level) {
 
-    /*
-     * 1 = Information = Blue
-     * 2 = Failed      = Red
-     * 3 = Warning     = Yellow
-     */
-
-
     if (level === 1) {
 
         return {
@@ -555,9 +549,9 @@ function getStatus(level) {
     if (level === 2) {
 
         return {
-            text: "Failed",
+            text: "warning",
             className:
-                "status-failed"
+                "status-warning"
         };
     }
 
@@ -565,9 +559,9 @@ function getStatus(level) {
     if (level === 3) {
 
         return {
-            text: "warning",
+            text: "Failed",
             className:
-                "status-warning"
+                "status-failed"
         };
     }
 
