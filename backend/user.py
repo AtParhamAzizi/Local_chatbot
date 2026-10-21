@@ -14,11 +14,13 @@ from interface import (
     UI_PORT,
     MIN_SCORE,
 )
+from voice import configure_voice
 
 
 FRONTEND_DIR = os.path.join(os.path.dirname(BASE_DIR), 'frontend')
 ui_app = Flask('ui', static_folder=FRONTEND_DIR, static_url_path='')
 CORS(ui_app, origins=["*"])
+configure_voice(ui_app)
 
 
 

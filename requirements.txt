@@ -1,6 +1,10 @@
 # Web application and API
 Flask>=3.0,<4
 Flask-Cors>=4.0,<6
+flask-sock>=0.7,<1
+simple-websocket>=1.0,<2
+faster-whisper>=1.2,<2
+av>=11,<19
 
 # Database
 PyMySQL>=1.1,<2

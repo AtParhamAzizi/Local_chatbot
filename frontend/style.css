@@ -148,6 +148,20 @@ body::after { right: -16vw; bottom: -18vw; background: #8b5cf6; }
 .chat-input button { flex: 0 0 46px; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(125,211,252,.36); border-radius: 16px; color: white; background: linear-gradient(135deg,#0ea5e9,#6366f1); cursor: pointer; box-shadow: 0 10px 22px rgba(14,165,233,.22), inset 0 1px 0 rgba(255,255,255,.23); transition: transform .2s ease, filter .2s ease; }
 .chat-input button:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
 .chat-input button:disabled { opacity: .45; cursor: not-allowed; }
+.voice-panel { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 10px 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.voice-status { flex: 1 1 190px; }
+.voice-status.error { color: #fb7185; }
+.voice-replies { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.voice-replies input { accent-color: var(--accent); }
+.voice-panel + .chat-input { border-top: 0; padding-top: 6px; }
+.chat-input .voice-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.chat-input .voice-button { color: var(--ink); background: rgba(255,255,255,.08); border-color: rgba(125,211,252,.3); }
+.chat-input .voice-button.recording { color: white; background: linear-gradient(135deg,#ef4444,#be123c); border-color: rgba(254,202,202,.6); animation: voicePulse 1.4s ease-in-out infinite; }
+.chat-input .voice-button .stop-icon { display: none; }
+.chat-input .voice-button.recording .microphone-icon { display: none; }
+.chat-input .voice-button.recording .stop-icon { display: block; }
+@keyframes voicePulse { 50% { box-shadow: 0 0 0 7px rgba(244,63,94,.16), 0 10px 22px rgba(244,63,94,.28); } }
+@media (prefers-reduced-motion: reduce) { .chat-input .voice-button.recording { animation: none; } }
 
 .typing { display: flex; align-items: center; padding: 8px 0; color: var(--muted); font-size: 13px; }
 .typing-dots { display: flex; margin-left: 8px; }

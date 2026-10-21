@@ -91,6 +91,15 @@ The project now includes a refreshed **Liquid Glass** visual experience:
 
 5. The Flask user app serves its assets directly from `frontend/`. No copying is required; changes to the chat interface and feedback controls are served from that directory.
 
+   Voice chat is served by the same app. The microphone button uses
+   faster-whisper with the shared model cache in `backend/STT/.models` and sends
+   live PCM audio over WebSocket; no API key or second server is required.
+   Model loading starts when the chat page checks `/voice/health`, without
+   blocking text chat. The first voice startup may download the `base` model.
+   Set `STT_MODEL`, `STT_LANGUAGE`,
+   `STT_DEVICE`, or `STT_COMPUTE_TYPE` to tune it (the defaults are `base`,
+   `fa`, `cpu`, and `int8`).
+
 ## Run
 
 From the repository root:
@@ -111,6 +120,24 @@ Open:
 
 - User chat: `http://localhost:5000`
 - Admin dashboard: `http://localhost:8000`
+
+Allow microphone access in the browser on localhost or HTTPS. Click the
+microphone button to start recording; click it again to stop and send. Live
+transcripts appear in the input, and the final transcript (plus any existing
+draft) goes through the normal `/chat` endpoint, including history and feedback.
+Silence and interrupted recordings are not sent automatically. The voice status
+shows model loading, missing dependencies, microphone errors, and completion.
+
+Spoken replies use browser speech synthesis only for messages sent by voice.
+Uncheck the audio-reply option to mute or stop playback. A Persian voice must be
+available on the device/browser; otherwise the reply stays text-only. Depending
+on the selected browser/OS voice, speech playback may use a network service;
+speech-to-text stays on your own server. `STT_LANGUAGE` changes transcription,
+not the Persian chat UI or playback voice. Use `STT_LOCAL_FILES_ONLY=1` to
+disallow Whisper model downloads after caching the model. Do not launch
+`backend/STT/STT.py` alongside the chatbot on its default port: the standalone
+demo also defaults to port 5000. The integrated voice endpoints are
+`/voice/health` and `/voice-stream`; one transcription runs at a time.
 
 Use the dashboard to import JSON records shaped like:
 

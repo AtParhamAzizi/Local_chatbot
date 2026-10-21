@@ -33,8 +33,19 @@
         <div class="recommended-questions" id="recommendedQuestions">
         </div>
 
+        <div class="voice-panel">
+            <span id="voiceStatus" class="voice-status" role="status" aria-live="polite" data-waiting="true">در حال بررسی گفت‌وگوی صوتی...</span>
+            <label class="voice-replies"><input id="voiceReplies" type="checkbox" checked> پخش پاسخ صوتی</label>
+        </div>
         <div class="chat-input">
             <input type="text" id="messageInput" placeholder="اینجا بنویسید..." autocomplete="off">
+            <button id="voiceButton" class="voice-button" type="button" aria-label="شروع ضبط صدا" aria-pressed="false" aria-describedby="voiceStatus" title="شروع ضبط صدا" disabled>
+                <svg class="microphone-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="9" y="2" width="6" height="13" rx="3" stroke="currentColor" stroke-width="1.8"/>
+                    <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M9 22h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+                <svg class="stop-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="4"/></svg>
+            </button>
             <button id="sendButton">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="sndbtnpath">
                     <path d="M2 21L23 12L2 3V10L17 12L2 14V21Z" fill="white"/>
