@@ -25,7 +25,7 @@ The project now includes a refreshed **Liquid Glass** visual experience:
 
 - Python 3.10 or newer.
 - A running MySQL server (8.0+ recommended).
-- Enough disk space and RAM/VRAM for both local Qwen models. CUDA is used automatically when PyTorch detects a compatible GPU; otherwise the models run on CPU.
+- Enough disk space and RAM/VRAM for both local Qwen models. Generation uses CUDA automatically when PyTorch detects a compatible GPU, with an explicit warning before falling back to CPU. The embedding model stays on CPU to reserve VRAM for generation.
 
 ## Setup
 
@@ -43,7 +43,16 @@ The project now includes a refreshed **Liquid Glass** visual experience:
    python -m pip install -r requirements.txt
    ```
 
-   For NVIDIA GPU support, install the PyTorch build appropriate for your CUDA version from the official PyTorch installation instructions before starting the application.
+   For NVIDIA GPU support on older GPUs such as the 4 GB GTX 1050, install the pinned CUDA 11.8 build instead of a CPU-only or CUDA 13 build:
+
+   ```powershell
+   .\.venv\Scripts\python.exe -m pip install -r requirements-cuda.txt
+   .\.venv\Scripts\python.exe -c "import torch; print(torch.__version__, torch.version.cuda); print(torch.cuda.is_available())"
+   ```
+
+   This profile pins PyTorch and TorchAudio to 2.7.1+cu118. The CUDA availability check must print `True`. The wheel includes its CUDA runtime; a separate CUDA Toolkit installation is not required. An NVIDIA driver compatible with CUDA 11.8 is required. If CUDA initialization fails, update the NVIDIA driver. Do not install the GPU profile into a shared environment with incompatible `torchvision`/`torchaudio` versions; use the project virtual environment. A mismatched TorchAudio installation can cause `WinError 127` even during text-model loading because Transformers imports its optional audio utilities. Reinstall the CUDA profile to restore matching builds; keep packages with conflicting Transformers requirements, such as `qwen-tts`, in a separate virtual environment.
+
+   The generator selects FP16 compute on GPUs without native BF16 support, including the GTX 1050. Qwen3.5 loads only its text-generation weights, not its unused vision encoder. On GPUs with 6 GiB VRAM or less, it automatically uses 4-bit NF4 weights through bitsandbytes to leave room for CUDA and generation; even text-only FP16 weights need about 3.51 GiB before runtime memory. The CUDA profile pins bitsandbytes 0.47.0 for CUDA 11.8/Pascal support. `GEN_QUANTIZATION` accepts `auto` (default), `4bit`, or `none`. Quantization can slightly change model outputs. Long prompts can still exhaust a small GPU; close other GPU applications or shorten the context if needed.
 
 3. Create the MySQL database and configure the connection. The application reads these environment variables:
 
@@ -89,6 +98,14 @@ From the repository root:
 ```powershell
 python backend\main.py
 ```
+
+To require GPU generation and use the project CUDA environment, run:
+
+```powershell
+.\run_gpu.cmd
+```
+
+This launcher fails with a diagnostic instead of silently using CPU when CUDA is unavailable. Alternatively, set `$env:GEN_DEVICE = 'cuda'` and run `.\.venv\Scripts\python.exe backend\main.py`. `GEN_DEVICE` also accepts `auto` (default) and `cpu`. Confirm startup reports `[gen] ready on cuda`; CPU activity from embeddings, tokenization, and retrieval is still expected.
 
 Open:
 

@@ -6,3 +6,4 @@ backend/__pycache__/
 backend/model/Qwen3-Embedding-0.6B/
 backend/modelgen/qwen3.5-2B/
 backend/datasets/
+backend/STT/

@@ -1,0 +1,7 @@
+--extra-index-url https://download.pytorch.org/whl/cu118
+-r requirements.txt
+
+torch==2.7.1+cu118
+torchaudio==2.7.1+cu118
+accelerate>=1.1,<2
+bitsandbytes==0.47.0

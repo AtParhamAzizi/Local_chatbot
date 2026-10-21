@@ -1,5 +1,6 @@
 import os
 import threading
+from importlib.util import find_spec
 from database import logger
 from model_registry import get_active_model_id, get_model_definition
 import torch
@@ -7,7 +8,7 @@ from transformers import (
     AutoConfig,
     AutoTokenizer,
     AutoModelForCausalLM,
-    AutoModelForImageTextToText,
+    BitsAndBytesConfig,
 )
 from searchForAnswer import build_context
 
@@ -55,6 +56,60 @@ def _sync_model_selection():
     if active_id != MODEL_ID:
         set_generator_model(active_id)
 
+
+def _generator_device():
+    requested = os.getenv('GEN_DEVICE', 'auto').strip().lower()
+    if requested not in ('auto', 'cpu', 'cuda'):
+        raise ValueError('GEN_DEVICE must be auto, cpu, or cuda')
+    if requested == 'cpu':
+        return 'cpu', torch.float32
+    if torch.cuda.is_available():
+        dtype = (
+            torch.bfloat16
+            if torch.cuda.get_device_capability()[0] >= 8 and torch.cuda.is_bf16_supported()
+            else torch.float16
+        )
+        return 'cuda', dtype
+
+    reason = (
+        f'PyTorch {torch.__version__} is a CPU-only build.'
+        if torch.version.cuda is None
+        else f'PyTorch CUDA {torch.version.cuda} cannot access an NVIDIA GPU; check the driver.'
+    )
+    message = f'{reason} Install requirements-cuda.txt in .venv and use run_gpu.cmd.'
+    if requested == 'cuda':
+        raise RuntimeError(message)
+    print(f'[gen] WARNING: {message} Falling back to CPU.')
+    logger.logDrop(message, logger.WARNING)
+    return 'cpu', torch.float32
+
+
+def _generator_quantization(device, dtype):
+    requested = os.getenv('GEN_QUANTIZATION', 'auto').strip().lower()
+    if requested not in ('auto', '4bit', 'none'):
+        raise ValueError('GEN_QUANTIZATION must be auto, 4bit, or none')
+    if device != 'cuda':
+        if requested == '4bit':
+            raise RuntimeError('GEN_QUANTIZATION=4bit requires CUDA')
+        return None
+    if requested == 'none':
+        return None
+    if requested == 'auto' and torch.cuda.get_device_properties(0).total_memory > 6 * 1024**3:
+        return None
+    if find_spec('bitsandbytes') is None or find_spec('accelerate') is None:
+        raise RuntimeError(
+            '4-bit GPU loading requires bitsandbytes and accelerate. '
+            'Install requirements-cuda.txt in .venv and use run_gpu.cmd.'
+        )
+    print('[gen] using 4-bit NF4 quantization to leave VRAM for generation')
+    return BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type='nf4',
+        bnb_4bit_compute_dtype=dtype,
+        bnb_4bit_use_double_quant=True,
+    )
+
+
 @logger.operation
 def _load_generator():
     global _gen_tokenizer, _gen_model, _gen_device
@@ -78,17 +133,17 @@ def _load_generator():
                 f'the download is incomplete.'
             )
 
-        if torch.cuda.is_available():
-            _gen_device = 'cuda'
-            _gen_dtype  = torch.bfloat16
-        else:
-            _gen_device = 'cpu'
-            _gen_dtype  = torch.float32
+        device, dtype = _generator_device()
+        quantization = _generator_quantization(device, dtype)
+        load_options = {}
+        if quantization is not None:
+            load_options['quantization_config'] = quantization
+            load_options['device_map'] = {'': 'cuda:0'}
 
-        print(f'[gen] loading {GENERATOR_MODEL} on {_gen_device} ({_gen_dtype}) ...')
-        logger.logDrop(f'Loading generator {MODEL_ID} on {_gen_device} with {_gen_dtype}')
+        print(f'[gen] loading {GENERATOR_MODEL} on {device} ({dtype}) ...')
+        logger.logDrop(f'Loading generator {MODEL_ID} on {device} with {dtype}')
 
-        _gen_tokenizer = AutoTokenizer.from_pretrained(
+        tokenizer = AutoTokenizer.from_pretrained(
             GENERATOR_MODEL,
             trust_remote_code=True,
             local_files_only=True,          # ← never hit the network
@@ -99,18 +154,23 @@ def _load_generator():
             trust_remote_code=True,
             local_files_only=True,
         )
-        model_class = (
-            AutoModelForImageTextToText
-            if config.model_type == 'qwen3_5'
-            else AutoModelForCausalLM
-        )
-        _gen_model = model_class.from_pretrained(
+        if config.model_type == 'qwen3_5':
+            config = config.text_config
+        model = AutoModelForCausalLM.from_pretrained(
             GENERATOR_MODEL,
             config=config,
             trust_remote_code=True,
-            dtype=_gen_dtype,
+            dtype=dtype,
             local_files_only=True,          # ← never hit the network
-        ).to(_gen_device).eval()
+            **load_options,
+        )
+        if quantization is None:
+            model = model.to(device)
+        model.eval()
+
+        _gen_tokenizer = tokenizer
+        _gen_model = model
+        _gen_device = device
 
         print(f'[gen] ready on {_gen_device}')
         logger.logDrop(f'Generator {MODEL_ID} ready on {_gen_device}')
