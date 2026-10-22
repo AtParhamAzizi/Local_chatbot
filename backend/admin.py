@@ -53,7 +53,19 @@ CORS(
 @admin_app.route('/')
 @logger.operation
 def admin_index():
-    return send_from_directory(ADMIN_DIR, 'admin.html')
+    return send_from_directory(os.path.dirname(ADMIN_DIR), 'dashboard.html')
+
+
+@admin_app.route('/dashboard.css')
+@admin_app.route('/dashboard.js')
+@admin_app.route('/theme.js')
+def dashboard_asset():
+    return send_from_directory(os.path.dirname(ADMIN_DIR), request.path.lstrip('/'))
+
+
+@admin_app.route('/admin/<path:filename>')
+def admin_page_asset(filename):
+    return send_from_directory(ADMIN_DIR, filename)
 
 
 
