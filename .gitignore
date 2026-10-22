@@ -11,3 +11,4 @@ backend/STT/model/
 backend/STT/style.css
 backend/STT/script.js
 backend/STT/index.html
+backend/controller_state.json

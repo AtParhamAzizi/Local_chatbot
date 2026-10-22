@@ -6,6 +6,7 @@ from user import user_run, UI_PORT
 from database import init_db, init_logger_table, logger, init_documents_chunk_table, init_documents_table, init_history_table
 # from logger import logDrop
 from generator import get_generator
+import controller_api  # registers the admin controller page and routes
 
 @logger.operation
 def main():

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System Controller</title>
+<link rel="stylesheet" href="controller.css">
+</head>
+<body>
+<main class="page">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">RUNTIME CONTROL</p>
+      <h1>System controller</h1>
+      <p class="subtitle">Switch frontend features and models on or off without restarting the server.</p>
+    </div>
+    <button class="btn-secondary" id="refreshBtn" type="button">Refresh</button>
+  </header>
+
+  <div class="active-banner" id="gpuInfo">GPU: -</div>
+
+  <h2 class="section-title">Frontend features</h2>
+  <section class="model-grid" id="featureGrid">
+    <article class="model-card" id="card-voice-feature">
+      <div class="card-head">
+        <div>
+          <h3 class="model-name">Voice chat</h3>
+          <div class="model-id">microphone button</div>
+        </div>
+        <span class="badge" id="badge-voice-feature">-</span>
+      </div>
+      <p class="model-description">When off, the microphone button disappears from the user page and voice connections are rejected.</p>
+      <label class="switch"><input type="checkbox" id="switch-voice-feature" data-kind="feature" data-name="voice"><span class="slider"></span></label>
+    </article>
+    <article class="model-card" id="card-chat-feature">
+      <div class="card-head">
+        <div>
+          <h3 class="model-name">Text chat</h3>
+          <div class="model-id">/chat endpoint</div>
+        </div>
+        <span class="badge" id="badge-chat-feature">-</span>
+      </div>
+      <p class="model-description">When off, chat requests are rejected and a stopped banner is shown on the user page.</p>
+      <label class="switch"><input type="checkbox" id="switch-chat-feature" data-kind="feature" data-name="chat"><span class="slider"></span></label>
+    </article>
+  </section>
+
+  <h2 class="section-title">Models</h2>
+  <section class="model-grid" id="modelGrid">
+    <article class="model-card" id="card-generator">
+      <div class="card-head">
+        <div>
+          <h3 class="model-name">Generation model</h3>
+          <div class="model-id" id="info-generator">-</div>
+        </div>
+        <span class="badge" id="badge-generator">-</span>
+      </div>
+      <p class="model-description">Writes the chatbot answers. Unloading frees GPU memory.</p>
+      <label class="switch"><input type="checkbox" id="switch-generator" data-kind="model" data-name="generator"><span class="slider"></span></label>
+    </article>
+    <article class="model-card" id="card-embedder">
+      <div class="card-head">
+        <div>
+          <h3 class="model-name">Embedding model</h3>
+          <div class="model-id" id="info-embedder">-</div>
+        </div>
+        <span class="badge" id="badge-embedder">-</span>
+      </div>
+      <p class="model-description">Turns questions and documents into vectors for retrieval.</p>
+      <label class="switch"><input type="checkbox" id="switch-embedder" data-kind="model" data-name="embedder"><span class="slider"></span></label>
+    </article>
+    <article class="model-card" id="card-voice">
+      <div class="card-head">
+        <div>
+          <h3 class="model-name">Speech model</h3>
+          <div class="model-id" id="info-voice">-</div>
+        </div>
+        <span class="badge" id="badge-voice">-</span>
+      </div>
+      <p class="model-description">Whisper speech recognition used by voice chat.</p>
+      <label class="switch"><input type="checkbox" id="switch-voice" data-kind="model" data-name="voice"><span class="slider"></span></label>
+    </article>
+  </section>
+
+  <div class="notice">
+    <strong>Note</strong>
+    <span>An unloaded generation or embedding model reloads automatically on the next chat message. Turn off Text chat to prevent that. Whisper reloads on voice health checks while Voice chat is on.</span>
+  </div>
+
+  <div class="status" id="status" role="status"></div>
+</main>
+<script src="../theme.js"></script>
+<script src="controller.js"></script>
+</body>
+</html>

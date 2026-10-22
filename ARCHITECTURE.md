@@ -207,3 +207,14 @@ Run: `python backend\main.py`, or `.\run_gpu.cmd` (asserts CUDA, sets `GEN_DEVIC
 - There is no automated test suite. `backend/test.py` is a manual retrieval check.
 - Persian strings in source can show as mojibake in some Windows consoles. Files are UTF-8, so keep that encoding when editing.
 - `.gitignore` excludes model folders, `model_selection.json`, `datasets/` and STT model/assets. `backend/__pycache__/*.pyc` files are tracked in git despite the ignore rule.
+
+## Admin Controller (runtime control)
+
+- Page: ackend/admin/controller.html|css|js served at GET /controller (Liquid Glass style, uses ackend/theme.js). Each feature/model is a toggle switch.
+- ackend/controller.py: state helpers (_state, _set_state, _save_state, _load_state), _free_memory(), _gpu_info(). Persists oice_enabled and chat_enabled in ackend/controller_state.json.
+- ackend/controller_api.py: egister() runs at import (imported once in ackend/main.py). Adds:
+  - controller_gate (before_request on ui_app): /voice* returns 403 when voice is off, /chat returns 503 when chat is off.
+  - controller_inject (after_request on /): injects window.__CTL_FEATURES__ and /controller/features.js, which hides the voice UI and shows a chat-off banner (polls every 5s).
+  - GET /admin/api/controller/status returns features, models (generator, embedder, voice), busy, errors, gpu.
+  - POST /admin/api/controller/action accepts oice_enable|voice_disable|chat_enable|chat_disable|generator_load|generator_unload|embedder_load|embedder_unload|voice_load|voice_unload. Model actions run in a background thread and return 202.
+- Notes: unloaded generator/embedder reload on the next chat message; admin API has no auth; no link from other admin pages.
