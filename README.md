@@ -199,3 +199,8 @@ At startup, `init_logger_table()` upgrades existing `CHAR`/`VARCHAR` message col
 - Models are loaded locally; the generator is configured not to download model files at runtime.
 - Default database credentials are intended only for local development. Set `DB_PASS` to a secure value before any non-local deployment.
 - Flask debug mode is enabled in the current application configuration and should be disabled before production use.
+
+
+## Admin authentication
+
+The admin service runs on port 8000 and opens a login page before serving `backend/dashboard.html`. On first startup it creates the MySQL table named `admin-users` and seeds `administrator` / `P@ssw0rd`; change that password after signing in. The **Admin user control** menu lets the administrator create users and assign menu permissions.

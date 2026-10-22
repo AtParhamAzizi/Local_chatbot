@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Administrator Login</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: #101827; color: #eef4ff; }
+    form { width: min(360px, calc(100% - 40px)); padding: 32px; border: 1px solid #2d3b55; border-radius: 14px; background: #172235; box-shadow: 0 18px 50px #0005; }
+    h1 { margin-top: 0; font-size: 1.5rem; }
+    label { display: block; margin: 16px 0 6px; color: #b8c7e3; }
+    input, button { box-sizing: border-box; width: 100%; padding: 11px 12px; border-radius: 8px; border: 1px solid #3b4d6e; font: inherit; }
+    input { background: #0d1524; color: inherit; }
+    button { margin-top: 22px; border: 0; background: #5c8dff; color: white; cursor: pointer; font-weight: 700; }
+    .error { min-height: 1.25em; color: #ff9b9b; }
+  </style>
+</head>
+<body>
+  <form method="post" action="/login">
+    <h1>Administrator Login</h1>
+    <p class="error">{{ error or '' }}</p>
+    <label for="username">Username</label>
+    <input id="username" name="username" autocomplete="username" required autofocus>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit">Sign in</button>
+  </form>
+</body>
+</html>

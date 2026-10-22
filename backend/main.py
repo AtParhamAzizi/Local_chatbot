@@ -3,7 +3,7 @@ import threading
 from interface import get_embedder, ADMIN_PORT
 from admin import admin_run
 from user import user_run, UI_PORT
-from database import init_db, init_logger_table, logger, init_documents_chunk_table, init_documents_table, init_history_table
+from database import init_db, init_admin_users_table, init_logger_table, logger, init_documents_chunk_table, init_documents_table, init_history_table
 # from logger import logDrop
 from generator import get_generator
 import controller_api  # registers the admin controller page and routes
@@ -13,6 +13,7 @@ def main():
     init_logger_table()
     logger.logDrop('Starting local chatbot services')
     init_db()
+    init_admin_users_table()
     init_documents_table()
     init_documents_chunk_table()
     init_history_table()

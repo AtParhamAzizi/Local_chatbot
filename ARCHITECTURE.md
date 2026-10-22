@@ -253,3 +253,7 @@ Run: `python backend\main.py` (run from anywhere; imports are flat, relative to 
 - `user.py`, `generator.py` and `searchForAnswer.py` contain commented-out older versions and duplicate imports. The live code is the uncommented one.
 - Persian strings in source can show as mojibake in some Windows consoles. Files are UTF-8; keep that encoding when editing.
 - `.gitignore` excludes model folders, `model_selection.json`, `controller_state.json`, `datasets/`, `__pycache__/` and STT model/UI assets. `backend/__pycache__/*.pyc` files are still tracked in git despite the ignore rule.
+
+## Admin user authentication
+
+`backend/admin_users.py` owns PBKDF2 password hashing, login verification, session payloads, and user-management persistence. `backend/admin.py` applies a Flask session guard to dashboard pages and admin APIs, maps menu pages to permission names, and exposes `/login`, `/logout`, `/admin/api/session`, and `/admin/api/admin-users`. `database.init_admin_users_table()` creates the backtick-quoted MySQL table `admin-users` and seeds the initial administrator during application startup. `backend/admin-users/login.html` is the login view; `backend/admin/admin-user-control.html` is the administrator-only management view.
