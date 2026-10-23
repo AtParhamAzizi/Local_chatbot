@@ -12,7 +12,7 @@ import json
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from database import get_conn, init_db,hash_question, logger, sha256_bytes
-from admin_users import authenticate, create_user, update_user, serialize_user
+from admin_users import authenticate, create_user, update_user, serialize_user, find_user
 # from logger import logDrop
 
 
@@ -77,7 +77,7 @@ def _permission_for_request():
         return 'models'
     if request.path.startswith('/admin/api/pdf'):
         return 'pdf_upload'
-    if request.path.startswith('/admin/api/upload'):
+    if request.path.startswith('/admin/api/upload') or request.path.startswith('/admin/api/stats'):
         return 'json_upload'
     if request.path.startswith('/admin/api/documents'):
         return 'json_upload'
@@ -85,6 +85,8 @@ def _permission_for_request():
         return 'chats'
     if request.path.startswith('/admin/api/logs'):
         return 'system_reports'
+    if request.path.startswith('/admin/api/controller'):
+        return 'controller'
     filename = request.path.rsplit('/', 1)[-1]
     return page_permissions.get(filename)
 
@@ -98,6 +100,14 @@ def require_admin_session():
         if request.path.startswith('/admin/api/'):
             return jsonify({'error': 'Authentication required.'}), 401
         return redirect(url_for('admin_login'))
+    row = find_user(current.get('username'))
+    if not row or not row['is_active']:
+        session.clear()
+        if request.path.startswith('/admin/api/'):
+            return jsonify({'error': 'Authentication required.'}), 401
+        return redirect(url_for('admin_login'))
+    current = serialize_user(row)
+    session['admin_user'] = current
     if current.get('is_admin') or current.get('username') == 'administrator':
         return None
     permission = _permission_for_request()
