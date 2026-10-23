@@ -47,7 +47,7 @@ body {
     box-shadow: 0 0 18px rgba(56,189,248,.55);
 }
 
-.menu { display: flex; flex-direction: column; gap: 9px; }
+.menu { display: flex; min-height: calc(100vh - 112px); flex-direction: column; gap: 9px; }
 .menu-item {
     width: 100%;
     padding: 13px 12px;
@@ -61,6 +61,8 @@ body {
     font-size: 14px;
     transition: .2s ease;
 }
+.logout-item { margin-top: auto; border-color: rgba(251,113,133,.18); color: #fecdd3; background: rgba(244,63,94,.06); }
+.logout-item:hover { border-color: rgba(251,113,133,.4); color: #fff1f2; background: rgba(244,63,94,.15); }
 .menu-item:hover { border-color: var(--line); color: #e8f5ff; background: rgba(255,255,255,.07); transform: translateX(-2px); }
 .menu-item.active {
     border-color: rgba(125,211,252,.32);
@@ -74,8 +76,9 @@ body {
     .app { flex-direction: column; min-height: 100vh; }
     .sidebar { order: 0; width: 100%; height: auto; padding: 14px; }
     .sidebar-header { margin-bottom: 14px; }
-    .menu { flex-direction: row; overflow-x: auto; }
+    .menu { min-height: auto; flex-direction: row; overflow-x: auto; }
     .menu-item { min-width: 130px; }
+    .logout-item { margin-top: 0; }
     .content { height: calc(100vh - 132px); padding: 0; }
     #pageFrame { border-radius: 0; border-left: 0; border-right: 0; }
 }
@@ -118,6 +121,8 @@ body {
 }
 :root[data-theme="light"] .sidebar-header h2 { color: #173a5f; }
 :root[data-theme="light"] .menu-item { color: #5e7591; }
-:root[data-theme="light"] .menu-item:hover { color: #214a70; background: rgba(255,255,255,.54); }
+:root[data-theme="light"] .logout-item { margin-top: auto; border-color: rgba(251,113,133,.18); color: #fecdd3; background: rgba(244,63,94,.06); }
+:root[data-theme="light"] .logout-item:hover { border-color: rgba(251,113,133,.4); color: #fff1f2; background: rgba(244,63,94,.15); }
+.menu-item:hover { color: #214a70; background: rgba(255,255,255,.54); }
 :root[data-theme="light"] .menu-item.active { color: #173a5f; background: linear-gradient(135deg, rgba(186,230,253,.54), rgba(221,214,254,.44)); }
 :root[data-theme="light"] .theme-toggle { border-color: rgba(24,68,108,.2); color: #173a5f; background: rgba(255,255,255,.72); }

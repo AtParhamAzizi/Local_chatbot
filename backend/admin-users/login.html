@@ -4,27 +4,30 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Administrator Login</title>
-  <style>
-    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
-    body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: #101827; color: #eef4ff; }
-    form { width: min(360px, calc(100% - 40px)); padding: 32px; border: 1px solid #2d3b55; border-radius: 14px; background: #172235; box-shadow: 0 18px 50px #0005; }
-    h1 { margin-top: 0; font-size: 1.5rem; }
-    label { display: block; margin: 16px 0 6px; color: #b8c7e3; }
-    input, button { box-sizing: border-box; width: 100%; padding: 11px 12px; border-radius: 8px; border: 1px solid #3b4d6e; font: inherit; }
-    input { background: #0d1524; color: inherit; }
-    button { margin-top: 22px; border: 0; background: #5c8dff; color: white; cursor: pointer; font-weight: 700; }
-    .error { min-height: 1.25em; color: #ff9b9b; }
-  </style>
+  <link rel="stylesheet" href="/login.css">
 </head>
 <body>
-  <form method="post" action="/login">
-    <h1>Administrator Login</h1>
-    <p class="error">{{ error or '' }}</p>
-    <label for="username">Username</label>
-    <input id="username" name="username" autocomplete="username" required autofocus>
-    <label for="password">Password</label>
-    <input id="password" name="password" type="password" autocomplete="current-password" required>
-    <button type="submit">Sign in</button>
-  </form>
+  <main class="login-shell">
+    <section class="login-card" aria-labelledby="login-title">
+      <div class="brand-mark" aria-hidden="true">✦</div>
+      <p class="eyebrow">LOCAL CHATBOT</p>
+      <h1 id="login-title">Administrator Login</h1>
+      <p class="intro">Sign in to manage models, knowledge, chats, and system controls.</p>
+      <form id="loginForm" method="post" action="/login" novalidate>
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" required autofocus>
+        <label for="password">Password</label>
+        <div class="password-field">
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          <button class="password-toggle" id="passwordToggle" type="button" aria-label="Show password">Show</button>
+        </div>
+        <p class="form-error" id="loginError" role="alert">{{ error or '' }}</p>
+        <button class="submit-button" id="submitButton" type="submit"><span>Sign in</span><span class="submit-arrow" aria-hidden="true">→</span></button>
+      </form>
+      <p class="security-note"><span aria-hidden="true">●</span> Protected administrator workspace</p>
+    </section>
+  </main>
+  <script src="/theme.js"></script>
+  <script src="/login.js"></script>
 </body>
 </html>

@@ -4,70 +4,43 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Admin user control</title>
-  <style>
-    body { font: 15px system-ui, sans-serif; margin: 0; padding: 24px; color: #e9efff; background: #111a2a; }
-    h1 { margin-top: 0; }
-    form, table { width: 100%; max-width: 900px; border: 1px solid #30415f; border-radius: 10px; background: #18243a; padding: 16px; box-sizing: border-box; }
-    form { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    input, button { border: 1px solid #405477; border-radius: 6px; padding: 9px; font: inherit; }
-    input { color: inherit; background: #0e1625; }
-    button { cursor: pointer; color: white; background: #467bea; }
-    .permissions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 12px; }
-    .permissions label { white-space: nowrap; }
-    .message { min-height: 1.4em; color: #a9c5ff; }
-    table { margin-top: 20px; border-collapse: collapse; padding: 0; }
-    th, td { padding: 10px; border-bottom: 1px solid #30415f; text-align: left; }
-    td button { padding: 5px 8px; background: #9c4e5a; }
-  </style>
+  <link rel="stylesheet" href="admin-user-control.css">
 </head>
 <body>
-  <h1>Admin user control</h1>
-  <p class="message" id="message"></p>
-  <form id="userForm">
-    <input name="username" placeholder="Username" required minlength="3">
-    <input name="password" type="password" placeholder="Password (8+ characters)" required minlength="8">
-    <div class="permissions">
-      <strong>Menu access:</strong>
-      <label><input type="checkbox" name="permissions" value="json_upload"> JSON upload</label>
-      <label><input type="checkbox" name="permissions" value="pdf_upload"> PDF upload</label>
-      <label><input type="checkbox" name="permissions" value="models"> Models</label>
-      <label><input type="checkbox" name="permissions" value="chats"> Chats</label>
-      <label><input type="checkbox" name="permissions" value="system_reports"> Reports</label>
-      <label><input type="checkbox" name="permissions" value="controller"> Controller</label>
-    </div>
-    <button type="submit">Create user</button>
-  </form>
-  <table>
-    <thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
-    <tbody id="users"></tbody>
-  </table>
-  <script>
-    const form = document.getElementById('userForm');
-    const message = document.getElementById('message');
-    const users = document.getElementById('users');
-    const escapeHtml = value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-    async function loadUsers() {
-      const response = await fetch('/admin/api/admin-users');
-      const payload = await response.json();
-      if (!response.ok) { message.textContent = payload.error || 'Unable to load users.'; return; }
-      users.innerHTML = payload.users.map(user => `<tr><td>${escapeHtml(user.username)}</td><td>${user.is_admin ? 'Administrator' : 'Menu user'}</td><td>${user.is_active ? 'Active' : 'Disabled'}</td><td>${user.username === 'administrator' ? '' : `<button data-id="${user.id}">Delete</button>`}</td></tr>`).join('');
-    }
-    form.addEventListener('submit', async event => {
-      event.preventDefault();
-      const data = new FormData(form);
-      const response = await fetch('/admin/api/admin-users', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username: data.get('username'), password: data.get('password'), permissions: data.getAll('permissions')})});
-      const payload = await response.json();
-      message.textContent = payload.error || 'User created.';
-      if (response.ok) { form.reset(); loadUsers(); }
-    });
-    users.addEventListener('click', async event => {
-      if (!event.target.dataset.id) return;
-      const response = await fetch(`/admin/api/admin-users/${event.target.dataset.id}`, {method: 'DELETE'});
-      const payload = await response.json();
-      message.textContent = payload.error || 'User deleted.';
-      loadUsers();
-    });
-    loadUsers();
-  </script>
+  <main class="wrap">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">ACCESS MANAGEMENT</p>
+        <h1>Admin user control</h1>
+        <p class="subtitle">Create administrator accounts and control which admin menus they can access.</p>
+      </div>
+      <div class="header-orb" aria-hidden="true">✦</div>
+    </header>
+
+    <section class="glass-card">
+      <div class="section-heading"><div><p class="eyebrow">NEW ACCOUNT</p><h2>Create user</h2></div><span class="status-dot">● Secure</span></div>
+      <p class="message" id="message" role="status"></p>
+      <form id="userForm" class="user-form">
+        <div class="field"><label for="username">Username</label><input id="username" name="username" placeholder="e.g. content-manager" required minlength="3"></div>
+        <div class="field"><label for="password">Password</label><input id="password" name="password" type="password" placeholder="At least 8 characters" required minlength="8"></div>
+        <fieldset class="permissions"><legend>Menu access</legend>
+          <label><input type="checkbox" name="permissions" value="json_upload"> JSON upload</label>
+          <label><input type="checkbox" name="permissions" value="pdf_upload"> PDF upload</label>
+          <label><input type="checkbox" name="permissions" value="models"> Models</label>
+          <label><input type="checkbox" name="permissions" value="chats"> Chats</label>
+          <label><input type="checkbox" name="permissions" value="system_reports"> Reports</label>
+          <label><input type="checkbox" name="permissions" value="controller"> Controller</label>
+        </fieldset>
+        <button class="btn-primary" type="submit">Create user <span aria-hidden="true">→</span></button>
+      </form>
+    </section>
+
+    <section class="glass-card">
+      <div class="section-heading"><div><p class="eyebrow">DIRECTORY</p><h2>Admin users</h2></div><span class="directory-count" id="directoryCount">— users</span></div>
+      <div class="table-shell"><table><thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody id="users"></tbody></table></div>
+    </section>
+  </main>
+  <script src="../theme.js"></script>
+  <script src="admin-user-control.js"></script>
 </body>
 </html>

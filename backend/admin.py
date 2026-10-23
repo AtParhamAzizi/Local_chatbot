@@ -91,7 +91,7 @@ def _permission_for_request():
 
 @admin_app.before_request
 def require_admin_session():
-    if request.endpoint in {'admin_login', 'admin_logout'}:
+    if request.endpoint in {'admin_login', 'admin_logout', 'login_css', 'login_js'}:
         return None
     current = session.get('admin_user')
     if not current:
@@ -202,6 +202,15 @@ def admin_user_item(user_id):
         conn.close()
     return jsonify({'ok': True})
 
+
+@admin_app.route('/login.css')
+def login_css():
+    return send_from_directory(ADMIN_USERS_DIR, 'login.css')
+
+
+@admin_app.route('/login.js')
+def login_js():
+    return send_from_directory(ADMIN_USERS_DIR, 'login.js')
 
 @admin_app.route('/dashboard.css')
 @admin_app.route('/dashboard.js')
