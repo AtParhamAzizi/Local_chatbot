@@ -9,7 +9,6 @@ from database import get_conn
 
 
 DEFAULT_USERNAME = 'administrator'
-DEFAULT_PASSWORD = 'P@ssw0rd'
 ALL_PERMISSIONS = '*'
 
 
@@ -70,6 +69,47 @@ def authenticate(username, password):
     if not row or not row['is_active'] or not verify_password(password, row['password_hash']):
         return None
     return serialize_user(row)
+
+
+def admin_users_exist():
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute('SELECT id FROM `admin-users` LIMIT 1')
+            return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def setup_administrator(password):
+    """Atomically bootstrap an empty account store from the local setup command."""
+    if len(password or '') < 12:
+        raise ValueError('Password must contain at least 12 characters.')
+    password_hash = _hash_password(password)
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT GET_LOCK(SHA2(CONCAT(DATABASE(), ':admin-users:setup'), 256), 10) AS acquired"
+            )
+            if cur.fetchone()['acquired'] != 1:
+                raise RuntimeError('Another setup is running. Try again later.')
+            conn.begin()
+            cur.execute('SELECT id FROM `admin-users` LIMIT 1')
+            if cur.fetchone() is not None:
+                raise ValueError('Accounts already exist; setup will not change them.')
+            cur.execute(
+                'INSERT INTO `admin-users` '
+                '(username, password_hash, is_active, is_admin, permissions) '
+                'VALUES (%s, %s, 1, 1, %s)',
+                (DEFAULT_USERNAME, password_hash, json.dumps([ALL_PERMISSIONS])),
+            )
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def create_user(username, password, permissions=None, is_admin=False):

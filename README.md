@@ -78,6 +78,14 @@ The project now includes a refreshed **Liquid Glass** visual experience:
 
    The application creates its tables automatically at startup.
 
+   Before the first admin login, run local interactive setup using the same database configuration:
+
+   ```powershell
+   python backend/setup_admin.py
+   ```
+
+   Choose and confirm a unique administrator password (at least 12 characters). There is no default password, and startup never seeds an account. You may safely rerun setup after interruption: uncommitted creation rolls back, and existing accounts are never modified. On upgrades, skip this step and use your existing credentials.
+
 4. Download the model files into the expected local directories:
 
    ```text
@@ -203,4 +211,4 @@ At startup, `init_logger_table()` upgrades existing `CHAR`/`VARCHAR` message col
 
 ## Admin authentication
 
-The admin service runs on port 8000 and opens a login page before serving `backend/dashboard.html`. On first startup it creates the MySQL table named `admin-users` and seeds `administrator` / `P@ssw0rd`; change that password after signing in. The **Admin user control** menu lets the administrator create users and assign menu permissions.
+The admin service runs on port 8000 and opens a login page before serving `backend/dashboard.html`. Startup creates the MySQL table named `admin-users` without inserting accounts. Run `python backend/setup_admin.py` locally to create `administrator` with your own password on a clean installation. Setup requires an interactive terminal and refuses to run if any account already exists, including disabled accounts. It cannot reset or overwrite upgrade accounts. If interrupted, rerun it safely; creation is transactional and concurrent setup commands are serialized. Existing installations retain their credentials and permissions; if still using the old shared password, change it in **Admin user control**. This menu also lets administrators create users and assign menu permissions. See `backend/admin-users/README.md` for setup and resumption details.

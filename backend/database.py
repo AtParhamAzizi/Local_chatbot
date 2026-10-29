@@ -4,7 +4,6 @@ import hashlib
 import inspect
 import logging
 import threading
-import secrets
 from functools import wraps
 from flask import request
 import pymysql
@@ -158,7 +157,7 @@ def init_db():
 
 @logger.operation
 def init_admin_users_table():
-    """Create the admin account store and seed the first administrator."""
+    """Create the admin account store without modifying existing accounts."""
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -174,15 +173,6 @@ def init_admin_users_table():
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
-            cur.execute('SELECT id FROM `admin-users` WHERE username = %s LIMIT 1', ('administrator',))
-            if cur.fetchone() is None:
-                salt = secrets.token_bytes(16)
-                digest = hashlib.pbkdf2_hmac('sha256', b'P@ssw0rd', salt, 240_000)
-                encoded = f'pbkdf2_sha256$240000${salt.hex()}${digest.hex()}'
-                cur.execute(
-                    'INSERT INTO `admin-users` (username, password_hash, is_active, is_admin, permissions) VALUES (%s, %s, 1, 1, %s)',
-                    ('administrator', encoded, '["*"]'),
-                )
         conn.commit()
     finally:
         conn.close()
