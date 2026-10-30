@@ -54,27 +54,19 @@ The project now includes a refreshed **Liquid Glass** visual experience:
 
    The generator selects FP16 compute on GPUs without native BF16 support, including the GTX 1050. Qwen3.5 loads only its text-generation weights, not its unused vision encoder. On GPUs with 6 GiB VRAM or less, it automatically uses 4-bit NF4 weights through bitsandbytes to leave room for CUDA and generation; even text-only FP16 weights need about 3.51 GiB before runtime memory. The CUDA profile pins bitsandbytes 0.47.0 for CUDA 11.8/Pascal support. `GEN_QUANTIZATION` accepts `auto` (default), `4bit`, or `none`. Quantization can slightly change model outputs. Long prompts can still exhaust a small GPU; close other GPU applications or shorten the context if needed.
 
-3. Create the MySQL database and configure the connection. The application reads these environment variables:
+3. Create the MySQL database and a restricted account as described in **Deployment security**. Configure the connection and session signing secret through the process environment or your deployment secret manager; `.env` files are not loaded automatically.
 
-   | Variable | Default |
+   | Variable | Default / requirement |
    | --- | --- |
-   | `DB_HOST` | `localhost or your ip address to mysql` |
-   | `DB_PORT` | `use your mysql port (default : 3306)` |
-   | `DB_USER` | `use you mySQl user` |
-   | `DB_PASS` | `password to login to your database` |
-   | `DB_NAME` | `chatbot database name` |
+   | `APP_ENV` | `production`; explicitly set `development` for local use |
+   | `DB_HOST` | `localhost` |
+   | `DB_PORT` | `3306`; integer from 1 to 65535 |
+   | `DB_USER` | Required outside development; local default `chatbot_app` |
+   | `DB_PASS` | Required outside development; no password fallback |
+   | `DB_NAME` | Required outside development; local default `chatbot_db` |
+   | `ADMIN_SESSION_SECRET` | Required outside development; at least 32 random characters |
 
-   Example for PowerShell:
-
-   ```powershell
-   $env:DB_HOST = 'localhost or your ip address to mysql'
-   $env:DB_PORT = 'use your mysql port (default : 3306)'
-   $env:DB_USER = 'use you mySQl user'
-   $env:DB_PASS = 'password to login to your database'
-   $env:DB_NAME = 'chatbot database name'
-
-   mysql -u root -p -e "CREATE DATABASE chatbot_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-   ```
+   Inject `DB_PASS` and `ADMIN_SESSION_SECRET` securely rather than saving them in source code or shell history. Generate the session secret with `python -c "import secrets; print(secrets.token_urlsafe(48))"` in a private terminal. Do not paste its output into logs. Local development without a session secret uses a per-process random key, so restarting invalidates existing admin sessions.
 
    The application creates its tables automatically at startup.
 
@@ -205,10 +197,29 @@ At startup, `init_logger_table()` upgrades existing `CHAR`/`VARCHAR` message col
 ## Notes
 
 - Models are loaded locally; the generator is configured not to download model files at runtime.
-- Default database credentials are intended only for local development. Set `DB_PASS` to a secure value before any non-local deployment.
-- Flask debug mode is enabled in the current application configuration and should be disabled before production use.
+- Non-development deployments require explicit `DB_USER`, `DB_PASS`, `DB_NAME`, and `ADMIN_SESSION_SECRET` values. Never use the MySQL `root` account for the application.
+- Flask debug mode and exception propagation are disabled; use a production WSGI server for deployment.
 
 
 ## Admin authentication
 
 The admin service runs on port 8000 and opens a login page before serving `backend/dashboard.html`. Startup creates the MySQL table named `admin-users` without inserting accounts. Run `python backend/setup_admin.py` locally to create `administrator` with your own password on a clean installation. Setup requires an interactive terminal and refuses to run if any account already exists, including disabled accounts. It cannot reset or overwrite upgrade accounts. If interrupted, rerun it safely; creation is transactional and concurrent setup commands are serialized. Existing installations retain their credentials and permissions; if still using the old shared password, change it in **Admin user control**. This menu also lets administrators create users and assign menu permissions. See `backend/admin-users/README.md` for setup and resumption details.
+
+## Deployment security
+
+The default environment is `production`. Only explicit `APP_ENV=development` (or `dev`, `local`, `test`) enables development behavior; other values fail closed. Startup fails closed when any of these settings are missing: `DB_USER`, `DB_PASS`, `DB_NAME`, or `ADMIN_SESSION_SECRET`. Unexpected errors return generic messages. Audit logs redact configured database/session secrets, and exception logs record error types rather than raw exception text.
+
+Use a dedicated MySQL account with only the permissions needed by this application. Run database creation and account setup as an administrator, then configure the application with the restricted account:
+
+```sql
+CREATE DATABASE chatbot_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'chatbot_app'@'localhost' IDENTIFIED BY '<strong-random-password>';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES
+  ON chatbot_db.* TO 'chatbot_app'@'localhost';
+```
+
+The schema-scoped `CREATE`, `ALTER`, `INDEX`, and `REFERENCES` grants support automatic table initialization and the logger column upgrade. No global, account-management, `FILE`, or grant-option permissions are needed. For a remote database, replace `localhost` with the specific application host, not `%`.
+
+Rotate the formerly embedded database password and session signing key on existing deployments; removing them from source does not revoke credentials. Changing the session key invalidates existing admin sessions. Keep passwords out of version control, command-line arguments, and logs.
+
+Set `DB_USER=chatbot_app`, `DB_PASS=<strong-random-password>`, and `DB_NAME=chatbot_db`. Do not grant `ALL PRIVILEGES`, and do not run the application as `root`.

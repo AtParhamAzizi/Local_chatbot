@@ -14,3 +14,7 @@ backend/STT/index.html
 backend/controller_state.json
 feauturePlan.md
 /backend/modelgen/
+/backend/__pycache__/*
+.env
+.env.*
+!.env.example

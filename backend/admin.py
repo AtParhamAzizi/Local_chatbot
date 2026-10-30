@@ -1,3 +1,4 @@
+from security import configure_security
 import os
 import time
 import re
@@ -12,6 +13,7 @@ import json
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from database import get_conn, init_db,hash_question, logger, sha256_bytes
+from settings import session_secret, redact_secrets, safe_error_message
 from admin_users import authenticate, create_user, update_user, serialize_user, find_user
 # from logger import logDrop
 
@@ -32,7 +34,8 @@ from interface import (
 
 
 admin_app = Flask('admin', static_folder=ADMIN_DIR, static_url_path='')
-admin_app.secret_key = os.getenv('ADMIN_SESSION_SECRET', 'local-chatbot-change-this-secret')
+admin_app.secret_key = session_secret()
+configure_security(admin_app)
 ADMIN_USERS_DIR = os.path.join(os.path.dirname(ADMIN_DIR), 'admin-users')
 
 CORS(
@@ -165,7 +168,7 @@ def admin_users_collection():
             )
             return jsonify({'ok': True, 'id': user_id}), 201
         except ValueError as error:
-            return jsonify({'error': str(error)}), 400
+            return jsonify({'error': redact_secrets(str(error))}), 400
         except Exception as error:
             if 'Duplicate entry' in str(error):
                 return jsonify({'error': 'That username already exists.'}), 409
@@ -207,7 +210,7 @@ def admin_user_item(user_id):
                 is_admin=data.get('is_admin'),
             )
     except ValueError as error:
-        return jsonify({'error': str(error)}), 400
+        return jsonify({'error': redact_secrets(str(error))}), 400
     finally:
         conn.close()
     return jsonify({'ok': True})
@@ -263,11 +266,11 @@ def admin_set_model():
             'message': 'Model selection updated. New requests will use the selected model.',
         })
     except FileNotFoundError as exc:
-        return jsonify({'error': str(exc)}), 409
+        return jsonify({'error': 'Selected model files are unavailable.'}), 409
     except ValueError as exc:
-        return jsonify({'error': str(exc)}), 400
+        return jsonify({'error': 'Invalid model selection.'}), 400
     except Exception as exc:
-        return jsonify({'error': f'Unable to change model: {exc}'}), 500
+        return jsonify({'error': 'Unable to change model.'}), 500
 @admin_app.route('/admin/api/stats')
 @logger.operation
 def admin_stats():
@@ -353,7 +356,7 @@ def admin_upload():
     try:
         vectors = embed_texts([r[0] for r in rows])
     except Exception as e:
-        return jsonify({'error': f'خطا در بردارسازی: {e}'}), 500
+        return jsonify({'error': 'Request failed.'}), 500
 
     dim = int(vectors.shape[1])
 
@@ -591,7 +594,7 @@ def admin_pdf_upload():
         pdf = fitz.open(stream=raw, filetype='pdf')
     except Exception as e:
         return jsonify({
-            'error': f'فایل PDF معتبر نیست: {e}'
+            'error': 'Request failed.'
         }), 400
 
     pdf_page_count = pdf.page_count
@@ -669,7 +672,7 @@ def admin_pdf_upload():
         pdf.close()
 
         return jsonify({
-            'error': f'خطا در استخراج متن PDF: {e}'
+            'error': 'Request failed.'
         }), 500
 
     finally:
@@ -745,7 +748,7 @@ def admin_pdf_upload():
     except Exception as e:
 
         return jsonify({
-            'error': f'خطا در بردارسازی PDF: {e}'
+            'error': 'Request failed.'
         }), 500
 
     conn = get_conn()
@@ -867,7 +870,7 @@ def admin_pdf_upload():
                         WHERE id = %s
                         """,
                         (
-                            str(e),
+                            safe_error_message(e),
                             document_id
                         )
                     )
@@ -878,7 +881,7 @@ def admin_pdf_upload():
             pass
 
         return jsonify({
-            'error': f'خطا در ذخیره PDF در دیتابیس: {e}'
+            'error': 'Request failed.'
         }), 500
 
     finally:
@@ -1153,7 +1156,7 @@ def admin_run():
     admin_app.run(
         host='0.0.0.0',
         port=ADMIN_PORT,
-        debug=True,
+        debug=False,
         use_reloader=False,
         threaded=True,
     )
@@ -1192,11 +1195,11 @@ def get_admin_logs():
 
     except Exception as e:
 
-        logger.logDrop(f'Unable to read application logs: {e}', logger.FAILED)
+        logger.logDrop(f'Unable to read application logs: {safe_error_message(e)}', logger.FAILED)
 
         return jsonify({
             "success": False,
-            "message": str(e),
+            "message": "Unable to read application logs.",
             "logs": []
         }), 500
 
@@ -1437,11 +1440,11 @@ def admin_chat_sessions():
 
     except Exception as e:
 
-        logger.logDrop(f'Unable to list chat sessions: {e}', logger.FAILED)
+        logger.logDrop(f'Unable to list chat sessions: {safe_error_message(e)}', logger.FAILED)
 
         return jsonify({
             'error': 'خطا در دریافت گفتگوها',
-            'details': str(e)
+            'details': 'Request failed.'
         }), 500
 
 
@@ -1586,11 +1589,11 @@ def admin_chat_messages():
 
     except Exception as e:
 
-        logger.logDrop(f'Unable to list chat messages: {e}', logger.FAILED)
+        logger.logDrop(f'Unable to list chat messages: {safe_error_message(e)}', logger.FAILED)
 
         return jsonify({
             'error': 'خطا در دریافت پیام‌ها',
-            'details': str(e)
+            'details': 'Request failed.'
         }), 500
 
 
@@ -1698,11 +1701,11 @@ def admin_chat_stats():
 
     except Exception as e:
 
-        logger.logDrop(f'Unable to read chat statistics: {e}', logger.FAILED)
+        logger.logDrop(f'Unable to read chat statistics: {safe_error_message(e)}', logger.FAILED)
 
         return jsonify({
             'error': 'خطا در دریافت آمار',
-            'details': str(e)
+            'details': 'Request failed.'
         }), 500
 
 
@@ -1789,11 +1792,11 @@ def admin_chat_delete_session():
 
     except Exception as e:
 
-        logger.logDrop(f'Unable to delete a chat session: {e}', logger.FAILED)
+        logger.logDrop(f'Unable to delete a chat session: {safe_error_message(e)}', logger.FAILED)
 
         return jsonify({
             'error': 'خطا در حذف گفتگو',
-            'details': str(e)
+            'details': 'Request failed.'
         }), 500
 
 
@@ -1865,11 +1868,11 @@ def admin_chat_delete_message():
 
     except Exception as e:
 
-        logger.logDrop(f'Unable to delete a chat message: {e}', logger.FAILED)
+        logger.logDrop(f'Unable to delete a chat message: {safe_error_message(e)}', logger.FAILED)
 
         return jsonify({
             'error': 'خطا در حذف پیام',
-            'details': str(e)
+            'details': 'Request failed.'
         }), 500
 
 #00000000000000000000000000000000000000000000000000000000000000000000000000000000000000

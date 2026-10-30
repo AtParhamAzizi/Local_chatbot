@@ -1,5 +1,9 @@
 
 import threading
+from settings import validate_settings
+
+validate_settings()
+
 from interface import get_embedder, ADMIN_PORT
 from admin import admin_run
 from user import user_run, UI_PORT
@@ -10,6 +14,7 @@ import controller_api  # registers the admin controller page and routes
 
 @logger.operation
 def main():
+    validate_settings()
     init_logger_table()
     logger.logDrop('Starting local chatbot services')
     init_db()
@@ -37,3 +42,6 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         logger.logDrop('Application stopped by user')
         print('\nbye')
+    except Exception as error:
+        print(f'Startup failed ({type(error).__name__}). Check service configuration.')
+        raise SystemExit(1) from None

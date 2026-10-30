@@ -1,4 +1,6 @@
+from security import configure_security
 from database import get_conn, get_client_ip, logger
+from settings import safe_error_message
 import os
 import numpy as np
 from flask import Flask, request, jsonify, send_from_directory
@@ -19,6 +21,7 @@ from voice import configure_voice
 
 FRONTEND_DIR = os.path.join(os.path.dirname(BASE_DIR), 'frontend')
 ui_app = Flask('ui', static_folder=FRONTEND_DIR, static_url_path='')
+configure_security(ui_app)
 CORS(ui_app, origins=["*"])
 configure_voice(ui_app)
 
@@ -131,7 +134,8 @@ def chat():
     try:
         hits = _retrieve_top(message, k=6)
     except Exception as e:
-        return jsonify({'error': f'خطا در بازیابی: {e}'}), 500
+        logger.logDrop(f'Retrieval failed: {type(e).__name__}', logger.FAILED)
+        return jsonify({'error': 'Unable to retrieve an answer. Please try again.'}), 500
 
     fallback = ('متاسفانه پاسخ دقیقی برای سوالتون پیدا نشد. '
                 'برای ارتباط تلفنی می‌توانید با شماره 1649 تماس بگیرید.')
@@ -143,7 +147,7 @@ def chat():
         try:
             reply = generate_reply(message, hits[:6])
         except Exception as error:
-            logger.logDrop(f'Generation failed; using a retrieved answer: {error}', logger.FAILED)
+            logger.logDrop(f'Generation failed; using a retrieved answer: {safe_error_message(error)}', logger.FAILED)
             reply = hits[0].get('answer') or hits[0].get('content') or fallback
 
     recommended = [hit['question'] for hit in hits[1:4] if hit.get('question')]
@@ -163,7 +167,7 @@ def chat():
         finally:
             conn.close()
     except Exception as error:
-        logger.logDrop(f'Unable to save chat history: {error}', logger.FAILED)
+        logger.logDrop(f'Unable to save chat history: {safe_error_message(error)}', logger.FAILED)
         return jsonify({'error': 'Unable to save chat history. Please try again.'}), 503
 
     return jsonify({
@@ -224,7 +228,7 @@ def feedback():
         finally:
             conn.close()
     except Exception as error:
-        logger.logDrop(f'Unable to save feedback: {error}', logger.FAILED)
+        logger.logDrop(f'Unable to save feedback: {safe_error_message(error)}', logger.FAILED)
         return jsonify({'error': 'Unable to save feedback. Please try again.'}), 503
 
     return jsonify({'status': 'ok', 'message_id': message_id, 'feedback': feedback_value})
@@ -251,7 +255,7 @@ def user_run():
     ui_app.run(
         host='0.0.0.0',
         port=UI_PORT,
-        debug=True,
+        debug=False,
         use_reloader=False,
         threaded=True,
     )

@@ -6,16 +6,12 @@ import logging
 import threading
 from functools import wraps
 from flask import request
-import pymysql
 import pymysql.cursors
+from settings import database_config, redact_secrets, safe_error_message
 
 
 DB_CONFIG = {
-    'host':     os.getenv('DB_HOST', 'localhost'),
-    'port':     int(os.getenv('DB_PORT', 3306)),
-    'user':     os.getenv('DB_USER', 'root'),
-    'password': os.getenv('DB_PASS', '159632@qw'),
-    'database': os.getenv('DB_NAME', 'chatbot_db'),
+    **database_config(),
     'charset':  'utf8mb4',
     'cursorclass': pymysql.cursors.DictCursor,
     'autocommit': True,
@@ -54,6 +50,7 @@ class logger:
         if getattr(logger._state, 'writing', False):
             return False
 
+        message = redact_secrets(message)
         logger._state.writing = True
         connection = None
         try:
@@ -69,7 +66,8 @@ class logger:
         except Exception as error:
             logging.getLogger('chatbot.audit').error(
                 'Database logging unavailable (%s); [%s:%s] [%s] %s',
-                type(error).__name__, filename, function_name, warninglevel, message,
+                type(error).__name__, filename, function_name, warninglevel,
+                message,
             )
             return False
         finally:
@@ -77,7 +75,7 @@ class logger:
                 if connection is not None:
                     connection.close()
             except Exception:
-                logging.getLogger('chatbot.audit').exception('Unable to close the log connection')
+                logging.getLogger('chatbot.audit').error('Unable to close the log connection')
             finally:
                 logger._state.writing = False
 
@@ -94,7 +92,7 @@ class logger:
             except Exception as error:
                 logger._write(
                     filename, function_name,
-                    f'{function_name} failed: {type(error).__name__}: {error}',
+                    f'{function_name} failed: {safe_error_message(error)}',
                     logger.FAILED,
                 )
                 raise
@@ -127,7 +125,10 @@ def get_conn():
     try:
         return pymysql.connect(**DB_CONFIG)
     except Exception as error:
-        logger.logDrop(f'Database connection failed: {type(error).__name__}', logger.FAILED)
+        logger.logDrop(
+            f'Database connection failed: {safe_error_message(error)}',
+            logger.FAILED,
+        )
         raise
 
 

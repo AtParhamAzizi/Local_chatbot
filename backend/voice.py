@@ -80,11 +80,11 @@ def _start_model_loading():
 
 def _model_status():
     if IMPORT_ERROR is not None:
-        return "unavailable", str(IMPORT_ERROR)
+        return "unavailable", "Voice dependencies are unavailable."
     if _model_future is None or not _model_future.done():
         return "loading", None
     error = _model_future.exception()
-    return ("error", str(error)) if error else ("ready", None)
+    return ("error", "Voice model failed to load.") if error else ("ready", None)
 
 
 def _transcribe_audio(audio):
@@ -215,9 +215,9 @@ def configure_voice(app):
         except ConnectionClosed:
             pass
         except Exception as error:
-            logging.getLogger(__name__).exception("Streaming transcription failed")
+            logging.getLogger(__name__).error("Streaming transcription failed (%s)", type(error).__name__)
             try:
-                websocket.send(json.dumps({"type": "error", "message": str(error)}))
+                websocket.send(json.dumps({"type": "error", "message": "Transcription failed. Please try again."}))
             except ConnectionClosed:
                 pass
         finally:

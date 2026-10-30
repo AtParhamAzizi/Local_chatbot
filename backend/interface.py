@@ -8,6 +8,7 @@ from database import logger
 import numpy as np
 import torch
 import pymysql
+from settings import database_config
 from transformers import AutoTokenizer, AutoModel
 from model_registry import get_active_model_id, get_model_definition
 
@@ -19,11 +20,7 @@ MODEL_PATH = get_model_definition(MODEL_ID)['embedding_path']
 ADMIN_DIR  = os.path.join(BASE_DIR, 'admin')     # admin panel assets
 
 DB_CONFIG = {
-    'host':     os.getenv('DB_HOST', 'localhost'),
-    'port':     int(os.getenv('DB_PORT', 3306)),
-    'user':     os.getenv('DB_USER', 'root'),
-    'password': os.getenv('DB_PASS', 'your_password'),
-    'database': os.getenv('DB_NAME', 'chatbot'),
+    **database_config(),
     'charset':  'utf8mb4',
     'cursorclass': pymysql.cursors.DictCursor,
     'autocommit': True,
@@ -108,7 +105,7 @@ def embedding_dim():
         _load_model()
         return _dim
     except Exception as e:
-        logger.logDrop(f'Embedding model unavailable: {e}', logger.FAILED)
+        logger.logDrop(f'Embedding model unavailable: {type(e).__name__}', logger.FAILED)
         return None
 
 

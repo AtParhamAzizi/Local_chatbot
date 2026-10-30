@@ -43,7 +43,7 @@ def _load_state():
     except FileNotFoundError:
         pass
     except Exception as error:
-        logger.logDrop(f'Unable to read controller state: {error}', logger.WARNING)
+        logger.logDrop(f'Unable to read controller state: {type(error).__name__}', logger.WARNING)
 
 
 def _save_state():
