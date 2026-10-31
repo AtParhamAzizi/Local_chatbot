@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Production serving runs on Linux/WSL, with native threads for voice WebSockets.
+gunicorn>=26.2,<27

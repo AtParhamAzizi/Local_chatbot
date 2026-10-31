@@ -1,6 +1,7 @@
 from security import configure_security
 from database import get_conn, get_client_ip, logger
 from settings import safe_error_message
+from serving import serve_development
 import os
 import numpy as np
 from flask import Flask, request, jsonify, send_from_directory
@@ -252,13 +253,7 @@ def feedback():
 @logger.operation
 def user_run():
     logger.logDrop(f'Starting the user service on port {UI_PORT}')
-    ui_app.run(
-        host='0.0.0.0',
-        port=UI_PORT,
-        debug=False,
-        use_reloader=False,
-        threaded=True,
-    )
+    serve_development(ui_app, UI_PORT)
 
 
 

@@ -59,6 +59,7 @@ The project now includes a refreshed **Liquid Glass** visual experience:
    | Variable | Default / requirement |
    | --- | --- |
    | `APP_ENV` | `production`; explicitly set `development` for local use |
+   | `APP_HOST` | `127.0.0.1` for both services; LAN binding requires an explicit IP address such as `0.0.0.0` |
    | `DB_HOST` | `localhost` |
    | `DB_PORT` | `3306`; integer from 1 to 65535 |
    | `DB_USER` | Required outside development; local default `chatbot_app` |
@@ -102,15 +103,30 @@ The project now includes a refreshed **Liquid Glass** visual experience:
 
 ## Run
 
-From the repository root:
+### Local development (Windows or Linux)
+
+From the repository root, explicitly select the local profile:
 
 ```powershell
+$env:APP_ENV = 'development'
 python backend\main.py
 ```
 
-To require GPU generation and use the project CUDA environment, run:
+On Linux, use `APP_ENV=development python backend/main.py` instead. Both services
+bind only to `127.0.0.1` by default. Debug mode, the interactive debugger, and the
+automatic reloader stay disabled, even if `FLASK_DEBUG=1` is set.
+
+For VS Code, select **Chatbot: Local development** in Run and Debug and press
+F5. The supplied `.vscode/launch.json` explicitly sets the development profile
+and loopback address, using your selected Python interpreter. Activate/select
+the project `.venv` first. Launching the file without that configuration still
+defaults to production and requires the production settings; startup now lists
+missing configuration names without printing secret values.
+
+To require GPU generation and use the project CUDA environment for local development, run:
 
 ```powershell
+$env:APP_ENV = 'development'
 .\run_gpu.cmd
 ```
 
@@ -152,6 +168,60 @@ Use the dashboard to import JSON records shaped like:
 
 PDF uploads are limited to 50 MB. JSON knowledge-base uploads are limited to 20 MB.
 
+### Production (Linux or WSL)
+
+The default `APP_ENV=production` profile uses Gunicorn, never Flask's development
+server. Native Windows is supported for local development only; production
+startup there exits with guidance rather than falling back to Flask. In WSL,
+create a separate Linux virtual environment rather than reusing Windows `.venv`.
+
+After completing database, administrator, model, and secret setup above, run
+from the repository root in a Linux/WSL shell:
+
+```sh
+python -m pip install -r requirements-production.txt
+export APP_ENV=production
+# Inject DB_USER, DB_PASS, DB_NAME, and ADMIN_SESSION_SECRET securely first.
+python backend/main.py
+```
+
+Both existing ports remain available: user HTTP and `/voice-stream` WebSocket
+on `127.0.0.1:5000`, and the admin dashboard/API on `127.0.0.1:8000`.
+One Gunicorn worker with eight native threads serves both listeners and selects
+the app by the socket's local port, not the client-supplied Host header. Database
+initialization and model loading happen inside that worker, after fork; CUDA
+is not initialized in the master. Both apps share the same loaded models,
+controller state, and transcription limit. Do not run separate workers/apps or
+enable preloading: this duplicates model memory and splits in-process state.
+Each open WebSocket occupies a thread; the remaining threads can serve HTTP.
+The worker boot/silence timeout is 300 seconds. Run under your service manager
+for automatic restart and process supervision; stop with Ctrl+C or SIGTERM.
+
+LAN access is **opt-in** in either profile: set `APP_HOST` to a specific local
+interface IP, or `0.0.0.0` for all IPv4 interfaces (`::` for IPv6). For example,
+`export APP_HOST=192.168.1.10` on Linux or
+`$env:APP_HOST = '192.168.1.10'` in PowerShell. This exposes **both** services;
+restrict port 8000 with firewall rules and do not expose the admin dashboard
+publicly. Invalid/blank addresses fail startup. To restore loopback binding,
+unset `APP_HOST`. The standalone STT demo is not the production entry point.
+
+For access beyond localhost, terminate HTTPS at a reverse proxy such as nginx;
+browser microphone access requires HTTPS. Keep `APP_HOST=127.0.0.1` when the
+proxy runs on the same machine. Proxy the user origin to port 5000 and a
+separately restricted admin origin to port 8000. Preserve the original `Host`
+(including any nonstandard port), use HTTP/1.1 upstream, and forward the
+`Upgrade` and `Connection` upgrade headers for `/voice-stream`. Disable response
+buffering for that route and allow at least a 300-second proxy read timeout.
+Do not substitute an HTTP-only server such as Waitress for the user listener:
+the existing Flask-Sock voice endpoint needs WebSocket support.
+
+Smoke-check `GET /health` on port 5000 and the login page on port 8000. Then
+open the served chat page on localhost or HTTPS, wait for `/voice/health` to
+report ready (503 while loading), and record/send a voice message. The browser
+network panel should show a 101 upgrade for `/voice-stream`; check that text
+chat still works while the WebSocket is open and that the final transcript
+uses the normal `/chat` path. These checks need the configured DB and models.
+
 ## API
 
 The user service exposes:
@@ -166,7 +236,9 @@ Administrator endpoints are available under `/admin/api/` on port 8000 for knowl
 
 ```text
 backend/
-  main.py             Starts the user and admin Flask applications
+  main.py             Initializes shared services and selects the runtime profile
+  serving.py          Local Flask serving and threaded production Gunicorn runtime
+  settings.py         Validated environment, loopback binding, and credentials
   user.py             User-facing chat API
   admin.py            Administrator APIs and dashboard
   model_registry.py   Persisted model selection and local model paths
@@ -198,7 +270,7 @@ At startup, `init_logger_table()` upgrades existing `CHAR`/`VARCHAR` message col
 
 - Models are loaded locally; the generator is configured not to download model files at runtime.
 - Non-development deployments require explicit `DB_USER`, `DB_PASS`, `DB_NAME`, and `ADMIN_SESSION_SECRET` values. Never use the MySQL `root` account for the application.
-- Flask debug mode and exception propagation are disabled; use a production WSGI server for deployment.
+- Debug mode and exception propagation are disabled. `APP_ENV=production` uses the production server; Flask development serving requires explicit `APP_ENV=development`.
 
 
 ## Admin authentication

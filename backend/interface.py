@@ -8,7 +8,7 @@ from database import logger
 import numpy as np
 import torch
 import pymysql
-from settings import database_config
+from settings import ADMIN_PORT, UI_PORT, database_config
 from transformers import AutoTokenizer, AutoModel
 from model_registry import get_active_model_id, get_model_definition
 
@@ -25,9 +25,6 @@ DB_CONFIG = {
     'cursorclass': pymysql.cursors.DictCursor,
     'autocommit': True,
 }
-
-ADMIN_PORT = 8000
-UI_PORT    = 5000
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024        # 20 MB
 ALLOWED_EXT      = {'.json'}

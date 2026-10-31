@@ -8,7 +8,7 @@ Search by function name, since line numbers drift.
 A local, Persian-language (RTL) RAG chatbot. Python/Flask, MySQL, local HuggingFace models.
 - **User app** (Flask `ui_app`, port 5000): chat UI, `/chat`, `/feedback`, voice speech-to-text, runtime feature gate.
 - **Admin app** (Flask `admin_app`, port 8000): dashboard shell plus pages for JSON Q&A import, PDF ingestion, model selection, chat history, system logs and a runtime controller.
-- Both run in ONE process (`backend/main.py`): user app in a daemon thread, admin app on the main thread.
+- Both share ONE serving process (`backend/main.py`): development uses two Flask servers; production uses one threaded Gunicorn worker listening on both ports, plus its supervising master.
 - Knowledge = `qa_documents` (JSON Q&A) + `pdf_chunks` (PDF text). Embeddings are float32 BLOBs in MySQL. Search is brute-force cosine in numpy (no vector DB).
 - Models load from local folders (`local_files_only=True`). Exception: the Whisper STT model may download on first use unless `STT_LOCAL_FILES_ONLY=1`.
 
@@ -17,12 +17,15 @@ A local, Persian-language (RTL) RAG chatbot. Python/Flask, MySQL, local HuggingF
 Flask, Flask-Cors, flask-sock, simple-websocket, PyMySQL, numpy, torch, transformers (>=5.2,<6), PyMuPDF (`fitz`), faster-whisper, av.
 GPU profile: `requirements-cuda.txt` (cu118 index, torch/torchaudio 2.7.1+cu118, accelerate, bitsandbytes 0.47.0). Primary platform is Windows (`run_gpu.cmd`, `.venv\Scripts\python.exe`).
 `backend/STT/requirements.txt` is only for the standalone STT demo.
+`requirements-production.txt` adds Gunicorn for Linux/WSL production serving; native Windows is local-development only.
 
 ## 3. Repository map
 
 ```
 backend/
   main.py             Entry point: init DB tables + models, import controller_api, start both servers
+  serving.py          Development server guard and production Gunicorn socket-port dispatcher
+  settings.py         APP_ENV, validated APP_HOST (loopback default), credentials, shared ports
   user.py             User Flask app: /, /health, /chat, /feedback; _retrieve_top orchestration
   admin.py            Admin Flask app: dashboard/static routes + all /admin/api/* (~1700 lines)
   controller.py       Runtime controller state (controller_state.json), memory/GPU helpers
@@ -48,7 +51,16 @@ frontend/             User chat UI: index.html, script.js, style.css, theme.js
 requirements.txt, requirements-cuda.txt, run_gpu.cmd, README.md, LICENSE
 ```
 
-## 4. Startup pipeline (`backend/main.py: main()`, `@logger.operation`)
+## 4. Startup pipeline (`backend/main.py: main()` / `create_apps()`)
+
+`main()` validates settings before importing the database/model/application modules.
+Explicit `APP_ENV=development` (also `dev`, `local`, `test`) selects development;
+all other values select production. Production launches Gunicorn with one `gthread`
+worker, eight threads, no preload/reload, and a 300-second timeout. `create_apps()`
+runs inside the worker after fork, so the master never loads models/CUDA. Its
+`PortDispatcher` routes by the listening `SERVER_PORT`, retaining the original
+WSGI environment, including the raw socket needed by Flask-Sock. Both apps share
+model/controller state. Native Windows production exits without a dev-server fallback.
 
 Import side effects: importing `user` calls `configure_voice(ui_app)`; importing `controller` loads `controller_state.json`; `import controller_api` runs `register()`, which adds hooks and routes to both apps.
 
@@ -59,7 +71,7 @@ Import side effects: importing `user` calls `configure_voice(ui_app)`; importing
 5. `init_history_table()` -> `chat_history`
 6. `get_embedder()` (interface.py) loads the embedding model on CPU
 7. `get_generator()` (generator.py) loads the LLM (CUDA if available)
-8. Daemon thread `user_run()`, then `admin_run()` on the main thread. Both use host `0.0.0.0`, `debug=True`, `use_reloader=False` (user app also `threaded=True`).
+8. Return both apps to the selected runtime. Development starts user serving in a daemon thread and admin serving on the main thread. Production serves both through the worker's shared thread pool. Both profiles default to `APP_HOST=127.0.0.1`; LAN exposure requires explicitly setting an interface address or wildcard. Debugger and reloader are disabled.
 
 The Whisper model is not loaded at startup. It loads lazily on the first `/voice/health` call or the controller `voice_load` action.
 
@@ -238,7 +250,7 @@ A chat "session" is a `(user_id, ip_address)` group in `chat_history`.
 | `STT_*` | Whisper settings | see 6.8 |
 
 Run: `python backend\main.py` (run from anywhere; imports are flat, relative to `backend/`), or `.\run_gpu.cmd` (requires `.venv`, asserts CUDA, sets `GEN_DEVICE=cuda`). User UI at `http://localhost:5000`, admin dashboard at `http://localhost:8000`.
-`admin.py` and `user.py` each have a `__main__` block for running one app alone. `admin.py`'s block calls `admin_run()` (defined earlier in the file).
+`admin.py` and `user.py` each have a `__main__` block for running one app alone in explicit development mode. Both runners use `serve_development()`, which refuses production. Use `backend/main.py` for production initialization and shared serving. See README runtime profiles for HTTPS/WebSocket proxy requirements.
 
 ## 10. Conventions and gotchas
 
@@ -248,7 +260,7 @@ Run: `python backend\main.py` (run from anywhere; imports are flat, relative to 
 - `database.py` is imported by almost every module (the logger lives there), so keep it dependency-light to avoid circular imports.
 - Import graph: `generator` -> `searchForAnswer`, `model_registry`; `interface` -> `model_registry`; `user` -> `interface`, `generator`, `searchForAnswer`, `voice`; `admin` -> `generator`, `interface`, `model_registry`, `database`; `controller_api` -> `admin`, `user`, `controller`, `generator`, `interface`, `voice`.
 - Feature changes that touch the user page or model lifecycle should go through `controller_api.py` hooks, which follows the existing "don't modify the core modules" pattern.
-- Security and production caveats: the admin API and controller have no authentication, both apps bind `0.0.0.0` with Flask `debug=True`, a dev DB password is hard-coded as a default, and user CORS is `*`.
+- Security and production caveats: both apps now default to loopback with debug disabled and require explicit development selection to use Flask's server. Production uses threaded Gunicorn on Linux/WSL. User CORS remains `*`; see README Deployment security for credential and network restrictions.
 - There is no automated test suite. `backend/test.py` is a manual retrieval check.
 - `user.py`, `generator.py` and `searchForAnswer.py` contain commented-out older versions and duplicate imports. The live code is the uncommented one.
 - Persian strings in source can show as mojibake in some Windows consoles. Files are UTF-8; keep that encoding when editing.

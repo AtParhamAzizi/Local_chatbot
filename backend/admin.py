@@ -14,6 +14,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from database import get_conn, init_db,hash_question, logger, sha256_bytes
 from settings import session_secret, redact_secrets, safe_error_message
+from serving import serve_development
 from admin_users import authenticate, create_user, update_user, serialize_user, find_user
 # from logger import logDrop
 
@@ -1153,13 +1154,7 @@ def admin_pdf_stats():
 @logger.operation
 def admin_run():
     logger.logDrop(f'Starting the admin service on port {ADMIN_PORT}')
-    admin_app.run(
-        host='0.0.0.0',
-        port=ADMIN_PORT,
-        debug=False,
-        use_reloader=False,
-        threaded=True,
-    )
+    serve_development(admin_app, ADMIN_PORT)
 
 
 

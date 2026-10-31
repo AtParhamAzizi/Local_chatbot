@@ -1,20 +1,23 @@
+from settings import (
+    ADMIN_PORT, UI_PORT, ConfigurationError, bind_host, is_development, validate_settings,
+)
+from serving import serve_production
 
-import threading
-from settings import validate_settings
 
-validate_settings()
-
-from interface import get_embedder, ADMIN_PORT
-from admin import admin_run
-from user import user_run, UI_PORT
-from database import init_db, init_admin_users_table, init_logger_table, logger, init_documents_chunk_table, init_documents_table, init_history_table
-# from logger import logDrop
-from generator import get_generator
-import controller_api  # registers the admin controller page and routes
-
-@logger.operation
-def main():
+def create_apps():
+    """Initialize both services and shared models inside the serving process."""
     validate_settings()
+
+    from interface import get_embedder
+    from admin import admin_app
+    from user import ui_app
+    from database import (
+        init_db, init_admin_users_table, init_logger_table, logger,
+        init_documents_chunk_table, init_documents_table, init_history_table,
+    )
+    from generator import get_generator
+    import controller_api
+
     init_logger_table()
     logger.logDrop('Starting local chatbot services')
     init_db()
@@ -27,21 +30,40 @@ def main():
 
     logger.logDrop('Database and local models initialized')
 
-    print(f'[admin] http://localhost:{ADMIN_PORT}')
-    print(f'[ui]    http://localhost:{UI_PORT}')
+    host = bind_host()
+    address = f'[{host}]' if ':' in host else host
+    print(f'[admin] http://{address}:{ADMIN_PORT}')
+    print(f'[ui]    http://{address}:{UI_PORT}')
+    return ui_app, admin_app
 
-    t = threading.Thread(target=user_run, daemon=True)    
-    t.start()
-    logger.logDrop(f'User service listening on port {UI_PORT}; admin service on port {ADMIN_PORT}')
-    admin_run()
+
+def main():
+    validate_settings()
+    if not is_development():
+        serve_production(create_apps)
+        return
+
+    import threading
+    from serving import serve_development
+
+    ui_app, admin_app = create_apps()
+    user_thread = threading.Thread(
+        target=serve_development, args=(ui_app, UI_PORT), daemon=True
+    )
+    user_thread.start()
+    serve_development(admin_app, ADMIN_PORT)
 
 
 if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        logger.logDrop('Application stopped by user')
         print('\nbye')
+    except ConfigurationError as error:
+        print(f'Startup configuration error: {error}')
+        if not is_development():
+            print('For local development, explicitly set APP_ENV=development before starting.')
+        raise SystemExit(1) from None
     except Exception as error:
         print(f'Startup failed ({type(error).__name__}). Check service configuration.')
         raise SystemExit(1) from None
