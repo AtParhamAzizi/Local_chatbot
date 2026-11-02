@@ -1,10 +1,11 @@
-"""Shared HTTP error handling for both Flask services."""
+"""Shared proxy trust and HTTP error handling for both Flask services."""
 
 from flask import jsonify
 from werkzeug.exceptions import HTTPException
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from database import logger
-from settings import redact_secrets, safe_error_message, validate_settings
+from settings import redact_secrets, safe_error_message, trusted_proxy_hops, validate_settings
 
 
 def _redact_payload(payload):
@@ -20,6 +21,9 @@ def _redact_payload(payload):
 def configure_security(app):
     validate_settings()
     app.config.update(DEBUG=False, PROPAGATE_EXCEPTIONS=False)
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app, x_for=0, x_proto=trusted_proxy_hops(), x_host=0, x_port=0, x_prefix=0,
+    )
 
     @app.errorhandler(Exception)
     def unexpected_error(error):

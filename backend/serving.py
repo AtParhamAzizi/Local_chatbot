@@ -64,6 +64,7 @@ def serve_production(create_apps):
                 "timeout": 300,
                 "preload_app": False,
                 "reload": False,
+                "forwarded_allow_ips": "",
             }
             for name, value in options.items():
                 self.cfg.set(name, value)

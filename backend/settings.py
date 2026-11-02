@@ -3,6 +3,7 @@
 import json
 import os
 import secrets
+from datetime import timedelta
 from ipaddress import ip_address
 from urllib.parse import quote, quote_plus
 
@@ -43,8 +44,45 @@ def bind_host():
     return host
 
 
+def _integer_setting(name, default, minimum, maximum):
+    try:
+        value = int(_value(name, str(default)))
+    except ValueError:
+        raise ConfigurationError(f"{name} must be an integer between {minimum} and {maximum}") from None
+    if not minimum <= value <= maximum:
+        raise ConfigurationError(f"{name} must be an integer between {minimum} and {maximum}")
+    return value
+
+
+def session_lifetime_seconds():
+    return _integer_setting("ADMIN_SESSION_LIFETIME_SECONDS", 28800, 60, 86400)
+
+
+def session_idle_seconds():
+    return _integer_setting("ADMIN_SESSION_IDLE_SECONDS", 1800, 60, session_lifetime_seconds())
+
+
+def trusted_proxy_hops():
+    return _integer_setting("TRUSTED_PROXY_HOPS", 0, 0, 10)
+
+
+def admin_session_config():
+    return {
+        "SESSION_COOKIE_NAME": "local_chatbot_admin_dev" if is_development() else "__Host-local_chatbot_admin",
+        "SESSION_COOKIE_HTTPONLY": True,
+        "SESSION_COOKIE_SECURE": not is_development(),
+        "SESSION_COOKIE_SAMESITE": "Lax",
+        "SESSION_COOKIE_PATH": "/",
+        "SESSION_COOKIE_DOMAIN": None,
+        "PERMANENT_SESSION_LIFETIME": timedelta(seconds=session_lifetime_seconds()),
+        "SESSION_REFRESH_EACH_REQUEST": False,
+    }
+
+
 def validate_settings():
     bind_host()
+    session_idle_seconds()
+    trusted_proxy_hops()
     if not is_development():
         required = ("DB_USER", "DB_PASS", "DB_NAME", "ADMIN_SESSION_SECRET")
         missing = [name for name in required if _value(name) is None]

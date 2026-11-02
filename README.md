@@ -66,6 +66,9 @@ The project now includes a refreshed **Liquid Glass** visual experience:
    | `DB_PASS` | Required outside development; no password fallback |
    | `DB_NAME` | Required outside development; local default `chatbot_db` |
    | `ADMIN_SESSION_SECRET` | Required outside development; at least 32 random characters |
+   | `ADMIN_SESSION_LIFETIME_SECONDS` | `28800` (8 hours); integer from 60 to 86400; absolute login lifetime |
+   | `ADMIN_SESSION_IDLE_SECONDS` | `1800` (30 minutes); integer from 60 to the absolute lifetime |
+   | `TRUSTED_PROXY_HOPS` | `0`; exact number of trusted proxies setting `X-Forwarded-Proto` (0-10) |
 
    Inject `DB_PASS` and `ADMIN_SESSION_SECRET` securely rather than saving them in source code or shell history. Generate the session secret with `python -c "import secrets; print(secrets.token_urlsafe(48))"` in a private terminal. Do not paste its output into logs. Local development without a session secret uses a per-process random key, so restarting invalidates existing admin sessions.
 
@@ -215,6 +218,18 @@ buffering for that route and allow at least a 300-second proxy read timeout.
 Do not substitute an HTTP-only server such as Waitress for the user listener:
 the existing Flask-Sock voice endpoint needs WebSocket support.
 
+Production administrator access requires HTTPS; plain HTTP requests are rejected
+before login credentials are processed. For one TLS-terminating proxy, set
+`TRUSTED_PROXY_HOPS=1` and have the proxy overwrite `X-Forwarded-Proto` with its
+actual connection scheme (nginx: `proxy_set_header X-Forwarded-Proto $scheme;`).
+Keep the upstream ports reachable only by that proxy; trusting forwarded headers
+on a directly reachable upstream permits spoofing. The default `0` ignores
+forwarded scheme headers. This middleware adjusts only the scheme, not host,
+port, or client IP; preserving the upstream listening port is required by the app
+dispatcher. Gunicorn's implicit forwarded-scheme trust is disabled so both
+services use this explicit setting. Redirect external HTTP to HTTPS at the proxy,
+not at the application. Production admin HTTPS responses set HSTS for one year.
+
 Smoke-check `GET /health` on port 5000 and the login page on port 8000. Then
 open the served chat page on localhost or HTTPS, wait for `/voice/health` to
 report ready (503 while loading), and record/send a voice message. The browser
@@ -276,6 +291,20 @@ At startup, `init_logger_table()` upgrades existing `CHAR`/`VARCHAR` message col
 ## Admin authentication
 
 The admin service runs on port 8000 and opens a login page before serving `backend/dashboard.html`. Startup creates the MySQL table named `admin-users` without inserting accounts. Run `python backend/setup_admin.py` locally to create `administrator` with your own password on a clean installation. Setup requires an interactive terminal and refuses to run if any account already exists, including disabled accounts. It cannot reset or overwrite upgrade accounts. If interrupted, rerun it safely; creation is transactional and concurrent setup commands are serialized. Existing installations retain their credentials and permissions; if still using the old shared password, change it in **Admin user control**. This menu also lets administrators create users and assign menu permissions. See `backend/admin-users/README.md` for setup and resumption details.
+
+### Session lifecycle and cookies
+
+- A login expires after 8 hours, or after 30 minutes without an authenticated request, whichever comes first. Active dashboard polling counts as activity but never extends the absolute deadline. Both timeouts are configurable with the settings above; restarting is required after changing configuration.
+- The browser receives a signed, expiring cookie containing only an opaque random session ID. MySQL `admin_sessions` stores its SHA-256 hash and deadlines. Normal requests do not renew the cookie. Expired or missing records fail closed; expired records are removed on access and during login.
+- `POST /logout` revokes the server-side session before clearing the cookie, so replaying a copied cookie fails. Signing in again rotates and revokes that browser's previous session. Other browsers remain signed in until expiry or an account security change.
+- Password resets and changes to permissions, administrator status, or active status through `update_user()` atomically increment the account's `session_version`, invalidating every existing login, including the caller's own login. Re-enabling an account or restoring old permissions does not restore old sessions. Deleting a user cascades deletion of their session records. Operational SQL password/security changes must also increment `session_version` in the same statement.
+- All cookies are host-only, `HttpOnly`, `SameSite=Lax`, and scoped to `/`. Explicit local development uses `local_chatbot_admin_dev` without `Secure` for `http://localhost:8000`. Production uses `__Host-local_chatbot_admin` with `Secure` and requires HTTPS. There is no production switch to permit insecure cookies. Admin responses use `Cache-Control: no-store`.
+- Open admin pages through the served dashboard on the same origin, not as `file:` pages. Credentialed `Origin: null` CORS is no longer enabled. The chat inspector now uses the dashboard's origin, including HTTPS, rather than a hard-coded localhost API.
+
+Upgrading automatically adds `session_version` to existing accounts and creates
+`admin_sessions` without changing passwords or permissions. Legacy session
+cookies are not accepted; users must sign in again after upgrading. The existing
+schema-scoped migration grants cover these changes.
 
 ## Deployment security
 

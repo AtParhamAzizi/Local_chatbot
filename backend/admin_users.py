@@ -68,7 +68,9 @@ def authenticate(username, password):
     row = find_user(username)
     if not row or not row['is_active'] or not verify_password(password, row['password_hash']):
         return None
-    return serialize_user(row)
+    user = serialize_user(row)
+    user['session_version'] = int(row['session_version'])
+    return user
 
 
 def admin_users_exist():
@@ -155,7 +157,8 @@ def update_user(user_id, password=None, permissions=None, is_active=None, is_adm
         assignments.append('is_admin = %s')
         values.append(int(bool(is_admin)))
     if not assignments:
-        return
+        return False
+    assignments.append('session_version = session_version + 1')
     values.append(user_id)
     conn = get_conn()
     try:
@@ -164,3 +167,4 @@ def update_user(user_id, password=None, permissions=None, is_active=None, is_adm
         conn.commit()
     finally:
         conn.close()
+    return True

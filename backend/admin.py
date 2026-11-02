@@ -6,16 +6,16 @@ from pathlib import Path
 
 import fitz
 import numpy as np
-from flask import request, jsonify, redirect, url_for, session, render_template_string
+from flask import request, jsonify, redirect, url_for, session, render_template_string, g
 
 import json
 
 from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
 from database import get_conn, init_db,hash_question, logger, sha256_bytes
-from settings import session_secret, redact_secrets, safe_error_message
+from settings import admin_session_config, is_development, session_secret, redact_secrets, safe_error_message
 from serving import serve_development
-from admin_users import authenticate, create_user, update_user, serialize_user, find_user
+from admin_users import authenticate, create_user, update_user, serialize_user
+from admin_sessions import create_admin_session, load_admin_session, revoke_admin_session
 # from logger import logDrop
 
 
@@ -36,31 +36,14 @@ from interface import (
 
 admin_app = Flask('admin', static_folder=ADMIN_DIR, static_url_path='')
 admin_app.secret_key = session_secret()
+admin_app.config.update(admin_session_config())
 configure_security(admin_app)
 ADMIN_USERS_DIR = os.path.join(os.path.dirname(ADMIN_DIR), 'admin-users')
-
-CORS(
-    admin_app,
-    origins=["null"],
-    supports_credentials=True
-)
-# CORS(
-#     admin_app,
-#     # resources={
-#     #     r"/admin/api/*": {
-            
-#     #     }
-#     # }
-#     "origins": ["null"],
-#     supports_credentials=True
-#     )
-
-
 
 @admin_app.route('/', methods=['GET'])
 @logger.operation
 def admin_index():
-    if not session.get('admin_user'):
+    if not g.admin_user:
         return redirect(url_for('admin_login'))
     return send_from_directory(os.path.dirname(ADMIN_DIR), 'dashboard.html')
 
@@ -97,21 +80,21 @@ def _permission_for_request():
 
 @admin_app.before_request
 def require_admin_session():
-    if request.endpoint in {'admin_login', 'admin_logout', 'login_css', 'login_js'}:
+    g.admin_user = None
+    if not is_development() and not request.is_secure:
+        return jsonify({'error': 'HTTPS is required for administrator access.'}), 400
+    if request.endpoint in {'admin_logout', 'login_css', 'login_js'}:
         return None
-    current = session.get('admin_user')
+    current = load_admin_session(session.get('admin_session'))
+    if not current and session:
+        session.clear()
+    g.admin_user = current
+    if request.endpoint == 'admin_login':
+        return None
     if not current:
         if request.path.startswith('/admin/api/'):
             return jsonify({'error': 'Authentication required.'}), 401
         return redirect(url_for('admin_login'))
-    row = find_user(current.get('username'))
-    if not row or not row['is_active']:
-        session.clear()
-        if request.path.startswith('/admin/api/'):
-            return jsonify({'error': 'Authentication required.'}), 401
-        return redirect(url_for('admin_login'))
-    current = serialize_user(row)
-    session['admin_user'] = current
     if current.get('is_admin') or current.get('username') == 'administrator':
         return None
     permission = _permission_for_request()
@@ -123,6 +106,14 @@ def require_admin_session():
     return None
 
 
+@admin_app.after_request
+def protect_admin_response(response):
+    response.headers['Cache-Control'] = 'no-store'
+    if not is_development() and request.is_secure:
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000'
+    return response
+
+
 @admin_app.route('/login', methods=['GET', 'POST'])
 def admin_login():
     if request.method == 'POST':
@@ -130,14 +121,17 @@ def admin_login():
         password = request.form.get('password') or ''
         user = authenticate(username, password)
         if user:
+            token = create_admin_session(user)
+            revoke_admin_session(session.get('admin_session'))
             session.clear()
-            session['admin_user'] = user
+            session.permanent = True
+            session['admin_session'] = token
             return redirect(url_for('admin_index'))
         return render_template_string(
             Path(os.path.join(ADMIN_USERS_DIR, 'login.html')).read_text(encoding='utf-8'),
             error='Invalid username or password.',
         ), 401
-    if session.get('admin_user'):
+    if g.admin_user:
         return redirect(url_for('admin_index'))
     return render_template_string(
         Path(os.path.join(ADMIN_USERS_DIR, 'login.html')).read_text(encoding='utf-8'),
@@ -145,20 +139,21 @@ def admin_login():
     )
 
 
-@admin_app.route('/logout', methods=['POST', 'GET'])
+@admin_app.route('/logout', methods=['POST'])
 def admin_logout():
+    revoke_admin_session(session.get('admin_session'))
     session.clear()
     return redirect(url_for('admin_login'))
 
 
 @admin_app.route('/admin/api/session')
 def admin_session():
-    return jsonify({'user': session.get('admin_user')})
+    return jsonify({'user': g.admin_user})
 
 
 @admin_app.route('/admin/api/admin-users', methods=['GET', 'POST'])
 def admin_users_collection():
-    current = session.get('admin_user') or {}
+    current = g.admin_user or {}
     if not current.get('is_admin') and current.get('username') != 'administrator':
         return jsonify({'error': 'Administrator access required.'}), 403
     if request.method == 'POST':
@@ -186,7 +181,7 @@ def admin_users_collection():
 
 @admin_app.route('/admin/api/admin-users/<int:user_id>', methods=['PATCH', 'DELETE'])
 def admin_user_item(user_id):
-    current = session.get('admin_user') or {}
+    current = g.admin_user or {}
     if not current.get('is_admin') and current.get('username') != 'administrator':
         return jsonify({'error': 'Administrator access required.'}), 403
     conn = get_conn()
@@ -203,13 +198,15 @@ def admin_user_item(user_id):
                 conn.commit()
                 return jsonify({'ok': True})
             data = request.get_json(silent=True) or {}
-            update_user(
+            changed = update_user(
                 user_id,
                 password=data.get('password'),
                 permissions=data.get('permissions'),
                 is_active=data.get('is_active'),
                 is_admin=data.get('is_admin'),
             )
+            if changed and user_id == current.get('id'):
+                session.clear()
     except ValueError as error:
         return jsonify({'error': redact_secrets(str(error))}), 400
     finally:

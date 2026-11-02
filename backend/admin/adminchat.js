@@ -1,4 +1,4 @@
-const BACKEND_URL = 'http://localhost:8000';
+const BACKEND_URL = window.location.protocol === 'file:' ? 'http://localhost:8000' : '';
 const API = BACKEND_URL + '/admin/api/chat';
 
 const state = {
