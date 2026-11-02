@@ -15,9 +15,20 @@ logoutButton?.addEventListener("click", async () => {
     logoutButton.disabled = true;
     logoutButton.textContent = "Signing out…";
     try {
-        await fetch("/logout", { method: "POST" });
-    } finally {
+        const response = await adminFetch("/logout", { method: "POST" });
+        if (!response.ok && response.status !== 401) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.error || "Unable to sign out. Please try again.");
+        }
         window.location.href = "/login";
+    } catch (error) {
+        if (error.status === 401) {
+            window.location.href = "/login";
+            return;
+        }
+        logoutButton.disabled = false;
+        logoutButton.textContent = "Log out";
+        window.alert(error.message || "Unable to sign out. Please try again.");
     }
 });
 
@@ -31,7 +42,7 @@ const pagePermissions = {
     "admin/admin-user-control.html": "admin"
 };
 
-fetch("/admin/api/session")
+adminFetch("/admin/api/session")
     .then(response => response.json())
     .then(({ user }) => {
         if (!user) return;

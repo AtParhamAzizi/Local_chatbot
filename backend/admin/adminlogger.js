@@ -89,7 +89,7 @@ async function loadLogs() {
     try {
 
         const response =
-            await fetch(API_URL, {
+            await adminFetch(API_URL, {
                 method: "GET",
 
                 headers: {

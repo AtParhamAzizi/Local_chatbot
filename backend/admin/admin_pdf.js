@@ -22,7 +22,7 @@ const PER_PAGE = 10;
 
 async function api(url, options = {}) {
 
-    const res = await fetch(
+    const res = await adminFetch(
         `${API_BASE}${url}`,
         {
             credentials: 'same-origin',

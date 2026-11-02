@@ -17,7 +17,7 @@
 
   async function loadUsers() {
     users.innerHTML = '<tr><td class="empty" colspan="4">Loading users…</td></tr>';
-    const response = await fetch("/admin/api/admin-users");
+    const response = await adminFetch("/admin/api/admin-users");
     const payload = await response.json();
     if (!response.ok) {
       showMessage(payload.error || "Unable to load users.", true);
@@ -37,7 +37,7 @@
     submitButton.disabled = true;
     showMessage("Creating user…", false);
     try {
-      const response = await fetch("/admin/api/admin-users", {
+      const response = await adminFetch("/admin/api/admin-users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -60,7 +60,7 @@
     const button = event.target.closest("button[data-id]");
     if (!button) return;
     button.disabled = true;
-    const response = await fetch(`/admin/api/admin-users/${button.dataset.id}`, { method: "DELETE" });
+    const response = await adminFetch(`/admin/api/admin-users/${button.dataset.id}`, { method: "DELETE" });
     const payload = await response.json();
     showMessage(payload.error || "User deleted.", !response.ok);
     await loadUsers();

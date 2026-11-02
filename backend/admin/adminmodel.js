@@ -65,7 +65,7 @@ function renderModels(models, activeId) {
 async function loadModels() {
     setStatus("Loading model availability...");
     try {
-        const response = await fetch(`${API_BASE}/admin/api/models`, { credentials: "same-origin" });
+        const response = await adminFetch(`${API_BASE}/admin/api/models`, { credentials: "same-origin" });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "Unable to load models");
         renderModels(payload.models, payload.active_model);
@@ -80,7 +80,7 @@ async function selectModel(modelId) {
     document.querySelectorAll(".select-btn").forEach(button => { button.disabled = true; });
     setStatus("Switching model and releasing the current model...", "");
     try {
-        const response = await fetch(`${API_BASE}/admin/api/models`, {
+        const response = await adminFetch(`${API_BASE}/admin/api/models`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "same-origin",

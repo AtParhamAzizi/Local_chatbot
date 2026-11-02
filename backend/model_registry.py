@@ -24,17 +24,17 @@ MODEL_DEFINITIONS = {
         'embedding_path': QWEN_EMBEDDING_PATH,
         'generator_path': os.getenv('QWEN_GENERATOR_PATH', os.getenv('GEN_MODEL', os.path.join(BASE_DIR, 'modelgen'))),
     },
-    'gemma-4-e2b-it': {
-        'label': 'Gemma 4 E2B IT',
-        'embedding_path': os.getenv(
-            'GEMMA_EMBEDDING_PATH',
-            os.path.join(BASE_DIR, 'model', 'gemma-4-E2B-it'),
-        ),
-        'generator_path': os.getenv(
-            'GEMMA_GENERATOR_PATH',
-            os.path.join(BASE_DIR, 'modelgen', 'gemma-4-E2B-it'),
-        ),
-    },
+    # 'gemma-4-e2b-it': {
+    #     'label': 'Gemma 4 E2B IT',
+    #     'embedding_path': os.getenv(
+    #         'GEMMA_EMBEDDING_PATH',
+    #         os.path.join(BASE_DIR, 'model', 'gemma-4-E2B-it'),
+    #     ),
+    #     'generator_path': os.getenv(
+    #         'GEMMA_GENERATOR_PATH',
+    #         os.path.join(BASE_DIR, 'modelgen', 'gemma-4-E2B-it'),
+    #     ),
+    # },
 }
 
 

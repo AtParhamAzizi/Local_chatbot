@@ -295,7 +295,7 @@ The admin service runs on port 8000 and opens a login page before serving `backe
 ### Session lifecycle and cookies
 
 - A login expires after 8 hours, or after 30 minutes without an authenticated request, whichever comes first. Active dashboard polling counts as activity but never extends the absolute deadline. Both timeouts are configurable with the settings above; restarting is required after changing configuration.
-- The browser receives a signed, expiring cookie containing only an opaque random session ID. MySQL `admin_sessions` stores its SHA-256 hash and deadlines. Normal requests do not renew the cookie. Expired or missing records fail closed; expired records are removed on access and during login.
+- After login, the browser receives a signed, expiring cookie containing only an opaque random session ID. MySQL `admin_sessions` stores its SHA-256 hash and deadlines. Normal requests do not renew the cookie. Expired or missing records fail closed; expired records are removed on access and during login.
 - `POST /logout` revokes the server-side session before clearing the cookie, so replaying a copied cookie fails. Signing in again rotates and revokes that browser's previous session. Other browsers remain signed in until expiry or an account security change.
 - Password resets and changes to permissions, administrator status, or active status through `update_user()` atomically increment the account's `session_version`, invalidating every existing login, including the caller's own login. Re-enabling an account or restoring old permissions does not restore old sessions. Deleting a user cascades deletion of their session records. Operational SQL password/security changes must also increment `session_version` in the same statement.
 - All cookies are host-only, `HttpOnly`, `SameSite=Lax`, and scoped to `/`. Explicit local development uses `local_chatbot_admin_dev` without `Secure` for `http://localhost:8000`. Production uses `__Host-local_chatbot_admin` with `Secure` and requires HTTPS. There is no production switch to permit insecure cookies. Admin responses use `Cache-Control: no-store`.
@@ -305,6 +305,32 @@ Upgrading automatically adds `session_version` to existing accounts and creates
 `admin_sessions` without changing passwords or permissions. Legacy session
 cookies are not accepted; users must sign in again after upgrading. The existing
 schema-scoped migration grants cover these changes.
+
+### Administrator CSRF protection
+
+All cookie-authenticated administrator mutations require CSRF proof, including
+JSON/PDF uploads, document/chat deletions, model selection, account creation and
+updates, controller actions, and `POST /logout`. The common request guard checks
+every method except `GET`, `HEAD`, and `OPTIONS`, before dispatching mutations or
+granting administrator permission bypasses. Missing or invalid proof returns
+HTTP 403; missing, expired, or revoked authentication returns HTTP 401 for APIs
+and logout. GET requests never sign users out.
+
+For an API client, retain the login cookies, fetch `GET /admin/api/session`, and
+send the returned `csrf_token` in the `X-CSRF-Token` header with every mutation.
+HTML/multipart forms may instead send a `csrf_token` form field. Query-string
+tokens are not accepted. Tokens are bound to the current login, checked with
+constant-time comparison, and stop working after logout, session rotation,
+expiry, or account-security revocation. Never put tokens in URLs or logs.
+
+The served dashboard and every admin page load `admin-csrf.js`. Its same-origin
+`adminFetch(url, options)` helper obtains and caches proof, preserves JSON headers
+and multipart bodies, and attaches proof to mutations without retrying them.
+Reload pages after deploying this change; old open pages without proof receive
+403 rather than bypassing protection. Login is protected too: first GET `/login`
+to obtain its pre-login cookie and hidden `csrf_token`, then submit that field
+with the credentials. The pre-login token is discarded on successful login.
+These flows work in both explicit localhost development and HTTPS production.
 
 ## Deployment security
 

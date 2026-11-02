@@ -15,6 +15,7 @@
       <p class="intro">Sign in to manage models, knowledge, chats, and system controls.</p>
       <p class="intro">First installation? Run <code>python backend/setup_admin.py</code> in a terminal on the server to create your administrator. Existing accounts keep their credentials.</p>
       <form id="loginForm" method="post" action="/login" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label for="username">Username</label>
         <input id="username" name="username" autocomplete="username" required autofocus>
         <label for="password">Password</label>

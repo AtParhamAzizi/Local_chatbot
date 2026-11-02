@@ -71,7 +71,7 @@ function render(data) {
 }
 
 async function request(path, options = {}) {
-    const response = await fetch(`${API}${path}`, { credentials: "same-origin", cache: "no-store", ...options });
+    const response = await adminFetch(`${API}${path}`, { credentials: "same-origin", cache: "no-store", ...options });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
     return body;

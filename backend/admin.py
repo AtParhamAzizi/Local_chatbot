@@ -16,6 +16,7 @@ from settings import admin_session_config, is_development, session_secret, redac
 from serving import serve_development
 from admin_users import authenticate, create_user, update_user, serialize_user
 from admin_sessions import create_admin_session, load_admin_session, revoke_admin_session
+from admin_csrf import csrf_token, valid_csrf_token
 # from logger import logDrop
 
 
@@ -83,18 +84,22 @@ def require_admin_session():
     g.admin_user = None
     if not is_development() and not request.is_secure:
         return jsonify({'error': 'HTTPS is required for administrator access.'}), 400
-    if request.endpoint in {'admin_logout', 'login_css', 'login_js'}:
+    if request.endpoint in {'login_css', 'login_js'}:
         return None
     current = load_admin_session(session.get('admin_session'))
-    if not current and session:
+    if not current and ('admin_session' in session or 'admin_user' in session):
         session.clear()
     g.admin_user = current
     if request.endpoint == 'admin_login':
+        if request.method == 'POST' and not valid_csrf_token():
+            return jsonify({'error': 'Invalid or missing CSRF token. Reload the page and try again.'}), 403
         return None
     if not current:
-        if request.path.startswith('/admin/api/'):
+        if request.path.startswith('/admin/api/') or request.endpoint == 'admin_logout':
             return jsonify({'error': 'Authentication required.'}), 401
         return redirect(url_for('admin_login'))
+    if request.method not in {'GET', 'HEAD', 'OPTIONS'} and not valid_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token. Reload the page and try again.'}), 403
     if current.get('is_admin') or current.get('username') == 'administrator':
         return None
     permission = _permission_for_request()
@@ -130,12 +135,14 @@ def admin_login():
         return render_template_string(
             Path(os.path.join(ADMIN_USERS_DIR, 'login.html')).read_text(encoding='utf-8'),
             error='Invalid username or password.',
+            csrf_token=csrf_token(),
         ), 401
     if g.admin_user:
         return redirect(url_for('admin_index'))
     return render_template_string(
         Path(os.path.join(ADMIN_USERS_DIR, 'login.html')).read_text(encoding='utf-8'),
         error='',
+        csrf_token=csrf_token(),
     )
 
 
@@ -148,7 +155,7 @@ def admin_logout():
 
 @admin_app.route('/admin/api/session')
 def admin_session():
-    return jsonify({'user': g.admin_user})
+    return jsonify({'user': g.admin_user, 'csrf_token': csrf_token()})
 
 
 @admin_app.route('/admin/api/admin-users', methods=['GET', 'POST'])
@@ -226,6 +233,7 @@ def login_js():
 @admin_app.route('/dashboard.css')
 @admin_app.route('/dashboard.js')
 @admin_app.route('/theme.js')
+@admin_app.route('/admin-csrf.js')
 def dashboard_asset():
     return send_from_directory(os.path.dirname(ADMIN_DIR), request.path.lstrip('/'))
 

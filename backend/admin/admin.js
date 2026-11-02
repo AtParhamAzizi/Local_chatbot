@@ -13,7 +13,7 @@ const PER_PAGE   = 10;
 
 /* ---------------- helpers ---------------- */
 async function api(url, options = {}) {
-  const res = await fetch(`${API_BASE}${url}`, { credentials: 'same-origin', ...options });
+  const res = await adminFetch(`${API_BASE}${url}`, { credentials: 'same-origin', ...options });
   if (!res.ok) {
     let msg = `خطای ${res.status}`;
     try { const j = await res.json(); msg = j.error || msg; } catch (_) {}

@@ -39,7 +39,7 @@ function fmtNum(n) {
 }
 
 async function api(path) {
-    const res = await fetch(API + path, {
+    const res = await adminFetch(API + path, {
         headers: { Accept: 'application/json' },
         credentials: 'include'   // send cookies/session if the backend uses them
     });

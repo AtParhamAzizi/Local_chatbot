@@ -27,6 +27,8 @@ backend/
   serving.py          Development server guard and production Gunicorn socket-port dispatcher
   settings.py         APP_ENV, validated APP_HOST (loopback default), credentials, shared ports
   admin_sessions.py   MySQL-backed opaque sessions, fixed/idle expiry, logout revocation
+  admin_csrf.py       Session-bound CSRF token generation/validation, including pre-login forms
+  admin-csrf.js       Shared same-origin adminFetch helper for authenticated mutations
   user.py             User Flask app: /, /health, /chat, /feedback; _retrieve_top orchestration
   admin.py            Admin Flask app: dashboard/static routes + all /admin/api/* (~1700 lines)
   controller.py       Runtime controller state (controller_state.json), memory/GPU helpers
@@ -203,6 +205,12 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 | Method | Path | Handler |
 | --- | --- | --- |
 | GET | `/` | `admin_index` (serves `backend/dashboard.html`) |
+| GET, POST | `/login` | `admin_login` (pre-login form CSRF proof required for POST) |
+| POST | `/logout` | `admin_logout` (authenticated, CSRF-protected; GET never logs out) |
+| GET | `/admin/api/session` | `admin_session` (current user and session-bound `csrf_token`) |
+| GET, POST | `/admin/api/admin-users` | `admin_users_collection` (administrator-only) |
+| PATCH, DELETE | `/admin/api/admin-users/<int:user_id>` | `admin_user_item` (administrator-only) |
+| GET | `/admin-csrf.js` | `dashboard_asset` (shared CSRF-aware request helper) |
 | GET | `/dashboard.css`, `/dashboard.js`, `/theme.js` | `dashboard_asset` |
 | GET | `/admin/<path:filename>` | `admin_page_asset` (files from `backend/admin/`) |
 | GET | `/controller` | `controller_page` |
@@ -225,6 +233,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 | POST | `/admin/api/controller/action` | `controller_action` |
 
 A chat "session" is a `(user_id, ip_address)` group in `chat_history`.
+All admin mutations (every method except GET/HEAD/OPTIONS) require CSRF proof after authentication and before permission bypasses or handlers, including routes registered by `controller_api`. Use `X-CSRF-Token` or a `csrf_token` form field, never a query parameter. Failed proof returns 403; unauthenticated APIs/logout return 401. Login POST also requires its pre-login form token.
 ## 8. Frontend (vanilla JS, no build step)
 
 - **User UI** `frontend/`: `index.html`, `style.css` (Liquid Glass theme), `theme.js` (persisted dark/light toggle, `localStorage` key `liquid-theme`), `script.js`.
@@ -233,6 +242,7 @@ A chat "session" is a `(user_id, ip_address)` group in `chat_history`.
   - Health: `checkBackendConnection` (`/health`); `checkVoiceBackend` (`/voice/health`, polled every 3 s).
   - Voice: `startVoiceRecording`, `stopVoiceRecording`, `connectVoiceStream`, `voiceTranscript`, `voiceMessage`, `speakVoiceReply`, `setVoiceStatus`, `updateVoiceControls`, `failVoiceSession`, `releaseVoiceMicrophone`. The worklet is loaded from `/voice/audio-worklet.js` (`backend/STT/audio-worklet.js`).
 - **Admin UI**: `backend/dashboard.html` is the shell. Its sidebar items (`data-page`) set the `src` of iframe `#pageFrame` (default `admin/admin.html`). Every page loads `../theme.js` (`backend/theme.js`). Pages call the API on the same origin, or on `http://localhost:8000` when opened as `file:`.
+  - The shell and all admin pages load `admin-csrf.js` before page scripts and use `adminFetch(url, options)` rather than raw fetch. It obtains proof from `/admin/api/session`, attaches `X-CSRF-Token` to unsafe methods, preserves multipart bodies/JSON headers, rejects cross-origin destinations, and never retries mutations automatically. Failed logout stays on the dashboard with an error rather than falsely indicating success. File-opened admin pages are unsupported.
   - `admin.*` JSON Q&A: `api`, `loadStats`, `handleFile`, `showResult`, `loadDocuments`, `deleteDoc`, pagination and search.
   - `admin_pdf.*` PDF: `api`, `handleFile` (iframe preview), upload, `loadStats`, `loadDocuments`, `deletePdf`, `statusText`, `formatBytes`.
   - `adminmodel.*` model selection: `loadModels`, `renderModels`, `selectModel`.
@@ -274,6 +284,8 @@ Run: `python backend\main.py` (run from anywhere; imports are flat, relative to 
 
 `backend/admin_users.py` owns PBKDF2 password hashing, login verification, user serialization, and user-management persistence. `backend/admin.py` applies a session guard to dashboard pages and admin APIs, maps menu pages to permission names, and exposes `/login`, `POST /logout`, `/admin/api/session`, and `/admin/api/admin-users`. `database.init_admin_users_table()` creates the backtick-quoted MySQL table `admin-users`, migrates existing accounts to include `session_version`, and creates `admin_sessions`; it never seeds accounts. `backend/setup_admin.py` provides local interactive first-account setup. `backend/admin-users/login.html` is the login view; `backend/admin/admin-user-control.html` is the administrator-only management view.
 
-`backend/admin_sessions.py` issues random opaque IDs (only SHA-256 hashes are stored in MySQL), checks the fixed expiry and idle deadline, and deletes sessions on logout. Signed cookies contain only the ID and Flask's permanent flag; current user data lives in `g.admin_user`, not the cookie. Defaults are 8 hours absolute (`ADMIN_SESSION_LIFETIME_SECONDS`, 60-86400) and 30 minutes idle (`ADMIN_SESSION_IDLE_SECONDS`, 60-absolute lifetime). Requests update activity but never renew cookies or absolute expiry. `update_user()` atomically increments `session_version` with any password, permission, active-status, or administrator-status update; every older session fails even if a change is later reverted. User deletion cascades to sessions. Old pre-upgrade cookies are rejected. Direct SQL security changes must increment `session_version` atomically too.
+`backend/admin_sessions.py` issues random opaque IDs (only SHA-256 hashes are stored in MySQL), checks the fixed expiry and idle deadline, and deletes sessions on logout. After login, signed cookies contain only the ID and Flask's permanent flag; current user data lives in `g.admin_user`, not the cookie. Defaults are 8 hours absolute (`ADMIN_SESSION_LIFETIME_SECONDS`, 60-86400) and 30 minutes idle (`ADMIN_SESSION_IDLE_SECONDS`, 60-absolute lifetime). Requests update activity but never renew cookies or absolute expiry. `update_user()` atomically increments `session_version` with any password, permission, active-status, or administrator-status update; every older session fails even if a change is later reverted. User deletion cascades to sessions. Old pre-upgrade cookies are rejected. Direct SQL security changes must increment `session_version` atomically too.
+
+`backend/admin_csrf.py` derives authenticated CSRF tokens using HMAC-SHA256 over the opaque session ID with a domain-separated label and the session signing secret; no schema change or cookie renewal is needed. `/admin/api/session` returns proof only after validating the active session. A pre-login random token lives in the signed cookie and hidden login form field; validation does not issue missing tokens, and login clears this state before creating the authenticated session. Tokens are compared in constant time; proof from a different, expired, rotated, or revoked session is not accepted. The central session guard enforces proof on all mutations, including login and logout, before invoking handlers. User-facing chat/feedback routes do not use admin cookies and are unchanged.
 
 Explicit development uses an HTTP-compatible `local_chatbot_admin_dev` cookie; production uses a Secure `__Host-local_chatbot_admin` cookie and refuses non-HTTPS admin requests. Both are host-only, Path `/`, HttpOnly, SameSite=Lax, with fixed expiry and no refresh per request. Admin responses are no-store; production HTTPS responses include HSTS. Admin pages must be served on their own origin, not opened as files; credentialed null-origin CORS is removed. Both apps' ProxyFix middleware trusts only the exact configured `TRUSTED_PROXY_HOPS` count (default 0) for `X-Forwarded-Proto`; it never rewrites host/port/IP. Gunicorn's implicit forwarded-scheme trust is disabled. Keep upstream listeners private and have trusted proxies overwrite scheme headers; see README for deployment settings.
