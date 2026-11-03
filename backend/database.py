@@ -223,9 +223,6 @@ def init_logger_table():
 
 
 def get_client_ip():
-    forwarded = request.headers.get('X-Forwarded-For')
-    if forwarded:
-        return forwarded.split(',')[0].strip()
     return request.remote_addr
 
 

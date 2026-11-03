@@ -38,7 +38,7 @@ from interface import (
 admin_app = Flask('admin', static_folder=ADMIN_DIR, static_url_path='')
 admin_app.secret_key = session_secret()
 admin_app.config.update(admin_session_config())
-configure_security(admin_app)
+configure_security(admin_app, service='admin')
 ADMIN_USERS_DIR = os.path.join(os.path.dirname(ADMIN_DIR), 'admin-users')
 
 @admin_app.route('/', methods=['GET'])

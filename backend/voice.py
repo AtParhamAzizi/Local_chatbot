@@ -14,9 +14,8 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from urllib.parse import urlsplit
 
-from flask import jsonify, request, send_from_directory
+from flask import jsonify, send_from_directory
 
 from STT.streaming import AudioStream, MAX_PACKET_BYTES, SAMPLE_RATE
 
@@ -151,11 +150,6 @@ def configure_voice(app):
 
     @sock.route("/voice-stream")
     def voice_stream(websocket):
-        origin = request.headers.get("Origin")
-        if origin and urlsplit(origin).netloc != request.host:
-            websocket.close(reason=1008, message="Use the page served by this server.")
-            return
-
         status, error = _model_status()
         if status != "ready":
             websocket.send(json.dumps({"type": "error", "message": error or "Model is loading."}))

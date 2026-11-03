@@ -2,10 +2,11 @@
 
 import json
 import os
+import re
 import secrets
 from datetime import timedelta
-from ipaddress import ip_address
-from urllib.parse import quote, quote_plus
+from ipaddress import ip_address, ip_network
+from urllib.parse import quote, quote_plus, urlsplit
 
 
 DEVELOPMENT_ENVIRONMENTS = {"development", "dev", "local", "test"}
@@ -66,6 +67,57 @@ def trusted_proxy_hops():
     return _integer_setting("TRUSTED_PROXY_HOPS", 0, 0, 10)
 
 
+def trusted_proxy_networks():
+    configured = os.getenv("TRUSTED_PROXY_CIDRS", "").strip()
+    if not configured:
+        return ()
+    try:
+        return tuple(ip_network(value.strip(), strict=False) for value in configured.split(","))
+    except ValueError:
+        raise ConfigurationError("TRUSTED_PROXY_CIDRS must contain comma-separated IP addresses or CIDRs") from None
+
+
+def normalize_origin(value):
+    if not value or not re.fullmatch(
+        r"https?://(?:\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::[0-9]+)?", value, re.IGNORECASE,
+    ):
+        return None
+    try:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme not in {"http", "https"} or not parsed.hostname
+            or parsed.username is not None or parsed.password is not None or parsed.path
+        ):
+            return None
+        host = parsed.hostname.lower()
+        if ":" in host:
+            host = f"[{ip_address(host)}]"
+        elif not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", host):
+            return None
+        port = parsed.port
+        if parsed.netloc.endswith(":") or port == 0:
+            return None
+    except ValueError:
+        return None
+    default_port = 443 if parsed.scheme == "https" else 80
+    suffix = f":{port}" if port is not None and port != default_port else ""
+    return f"{parsed.scheme}://{host}{suffix}"
+
+
+def browser_origins(service):
+    port = {"ui": UI_PORT, "admin": ADMIN_PORT}[service]
+    name = f"{service.upper()}_ALLOWED_ORIGINS"
+    configured = os.getenv(name)
+    if configured is None and is_development():
+        configured = f"http://localhost:{port},http://127.0.0.1:{port},http://[::1]:{port}"
+    if not configured or not configured.strip():
+        raise ConfigurationError(f"{name} must contain explicit HTTP(S) browser origins")
+    origins = tuple(normalize_origin(value.strip()) for value in configured.split(","))
+    if None in origins:
+        raise ConfigurationError(f"{name} must contain only HTTP(S) origins without paths, wildcards, or credentials")
+    return frozenset(origins)
+
+
 def admin_session_config():
     return {
         "SESSION_COOKIE_NAME": "local_chatbot_admin_dev" if is_development() else "__Host-local_chatbot_admin",
@@ -82,7 +134,12 @@ def admin_session_config():
 def validate_settings():
     bind_host()
     session_idle_seconds()
-    trusted_proxy_hops()
+    hops = trusted_proxy_hops()
+    networks = trusted_proxy_networks()
+    if hops and not networks:
+        raise ConfigurationError("TRUSTED_PROXY_HOPS requires explicit TRUSTED_PROXY_CIDRS")
+    browser_origins("ui")
+    browser_origins("admin")
     if not is_development():
         required = ("DB_USER", "DB_PASS", "DB_NAME", "ADMIN_SESSION_SECRET")
         missing = [name for name in required if _value(name) is None]

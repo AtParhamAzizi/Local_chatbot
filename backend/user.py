@@ -5,7 +5,6 @@ from serving import serve_development
 import os
 import numpy as np
 from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
 from generator import generate_reply
 from database import get_conn
 
@@ -22,8 +21,7 @@ from voice import configure_voice
 
 FRONTEND_DIR = os.path.join(os.path.dirname(BASE_DIR), 'frontend')
 ui_app = Flask('ui', static_folder=FRONTEND_DIR, static_url_path='')
-configure_security(ui_app)
-CORS(ui_app, origins=["*"])
+configure_security(ui_app, service='ui')
 configure_voice(ui_app)
 
 

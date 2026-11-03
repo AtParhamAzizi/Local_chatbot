@@ -68,7 +68,10 @@ The project now includes a refreshed **Liquid Glass** visual experience:
    | `ADMIN_SESSION_SECRET` | Required outside development; at least 32 random characters |
    | `ADMIN_SESSION_LIFETIME_SECONDS` | `28800` (8 hours); integer from 60 to 86400; absolute login lifetime |
    | `ADMIN_SESSION_IDLE_SECONDS` | `1800` (30 minutes); integer from 60 to the absolute lifetime |
-   | `TRUSTED_PROXY_HOPS` | `0`; exact number of trusted proxies setting `X-Forwarded-Proto` (0-10) |
+   | `UI_ALLOWED_ORIGINS` | Required in production; comma-separated exact HTTP(S) browser origins for the user service |
+   | `ADMIN_ALLOWED_ORIGINS` | Required in production; comma-separated exact HTTP(S) dashboard origins; admin requests remain same-origin only |
+   | `TRUSTED_PROXY_HOPS` | `0`; exact trusted chain length for `X-Forwarded-For` and `X-Forwarded-Proto` (0-10); nonzero requires `TRUSTED_PROXY_CIDRS` |
+   | `TRUSTED_PROXY_CIDRS` | Empty; comma-separated trusted reverse-proxy IP addresses or IPv4/IPv6 CIDRs |
 
    Inject `DB_PASS` and `ADMIN_SESSION_SECRET` securely rather than saving them in source code or shell history. Generate the session secret with `python -c "import secrets; print(secrets.token_urlsafe(48))"` in a private terminal. Do not paste its output into logs. Local development without a session secret uses a per-process random key, so restarting invalidates existing admin sessions.
 
@@ -208,6 +211,35 @@ restrict port 8000 with firewall rules and do not expose the admin dashboard
 publicly. Invalid/blank addresses fail startup. To restore loopback binding,
 unset `APP_HOST`. The standalone STT demo is not the production entry point.
 
+### Browser origins
+
+Production requires explicit `UI_ALLOWED_ORIGINS` and `ADMIN_ALLOWED_ORIGINS`,
+for example `https://chat.example.com` and `https://admin.example.com` respectively.
+List origins as `scheme://host[:port]`, separated by commas, without trailing
+slashes, paths, credentials, query strings, or fragments. Wildcards, regular
+expressions, `null`, and `file:` origins are not accepted. Scheme and port are
+part of the policy; subdomains are not implicitly approved. Invalid or empty
+lists fail startup. Nonstandard browser-facing ports must be included.
+
+Explicit development defaults to `http://localhost:5000`,
+`http://127.0.0.1:5000`, and `http://[::1]:5000` for the user service, with the
+same hosts on port 8000 for admin. Setting a list replaces these defaults.
+LAN deployments must configure the actual browser origins as well as `APP_HOST`.
+Open both UIs through the served pages, not by opening HTML files directly.
+
+Requests carrying an unapproved, opaque, or malformed `Origin` receive 403
+before route handlers, login/session checks, model work, or WebSocket upgrade.
+Approved user origins receive explicit CORS response headers (never `*` or
+credentialed CORS), including on application errors. User preflights allow only
+GET/HEAD/POST/OPTIONS and the `Content-Type` request header. Admin permits only
+listed origins that also match the request's own scheme, host, and port; it
+does not enable cross-origin CORS or bypass CSRF proof. HTTP requests without an
+`Origin` remain available for health checks, native clients, and same-origin
+navigation; origin checks are not authentication. `/voice-stream` requires an
+approved `Origin`, enforced before the handshake using the same user policy.
+
+### Reverse proxies
+
 For access beyond localhost, terminate HTTPS at a reverse proxy such as nginx;
 browser microphone access requires HTTPS. Keep `APP_HOST=127.0.0.1` when the
 proxy runs on the same machine. Proxy the user origin to port 5000 and a
@@ -219,16 +251,39 @@ Do not substitute an HTTP-only server such as Waitress for the user listener:
 the existing Flask-Sock voice endpoint needs WebSocket support.
 
 Production administrator access requires HTTPS; plain HTTP requests are rejected
-before login credentials are processed. For one TLS-terminating proxy, set
-`TRUSTED_PROXY_HOPS=1` and have the proxy overwrite `X-Forwarded-Proto` with its
-actual connection scheme (nginx: `proxy_set_header X-Forwarded-Proto $scheme;`).
-Keep the upstream ports reachable only by that proxy; trusting forwarded headers
-on a directly reachable upstream permits spoofing. The default `0` ignores
-forwarded scheme headers. This middleware adjusts only the scheme, not host,
-port, or client IP; preserving the upstream listening port is required by the app
-dispatcher. Gunicorn's implicit forwarded-scheme trust is disabled so both
-services use this explicit setting. Redirect external HTTP to HTTPS at the proxy,
-not at the application. Production admin HTTPS responses set HSTS for one year.
+before login credentials are processed. For one local TLS-terminating proxy, set
+`TRUSTED_PROXY_HOPS=1` and `TRUSTED_PROXY_CIDRS=127.0.0.1/32,::1/128`. For a
+remote proxy, list its actual socket address/network instead. Hop-only legacy
+configuration now fails startup. Keep upstream ports private and restrict trust
+to reverse proxies you control, never entire client networks.
+
+The proxy must overwrite incoming client forwarding headers with authoritative
+values. For a single nginx proxy, use:
+
+```nginx
+proxy_set_header Host $http_host;
+proxy_set_header X-Forwarded-For $remote_addr;
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+The middleware first checks the actual socket peer against `TRUSTED_PROXY_CIDRS`.
+For multi-proxy deployments it also validates each intermediary in the rightmost
+configured `X-Forwarded-For` suffix; missing, malformed, short, or untrusted chains
+leave the socket client address and scheme unchanged. The first public proxy
+must overwrite forwarding headers; subsequent trusted proxies must append to
+both forwarding chains, with the configured hop count matching the deployment.
+Attacker-prepended values outside that suffix are ignored. The validated client
+address becomes `request.remote_addr`, used by chat-history/audit identity.
+Forwarded scheme is accepted only with a validated address chain and a matching
+HTTP(S) scheme entry; it cannot independently bypass the admin HTTPS requirement.
+
+The default hop count `0` ignores all forwarding headers. `Forwarded`,
+`X-Real-IP`, and forwarded host/port/prefix headers are never trusted. Host and
+listening port are never rewritten; preserving the upstream listening port is
+required by the app dispatcher. Gunicorn's implicit forwarded-scheme trust is
+disabled so both services use this policy. Redirect external HTTP to HTTPS at
+the proxy, not at the application. Production admin HTTPS responses set HSTS
+for one year.
 
 Smoke-check `GET /health` on port 5000 and the login page on port 8000. Then
 open the served chat page on localhost or HTTPS, wait for `/voice/health` to

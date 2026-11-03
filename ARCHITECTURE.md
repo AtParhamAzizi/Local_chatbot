@@ -26,6 +26,7 @@ backend/
   main.py             Entry point: init DB tables + models, import controller_api, start both servers
   serving.py          Development server guard and production Gunicorn socket-port dispatcher
   settings.py         APP_ENV, validated APP_HOST (loopback default), credentials, shared ports
+  security.py         Explicit browser-origin guards/CORS, peer-validated forwarding, safe errors
   admin_sessions.py   MySQL-backed opaque sessions, fixed/idle expiry, logout revocation
   admin_csrf.py       Session-bound CSRF token generation/validation, including pre-login forms
   admin-csrf.js       Shared same-origin adminFetch helper for authenticated mutations
@@ -97,7 +98,7 @@ Env: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`. The active config is
 ### 6.1 Chat / RAG (`user.py: chat()`, POST `/chat`)
 
 0. `controller_gate` (before_request) returns 503 when chat is disabled in the controller.
-1. Read JSON `{message, user_id='anonymous'}` and `get_client_ip()` (honors `X-Forwarded-For`). An empty message returns 400.
+1. Read JSON `{message, user_id='anonymous'}` and `get_client_ip()` (uses only middleware-validated `request.remote_addr`). An empty message returns 400.
 2. `_retrieve_top(query, k=6)` (an exception here returns 500):
    - `embed_texts([query])` gives qvec (float32).
    - `_search_qa(qvec, k=5)` and `_search_pdf(qvec, k=8, query=query)` from searchForAnswer.py.
@@ -161,7 +162,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 ### 6.8 Voice / STT
 
 - `voice.py: configure_voice(app)` registers on the user app: GET `/voice/audio-worklet.js`, GET `/voice/health`, and WebSocket `/voice-stream` (flask-sock; registered only if the voice dependencies imported). `/voice/health` starts the background model load and returns 200 when ready, or 503 with status `loading|error|unavailable`.
-- `/voice-stream` protocol: the server rejects cross-origin connections, connections made before the model is ready, and connections while another transcription is active. It sends `ready`, then `transcript {segment_id, text, is_final}` messages, then `done`. The client sends binary PCM16 packets and then `{"type":"stop"}`. 30 s without audio ends the session.
+- `/voice-stream` protocol: the shared security guard rejects missing or unapproved browser origins before upgrade, using `UI_ALLOWED_ORIGINS`. The server also rejects connections made before the model is ready and connections while another transcription is active. It sends `ready`, then `transcript {segment_id, text, is_final}` messages, then `done`. The client sends binary PCM16 packets and then `{"type":"stop"}`. 30 s without audio ends the session.
 - Helpers: `_load_model()` (faster-whisper `WhisperModel`, cached in `STT/.models`), `_start_model_loading()`, `_model_status()`, `_transcribe_audio(audio)` (beam 1, Whisper VAD filter), `_release_slot(future)`. A one-thread executor plus `BoundedSemaphore(1)` allows one transcription session at a time.
 - `STT/streaming.py`: `AudioStream` (`feed`, `_feed_frame`, `_finalize`, `next_job`, `finish`, `has_pending`), `TranscriptionJob`, `SAMPLE_RATE=16000`, `MAX_PACKET_BYTES` (16000 bytes, 0.5 s). Voice detection is RMS energy per 100 ms frame (`voice_threshold`). A segment closes after 0.7 s of silence or 12 s of audio, and a partial transcript is produced every 1 s. More than 3 queued segments raises "cannot keep up".
 - Env: `STT_MODEL` (base), `STT_DEVICE` (cpu), `STT_COMPUTE_TYPE` (int8, or float16 on cuda), `STT_LANGUAGE` (fa; `auto` = detect), `STT_VOICE_THRESHOLD` (0.008), `STT_CPU_THREADS` (min(4, cpus)), `STT_LOCAL_FILES_ONLY`.
@@ -189,7 +190,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 
 ## 7. HTTP API
 
-### User app (port 5000, CORS `*`)
+### User app (port 5000, explicit `UI_ALLOWED_ORIGINS` CORS)
 | Method | Path | Handler |
 | --- | --- | --- |
 | GET | `/` | `ui_index` (serves `frontend/index.html`, controller script injected) |
@@ -237,7 +238,7 @@ All admin mutations (every method except GET/HEAD/OPTIONS) require CSRF proof af
 ## 8. Frontend (vanilla JS, no build step)
 
 - **User UI** `frontend/`: `index.html`, `style.css` (Liquid Glass theme), `theme.js` (persisted dark/light toggle, `localStorage` key `liquid-theme`), `script.js`.
-  - `script.js`: `BACKEND_URL` = page origin, or `http://localhost:5000` when opened as `file:`. `USER_ID` is a random `user_...` id generated per page load, so every reload starts a new admin "session".
+  - `script.js`: `BACKEND_URL` = page origin; its legacy `file:` fallback is unsupported because opaque origins are denied. Serve the frontend through the user app. `USER_ID` is a random `user_...` id generated per page load, so every reload starts a new admin "session".
   - Chat: `sendMessage(messageOverride, speakReply)` -> POST `/chat`; `addMessage` (typewriter effect); `showTyping`/`hideTyping`; `addFeedbackButtons` and `sendFeedback` -> `/feedback`; `showRecommendedQuestions`, `sendQuickQuestion`.
   - Health: `checkBackendConnection` (`/health`); `checkVoiceBackend` (`/voice/health`, polled every 3 s).
   - Voice: `startVoiceRecording`, `stopVoiceRecording`, `connectVoiceStream`, `voiceTranscript`, `voiceMessage`, `speakVoiceReply`, `setVoiceStatus`, `updateVoiceControls`, `failVoiceSession`, `releaseVoiceMicrophone`. The worklet is loaded from `/voice/audio-worklet.js` (`backend/STT/audio-worklet.js`).
@@ -262,6 +263,9 @@ All admin mutations (every method except GET/HEAD/OPTIONS) require CSRF proof af
 | `GEN_MODEL`, `QWEN35_GENERATOR_PATH`, `QWEN_GENERATOR_PATH`, `GEMMA_GENERATOR_PATH` | generator folders | see 6.4 |
 | `QWEN_EMBEDDING_PATH`, `GEMMA_EMBEDDING_PATH` | embedding folders | see 6.4 |
 | `STT_*` | Whisper settings | see 6.8 |
+| `UI_ALLOWED_ORIGINS`, `ADMIN_ALLOWED_ORIGINS` | Exact comma-separated HTTP(S) browser origins; no wildcards, `null`, or URL paths | required in production; localhost/127.0.0.1/[::1] on each service's port in development |
+| `TRUSTED_PROXY_HOPS` | Exact trusted forwarding-chain length, 0-10 | 0 (ignore forwarding headers) |
+| `TRUSTED_PROXY_CIDRS` | Trusted socket/intermediary proxy IPs or IPv4/IPv6 CIDRs | empty; required when hop count is nonzero |
 
 Run: `python backend\main.py` (run from anywhere; imports are flat, relative to `backend/`), or `.\run_gpu.cmd` (requires `.venv`, asserts CUDA, sets `GEN_DEVICE=cuda`). User UI at `http://localhost:5000`, admin dashboard at `http://localhost:8000`.
 `admin.py` and `user.py` each have a `__main__` block for running one app alone in explicit development mode. Both runners use `serve_development()`, which refuses production. Use `backend/main.py` for production initialization and shared serving. See README runtime profiles for HTTPS/WebSocket proxy requirements.
@@ -274,7 +278,7 @@ Run: `python backend\main.py` (run from anywhere; imports are flat, relative to 
 - `database.py` is imported by almost every module (the logger lives there), so keep it dependency-light to avoid circular imports.
 - Import graph: `generator` -> `searchForAnswer`, `model_registry`; `interface` -> `model_registry`; `user` -> `interface`, `generator`, `searchForAnswer`, `voice`; `admin` -> `generator`, `interface`, `model_registry`, `database`; `controller_api` -> `admin`, `user`, `controller`, `generator`, `interface`, `voice`.
 - Feature changes that touch the user page or model lifecycle should go through `controller_api.py` hooks, which follows the existing "don't modify the core modules" pattern.
-- Security and production caveats: both apps now default to loopback with debug disabled and require explicit development selection to use Flask's server. Production uses threaded Gunicorn on Linux/WSL. User CORS remains `*`; see README Deployment security for credential and network restrictions.
+- Security and production caveats: both apps default to loopback with debug disabled and require explicit development selection to use Flask's server. Production uses threaded Gunicorn on Linux/WSL and requires explicit browser-origin lists. Unapproved/opaque origins are denied before handlers on both apps; admin remains same-origin only. See README for CORS, proxy trust, credential, and network restrictions.
 - There is no automated test suite. `backend/test.py` is a manual retrieval check.
 - `user.py`, `generator.py` and `searchForAnswer.py` contain commented-out older versions and duplicate imports. The live code is the uncommented one.
 - Persian strings in source can show as mojibake in some Windows consoles. Files are UTF-8; keep that encoding when editing.
@@ -288,4 +292,6 @@ Run: `python backend\main.py` (run from anywhere; imports are flat, relative to 
 
 `backend/admin_csrf.py` derives authenticated CSRF tokens using HMAC-SHA256 over the opaque session ID with a domain-separated label and the session signing secret; no schema change or cookie renewal is needed. `/admin/api/session` returns proof only after validating the active session. A pre-login random token lives in the signed cookie and hidden login form field; validation does not issue missing tokens, and login clears this state before creating the authenticated session. Tokens are compared in constant time; proof from a different, expired, rotated, or revoked session is not accepted. The central session guard enforces proof on all mutations, including login and logout, before invoking handlers. User-facing chat/feedback routes do not use admin cookies and are unchanged.
 
-Explicit development uses an HTTP-compatible `local_chatbot_admin_dev` cookie; production uses a Secure `__Host-local_chatbot_admin` cookie and refuses non-HTTPS admin requests. Both are host-only, Path `/`, HttpOnly, SameSite=Lax, with fixed expiry and no refresh per request. Admin responses are no-store; production HTTPS responses include HSTS. Admin pages must be served on their own origin, not opened as files; credentialed null-origin CORS is removed. Both apps' ProxyFix middleware trusts only the exact configured `TRUSTED_PROXY_HOPS` count (default 0) for `X-Forwarded-Proto`; it never rewrites host/port/IP. Gunicorn's implicit forwarded-scheme trust is disabled. Keep upstream listeners private and have trusted proxies overwrite scheme headers; see README for deployment settings.
+Explicit development uses an HTTP-compatible `local_chatbot_admin_dev` cookie; production uses a Secure `__Host-local_chatbot_admin` cookie and refuses non-HTTPS admin requests. Both are host-only, Path `/`, HttpOnly, SameSite=Lax, with fixed expiry and no refresh per request. Admin responses are no-store; production HTTPS responses include HSTS. Admin pages must be served on their own origin, not opened as files. `ADMIN_ALLOWED_ORIGINS` is a configured allowlist in addition to the same-origin requirement; no admin CORS is enabled. User CORS and voice handshakes use `UI_ALLOWED_ORIGINS`; malformed/opaque/unapproved origins receive 403, while originless HTTP health/native requests remain supported.
+
+Both apps use `security.TrustedProxyMiddleware`. Forwarding is disabled by default (`TRUSTED_PROXY_HOPS=0`). Enabling it also requires explicit `TRUSTED_PROXY_CIDRS`: the actual socket peer and every intermediary in the configured rightmost `X-Forwarded-For` suffix must be trusted proxy addresses. Only then may that suffix's client IP update `REMOTE_ADDR` and its corresponding HTTP(S) `X-Forwarded-Proto` entry update the scheme. Invalid/short/untrusted address chains preserve both socket identity and scheme. `get_client_ip()` never reads headers directly. Host, port, prefix, `Forwarded`, and `X-Real-IP` are never used for forwarding; Gunicorn's implicit scheme trust stays disabled. Keep upstream listeners private, have the public proxy overwrite incoming forwarding headers, and configure subsequent trusted proxies consistently with the fixed hop count. See README for deployment examples.
