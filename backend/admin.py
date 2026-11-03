@@ -17,6 +17,7 @@ from serving import serve_development
 from admin_users import authenticate, create_user, update_user, serialize_user
 from admin_sessions import create_admin_session, load_admin_session, revoke_admin_session
 from admin_csrf import csrf_token, valid_csrf_token
+from admin_policy import OPERATION_POLICIES, PUBLIC, allowed_pages, permits, request_operation
 # from logger import logDrop
 
 
@@ -35,7 +36,7 @@ from interface import (
 
 
 
-admin_app = Flask('admin', static_folder=ADMIN_DIR, static_url_path='')
+admin_app = Flask('admin', static_folder=None)
 admin_app.secret_key = session_secret()
 admin_app.config.update(admin_session_config())
 configure_security(admin_app, service='admin')
@@ -49,65 +50,28 @@ def admin_index():
     return send_from_directory(os.path.dirname(ADMIN_DIR), 'dashboard.html')
 
 
-def _permission_for_request():
-    page_permissions = {
-        'admin.html': 'json_upload',
-        'admin_pdf.html': 'pdf_upload',
-        'adminmodel.html': 'models',
-        'adminchat.html': 'chats',
-        'adminlogger.html': 'system_reports',
-        'controller.html': 'controller',
-        'admin-user-control.html': 'user_control',
-    }
-    if request.path.startswith('/admin/api/admin-users'):
-        return 'user_control'
-    if request.path.startswith('/admin/api/models'):
-        return 'models'
-    if request.path.startswith('/admin/api/pdf'):
-        return 'pdf_upload'
-    if request.path.startswith('/admin/api/upload') or request.path.startswith('/admin/api/stats'):
-        return 'json_upload'
-    if request.path.startswith('/admin/api/documents'):
-        return 'json_upload'
-    if request.path.startswith('/admin/api/chat'):
-        return 'chats'
-    if request.path.startswith('/admin/api/logs'):
-        return 'system_reports'
-    if request.path.startswith('/admin/api/controller'):
-        return 'controller'
-    filename = request.path.rsplit('/', 1)[-1]
-    return page_permissions.get(filename)
-
-
 @admin_app.before_request
 def require_admin_session():
     g.admin_user = None
     if not is_development() and not request.is_secure:
         return jsonify({'error': 'HTTPS is required for administrator access.'}), 400
-    if request.endpoint in {'login_css', 'login_js'}:
+    operation = request_operation(request.endpoint, request.method, request.path, request.view_args)
+    if operation == 'login.assets':
         return None
     current = load_admin_session(session.get('admin_session'))
     if not current and ('admin_session' in session or 'admin_user' in session):
         session.clear()
     g.admin_user = current
-    if request.endpoint == 'admin_login':
-        if request.method == 'POST' and not valid_csrf_token():
-            return jsonify({'error': 'Invalid or missing CSRF token. Reload the page and try again.'}), 403
-        return None
-    if not current:
+    if not current and OPERATION_POLICIES.get(operation) != PUBLIC:
         if request.path.startswith('/admin/api/') or request.endpoint == 'admin_logout':
             return jsonify({'error': 'Authentication required.'}), 401
         return redirect(url_for('admin_login'))
+    if request.routing_exception is not None:
+        return None
     if request.method not in {'GET', 'HEAD', 'OPTIONS'} and not valid_csrf_token():
         return jsonify({'error': 'Invalid or missing CSRF token. Reload the page and try again.'}), 403
-    if current.get('is_admin') or current.get('username') == 'administrator':
-        return None
-    permission = _permission_for_request()
-    permissions = current.get('permissions') or []
-    if permission and permission not in permissions and '*' not in permissions:
-        if request.path.startswith('/admin/api/'):
-            return jsonify({'error': 'You do not have access to this menu.'}), 403
-        return 'Forbidden', 403
+    if not permits(current, operation):
+        return jsonify({'error': 'You do not have access to this operation.'}), 403
     return None
 
 
@@ -155,14 +119,11 @@ def admin_logout():
 
 @admin_app.route('/admin/api/session')
 def admin_session():
-    return jsonify({'user': g.admin_user, 'csrf_token': csrf_token()})
+    return jsonify({'user': g.admin_user, 'csrf_token': csrf_token(), 'allowed_pages': allowed_pages(g.admin_user)})
 
 
 @admin_app.route('/admin/api/admin-users', methods=['GET', 'POST'])
 def admin_users_collection():
-    current = g.admin_user or {}
-    if not current.get('is_admin') and current.get('username') != 'administrator':
-        return jsonify({'error': 'Administrator access required.'}), 403
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
         try:
@@ -183,14 +144,14 @@ def admin_users_collection():
             users = [serialize_user(row) for row in cur.fetchall()]
     finally:
         conn.close()
-    return jsonify({'users': users})
+    return jsonify({'users': users, 'current_user_id': g.admin_user['id']})
 
 
 @admin_app.route('/admin/api/admin-users/<int:user_id>', methods=['PATCH', 'DELETE'])
 def admin_user_item(user_id):
     current = g.admin_user or {}
-    if not current.get('is_admin') and current.get('username') != 'administrator':
-        return jsonify({'error': 'Administrator access required.'}), 403
+    if request.method == 'DELETE' and user_id == current.get('id'):
+        return jsonify({'error': 'You cannot delete your own account.'}), 400
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -199,8 +160,6 @@ def admin_user_item(user_id):
             if not row:
                 return jsonify({'error': 'User not found.'}), 404
             if request.method == 'DELETE':
-                if row['username'] == 'administrator':
-                    return jsonify({'error': 'The initial administrator cannot be deleted.'}), 400
                 cur.execute('DELETE FROM `admin-users` WHERE id = %s', (user_id,))
                 conn.commit()
                 return jsonify({'ok': True})

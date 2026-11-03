@@ -32,33 +32,15 @@ logoutButton?.addEventListener("click", async () => {
     }
 });
 
-const pagePermissions = {
-    "admin/admin.html": "json_upload",
-    "admin/admin_pdf.html": "pdf_upload",
-    "admin/adminmodel.html": "models",
-    "admin/adminchat.html": "chats",
-    "admin/adminlogger.html": "system_reports",
-    "admin/controller.html": "controller",
-    "admin/admin-user-control.html": "admin"
-};
-
 adminFetch("/admin/api/session")
     .then(response => response.json())
-    .then(({ user }) => {
+    .then(({ user, allowed_pages }) => {
         if (!user) return;
-        const isAdmin = user.is_admin || user.username === "administrator";
-        const granted = user.permissions || [];
-        const allowed = item => {
-            const permission = pagePermissions[item.dataset.page];
-            if (!permission) return true;
-            if (isAdmin) return true;
-            if (permission === "admin") return false;
-            return granted.includes("*") || granted.includes(permission);
-        };
+        const allowedPages = new Set(allowed_pages || []);
         let first = null;
         menuItems.forEach(item => {
             if (item === logoutButton) return;
-            const visible = allowed(item);
+            const visible = allowedPages.has(item.dataset.page);
             item.hidden = !visible;
             item.style.display = visible ? "" : "none";
             if (visible && !first) first = item;

@@ -29,6 +29,7 @@ backend/
   security.py         Explicit browser-origin guards/CORS, peer-validated forwarding, safe errors
   admin_sessions.py   MySQL-backed opaque sessions, fixed/idle expiry, logout revocation
   admin_csrf.py       Session-bound CSRF token generation/validation, including pre-login forms
+  admin_policy.py     Exact endpoint/method/asset/action operation policies; unknown operations denied
   admin-csrf.js       Shared same-origin adminFetch helper for authenticated mutations
   user.py             User Flask app: /, /health, /chat, /feedback; _retrieve_top orchestration
   admin.py            Admin Flask app: dashboard/static routes + all /admin/api/* (~1700 lines)
@@ -45,6 +46,7 @@ backend/
   theme.js            Shared dark/light theme for the dashboard and every admin page (loaded as ../theme.js)
   admin/              Admin pages (.html/.css/.js each): admin (JSON), admin_pdf, adminmodel, adminchat, adminlogger, controller
   test.py             Ad-hoc retrieval smoke script, not a test suite
+  tests/              Offline unittest authorization matrix with Flask clients and model/DB doubles
   logger.py           Fully commented out; the real logger is in database.py
   model/              (gitignored) embedding models: Qwen3-Embedding-0.6B/, gemma-4-E2B-it/
   modelgen/           (gitignored) generator models: qwen3.5-2B/, gemma-4-E2B-it/ (Qwen3-4B files go in modelgen/ itself)
@@ -178,7 +180,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
   - `controller_inject` (after_request on `/` HTML): injects `window.__CTL_FEATURES__` and `<script src="/controller/features.js">`, and disables caching.
   - GET `/controller/features` (JSON) and GET `/controller/features.js`. The script hides the voice UI when voice is off, shows a "chat disabled" banner when chat is off, polls every 5 s, and reloads the page when voice is turned back on.
 - Admin routes: GET `/controller` (serves `admin/controller.html`), GET `/admin/api/controller/status` (`features`, `models` {generator, embedder, voice}, `busy`, `errors`, `gpu`), POST `/admin/api/controller/action`.
-- Actions: `voice_enable|voice_disable|chat_enable|chat_disable` apply immediately. `generator_load|generator_unload|embedder_load|embedder_unload|voice_load|voice_unload` run in a daemon thread and return 202. They return 409 when the same model is busy and 400 for an unknown action.
+- Actions: `voice_enable|voice_disable|chat_enable|chat_disable` apply immediately. `generator_load|generator_unload|embedder_load|embedder_unload|voice_load|voice_unload` run in a daemon thread and return 202. They return 409 when the same model is busy; unknown/unregistered actions receive 403. Each action requires its own registered `controller.<action>` policy before state mutation or background dispatch, in addition to the route's `controller.dispatch` policy.
 - An unloaded generator or embedder reloads automatically on the next chat message.
 
 ### 6.10 Logging (`database.py: class logger`)
@@ -208,7 +210,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 | GET | `/` | `admin_index` (serves `backend/dashboard.html`) |
 | GET, POST | `/login` | `admin_login` (pre-login form CSRF proof required for POST) |
 | POST | `/logout` | `admin_logout` (authenticated, CSRF-protected; GET never logs out) |
-| GET | `/admin/api/session` | `admin_session` (current user and session-bound `csrf_token`) |
+| GET | `/admin/api/session` | `admin_session` (current user, session-bound `csrf_token`, server-computed `allowed_pages`) |
 | GET, POST | `/admin/api/admin-users` | `admin_users_collection` (administrator-only) |
 | PATCH, DELETE | `/admin/api/admin-users/<int:user_id>` | `admin_user_item` (administrator-only) |
 | GET | `/admin-csrf.js` | `dashboard_asset` (shared CSRF-aware request helper) |
@@ -234,7 +236,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 | POST | `/admin/api/controller/action` | `controller_action` |
 
 A chat "session" is a `(user_id, ip_address)` group in `chat_history`.
-All admin mutations (every method except GET/HEAD/OPTIONS) require CSRF proof after authentication and before permission bypasses or handlers, including routes registered by `controller_api`. Use `X-CSRF-Token` or a `csrf_token` form field, never a query parameter. Failed proof returns 403; unauthenticated APIs/logout return 401. Login POST also requires its pre-login form token.
+All admin mutations (every method except GET/HEAD/OPTIONS) require CSRF proof after authentication and before operation authorization or handlers, including routes registered by `controller_api`. Use `X-CSRF-Token` or a `csrf_token` form field, never a query parameter. Failed proof returns 403; unauthenticated APIs/logout return 401. Login POST also requires its pre-login form token. `admin_policy.py` maps exact endpoints and methods to named operations, exact page/asset filenames to view operations, and explicit controller subactions to their own operations. Missing mappings deny access even for administrators. All account-management pages/assets/APIs require the `is_admin` role, never a username or `user_control`/wildcard grant. Generic static serving is disabled to prevent alternate-path asset bypasses. The complete matrix and test command are in `backend/admin-users/PERMISSIONS.md`.
 ## 8. Frontend (vanilla JS, no build step)
 
 - **User UI** `frontend/`: `index.html`, `style.css` (Liquid Glass theme), `theme.js` (persisted dark/light toggle, `localStorage` key `liquid-theme`), `script.js`.
@@ -279,14 +281,14 @@ Run: `python backend\main.py` (run from anywhere; imports are flat, relative to 
 - Import graph: `generator` -> `searchForAnswer`, `model_registry`; `interface` -> `model_registry`; `user` -> `interface`, `generator`, `searchForAnswer`, `voice`; `admin` -> `generator`, `interface`, `model_registry`, `database`; `controller_api` -> `admin`, `user`, `controller`, `generator`, `interface`, `voice`.
 - Feature changes that touch the user page or model lifecycle should go through `controller_api.py` hooks, which follows the existing "don't modify the core modules" pattern.
 - Security and production caveats: both apps default to loopback with debug disabled and require explicit development selection to use Flask's server. Production uses threaded Gunicorn on Linux/WSL and requires explicit browser-origin lists. Unapproved/opaque origins are denied before handlers on both apps; admin remains same-origin only. See README for CORS, proxy trust, credential, and network restrictions.
-- There is no automated test suite. `backend/test.py` is a manual retrieval check.
+- `backend/tests/test_admin_authorization.py` provides offline operation-policy and Flask authorization matrix tests. Run `python -B -m unittest discover -s backend/tests -v`; database/model doubles prevent external side effects. `backend/test.py` remains a separate manual retrieval check, not a regression test.
 - `user.py`, `generator.py` and `searchForAnswer.py` contain commented-out older versions and duplicate imports. The live code is the uncommented one.
 - Persian strings in source can show as mojibake in some Windows consoles. Files are UTF-8; keep that encoding when editing.
 - `.gitignore` excludes model folders, `model_selection.json`, `controller_state.json`, `datasets/`, `__pycache__/` and STT model/UI assets. `backend/__pycache__/*.pyc` files are still tracked in git despite the ignore rule.
 
 ## Admin user authentication
 
-`backend/admin_users.py` owns PBKDF2 password hashing, login verification, user serialization, and user-management persistence. `backend/admin.py` applies a session guard to dashboard pages and admin APIs, maps menu pages to permission names, and exposes `/login`, `POST /logout`, `/admin/api/session`, and `/admin/api/admin-users`. `database.init_admin_users_table()` creates the backtick-quoted MySQL table `admin-users`, migrates existing accounts to include `session_version`, and creates `admin_sessions`; it never seeds accounts. `backend/setup_admin.py` provides local interactive first-account setup. `backend/admin-users/login.html` is the login view; `backend/admin/admin-user-control.html` is the administrator-only management view.
+`backend/admin_users.py` owns PBKDF2 password hashing, login verification, user serialization, and user-management persistence. `backend/admin.py` applies session, CSRF, and explicit `admin_policy.py` operation checks to dashboard pages, APIs, and controller routes, and exposes `/login`, `POST /logout`, `/admin/api/session`, and `/admin/api/admin-users`. Current feature grants remain compatible, but only a true `is_admin` role grants account-management access; usernames confer no authority. The session endpoint supplies permitted navigation pages from the server policy, not a separate client role map. Account deletion forbids self-deletion by ID, not deletion of a special username. `database.init_admin_users_table()` creates the backtick-quoted MySQL table `admin-users`, migrates existing accounts to include `session_version`, and creates `admin_sessions`; it never seeds accounts. `backend/setup_admin.py` provides local interactive first-account setup. `backend/admin-users/login.html` is the login view; `backend/admin/admin-user-control.html` is the administrator-only management view.
 
 `backend/admin_sessions.py` issues random opaque IDs (only SHA-256 hashes are stored in MySQL), checks the fixed expiry and idle deadline, and deletes sessions on logout. After login, signed cookies contain only the ID and Flask's permanent flag; current user data lives in `g.admin_user`, not the cookie. Defaults are 8 hours absolute (`ADMIN_SESSION_LIFETIME_SECONDS`, 60-86400) and 30 minutes idle (`ADMIN_SESSION_IDLE_SECONDS`, 60-absolute lifetime). Requests update activity but never renew cookies or absolute expiry. `update_user()` atomically increments `session_version` with any password, permission, active-status, or administrator-status update; every older session fails even if a change is later reverted. User deletion cascades to sessions. Old pre-upgrade cookies are rejected. Direct SQL security changes must increment `session_version` atomically too.
 

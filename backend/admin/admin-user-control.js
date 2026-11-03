@@ -25,7 +25,7 @@
     }
     directoryCount.textContent = `${payload.users.length} user${payload.users.length === 1 ? "" : "s"}`;
     users.innerHTML = payload.users.length ? payload.users.map(function (user) {
-      const action = user.username === "administrator" ? "" : `<button class="btn-danger" data-id="${user.id}" type="button">Delete</button>`;
+      const action = user.id === payload.current_user_id ? "" : `<button class="btn-danger" data-id="${user.id}" type="button">Delete</button>`;
       return `<tr><td>${escapeHtml(user.username)}</td><td>${user.is_admin ? "Administrator" : "Menu user"}</td><td>${user.is_active ? "Active" : "Disabled"}</td><td>${action}</td></tr>`;
     }).join("") : '<tr><td class="empty" colspan="4">No users found.</td></tr>';
   }

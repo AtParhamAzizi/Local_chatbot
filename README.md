@@ -361,6 +361,23 @@ Upgrading automatically adds `session_version` to existing accounts and creates
 cookies are not accepted; users must sign in again after upgrading. The existing
 schema-scoped migration grants cover these changes.
 
+### Explicit operation authorization
+
+`backend/admin_policy.py` maps exact endpoints/methods, page assets, and controller
+actions to named operation policies. Unregistered operations are denied even to
+administrators; URL prefixes and menu filenames never imply permission. Existing
+feature grants remain compatible, but account-management pages and APIs require
+the actual `is_admin` role. Neither the `administrator` username nor wildcard or
+`user_control` grants confer that role. Generic static-file aliases are disabled.
+The dashboard uses server-computed `allowed_pages` from the session API. Account
+deletion prevents deleting the caller by ID instead of protecting a special name.
+
+See `backend/admin-users/PERMISSIONS.md` for the full page/API/controller matrix,
+upgrade behavior, and offline allow/deny tests. Run the tests from the repository
+root with `.\.venv\Scripts\python.exe -B -m unittest discover -s backend/tests -v`
+(or `python -B -m unittest discover -s backend/tests -v` on other platforms).
+They use isolated doubles, not your database or model files.
+
 ### Administrator CSRF protection
 
 All cookie-authenticated administrator mutations require CSRF proof, including
