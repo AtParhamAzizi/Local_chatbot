@@ -419,6 +419,28 @@ class AdminAuthorizationTests(unittest.TestCase):
         self.assertEqual(client.get('/controller/features').status_code, 200)
         self.assertEqual(client.get('/controller/features.js').status_code, 200)
 
+    def test_conversation_inspection_requires_admin_authority_not_known_identifiers(self):
+        path = '/admin/api/chat/messages?user_id=chat_known-public-id&ip=192.0.2.1'
+        for user, status in ((None, 401), (account(), 403), (account(['models']), 403)):
+            self.user = user
+            self.assertEqual(self.open(path).status_code, status)
+        self.forbidden_database.assert_not_called()
+        self.user = account(['chats'])
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = [{
+            'id': 1, 'user_id': 'chat_known-public-id', 'ip_address': '192.0.2.1',
+            'user_message': 'question', 'bot_response': 'answer', 'feedback': None,
+            'feedback_at': None, 'created_at': None,
+        }]
+        with patch.object(self.admin, 'get_conn', return_value=connection):
+            response = self.open(path)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json['messages'][0]['id'], 1)
+        query, parameters = cursor.execute.call_args.args
+        self.assertNotIn('owner_hash', query)
+        self.assertEqual(parameters, ('chat_known-public-id', '192.0.2.1'))
+
 
 if __name__ == '__main__':
     unittest.main()

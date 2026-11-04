@@ -297,10 +297,42 @@ uses the normal `/chat` path. These checks need the configured DB and models.
 The user service exposes:
 
 - `GET /health` — service health check.
-- `POST /chat` — retrieves knowledge and generates a response. Send JSON with `message` and an optional `user_id`. Every successful response includes a saved chat-history `message_id`, including fallback replies.
-- `POST /feedback` — send `{"message_id": 123, "feedback": "like"}` (or `"dislike"`) using the ID returned by `/chat`. Saves the rating and its timestamp in `chat_history`; submitting another rating updates the same message. Invalid requests return 400, missing messages return 404, and database failures return 503 so the UI can offer a retry.
+- `POST /chat` — retrieves knowledge and generates a response. Send JSON with `message`; the server establishes the anonymous session and ignores any supplied `user_id`. Every successful response includes a saved chat-history `message_id`, including fallback replies. Keep the response's chat cookie for feedback and subsequent messages.
+- `POST /feedback` — send `{"message_id": 123, "feedback": "like"}` (or `"dislike"`) using the ID returned by `/chat` and the same chat cookie. Only the originating session can rate the message; submitting another rating updates its previous feedback. Invalid requests return 400, missing/invalid/expired session proof returns 401, unknown or non-owned messages return the same 404, and database failures return 503 so the UI can offer a retry.
 
 Administrator endpoints are available under `/admin/api/` on port 8000 for knowledge-base management, PDFs, logs, and chat history.
+
+### Message ownership and upgrade behavior
+
+The served user page initializes a server-issued anonymous chat session; native
+clients can establish it with their first valid `/chat` POST. Retain the cookie
+jar across chat and feedback requests. The browser UI uses same-origin cookies,
+not client-generated user IDs. No public conversation read/delete API is exposed.
+Administrator conversation inspection and deletion still require an authenticated
+account with the `chats` permission (or the administrator role); knowing message
+IDs or public user labels does not grant that access.
+
+The dedicated chat cookie is signed with a chat-specific key derived from the
+configured session secret, is host-only and HttpOnly, uses SameSite=Lax and
+Path `/`, and has a fixed 24-hour lifetime without refresh on reads. Production
+uses Secure `__Host-local_chatbot_chat` and requires HTTPS for cookie use;
+explicit local development uses `local_chatbot_chat_dev`. Administrator cookies
+and signatures cannot be substituted for chat proof. Serve the browser UI from
+the user service's origin; credentialed cross-origin CORS is not enabled.
+
+Only a hash of the random chat identity is stored with each message. Ownership
+is not based on IP addresses, supplied `user_id` fields, or message IDs. Page
+reloads and network changes preserve ownership while the cookie remains valid.
+Clearing/losing the cookie, its expiry, or rotating `ADMIN_SESSION_SECRET`
+prevents feedback on the old session's messages; those messages cannot be
+reclaimed by supplying their public user ID. Treat the cookie as a credential.
+
+Normal startup automatically adds nullable `chat_history.owner_hash` on existing
+installations using the documented schema-scoped `ALTER` grant. Existing history
+and feedback are preserved. Older rows cannot safely be assigned an owner from
+their formerly client-chosen IDs, so they remain unowned and no longer accept
+anonymous feedback; authorized administrators retain inspection/deletion access.
+Restart through `backend/main.py` to apply the migration before serving requests.
 
 ## Project layout
 

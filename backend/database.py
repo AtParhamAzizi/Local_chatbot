@@ -285,24 +285,34 @@ def init_documents_chunk_table():
 @logger.operation
 def init_history_table():
     conn = get_conn()
-    with conn.cursor() as cur:
-        cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS chat_history (
-            id BIGINT AUTO_INCREMENT PRIMARY KEY,
-            user_id VARCHAR(64) NOT NULL,
-            ip_address VARCHAR(45) NOT NULL,
-            user_message TEXT NOT NULL,
-            bot_response TEXT NOT NULL,
-            feedback ENUM('like', 'dislike') DEFAULT NULL,
-            feedback_at TIMESTAMP NULL DEFAULT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_user_id (user_id),
-            INDEX idx_ip (ip_address),
-            INDEX idx_created_at (created_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        """)
-    conn.close()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_history (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id VARCHAR(64) NOT NULL,
+                owner_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+                ip_address VARCHAR(45) NOT NULL,
+                user_message TEXT NOT NULL,
+                bot_response TEXT NOT NULL,
+                feedback ENUM('like', 'dislike') DEFAULT NULL,
+                feedback_at TIMESTAMP NULL DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_user_id (user_id),
+                INDEX idx_ip (ip_address),
+                INDEX idx_created_at (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+            cur.execute("SHOW COLUMNS FROM chat_history LIKE 'owner_hash'")
+            if cur.fetchone() is None:
+                cur.execute(
+                    'ALTER TABLE chat_history ADD COLUMN owner_hash '
+                    'CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL'
+                )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def hash_question(q: str) -> str:

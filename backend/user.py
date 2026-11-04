@@ -1,5 +1,6 @@
 from security import configure_security
 from abuse_controls import limit_requests
+from chat_sessions import chat_owner_hash, configure_chat_sessions
 from database import get_conn, get_client_ip, logger
 from settings import safe_error_message
 from serving import serve_development
@@ -23,6 +24,7 @@ from voice import configure_voice
 FRONTEND_DIR = os.path.join(os.path.dirname(BASE_DIR), 'frontend')
 ui_app = Flask('ui', static_folder=FRONTEND_DIR, static_url_path='')
 configure_security(ui_app, service='ui')
+configure_chat_sessions(ui_app)
 configure_voice(ui_app)
 
 
@@ -32,6 +34,7 @@ configure_voice(ui_app)
 @ui_app.route('/')
 @logger.operation
 def ui_index():
+    chat_owner_hash(create=True)
     return send_from_directory(FRONTEND_DIR, 'index.html')
 
 
@@ -122,7 +125,6 @@ def chat():
 
 
 
-    user_id =data.get('user_id', 'anonymous')
     ip = get_client_ip()
 
 
@@ -131,6 +133,9 @@ def chat():
 
     if not message:
         return jsonify({'error': 'پیام خالی است'}), 400
+
+    owner_hash = chat_owner_hash(create=True)
+    user_id = 'chat_' + owner_hash[:32]
 
     try:
         hits = _retrieve_top(message, k=6)
@@ -159,9 +164,9 @@ def chat():
             with conn.cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO chat_history
-                        (user_id, ip_address, user_message, bot_response, feedback_at, created_at)
-                    VALUES (%s, %s, %s, %s, NULL, NOW())
-                """, (user_id, ip, message, reply))
+                        (user_id, owner_hash, ip_address, user_message, bot_response, feedback_at, created_at)
+                    VALUES (%s, %s, %s, %s, %s, NULL, NOW())
+                """, (user_id, owner_hash, ip, message, reply))
                 message_id = cursor.lastrowid
             conn.commit()
             logger.logDrop(f'Chat reply saved with message_id={message_id}')
@@ -211,6 +216,10 @@ def feedback():
     if feedback_value not in ('like', 'dislike'):
         return jsonify({'error': 'Invalid feedback'}), 400
 
+    owner_hash = chat_owner_hash()
+    if owner_hash is None:
+        return jsonify({'error': 'A chat session is required.'}), 401
+
     try:
         conn = get_conn()
         try:
@@ -218,10 +227,13 @@ def feedback():
                 cursor.execute("""
                     UPDATE chat_history
                     SET feedback = %s, feedback_at = NOW()
-                    WHERE id = %s
-                """, (feedback_value, message_id))
+                    WHERE id = %s AND owner_hash = %s
+                """, (feedback_value, message_id, owner_hash))
                 if cursor.rowcount == 0:
-                    cursor.execute('SELECT id FROM chat_history WHERE id = %s', (message_id,))
+                    cursor.execute(
+                        'SELECT id FROM chat_history WHERE id = %s AND owner_hash = %s',
+                        (message_id, owner_hash),
+                    )
                     if cursor.fetchone() is None:
                         return jsonify({'error': 'Message not found'}), 404
             conn.commit()

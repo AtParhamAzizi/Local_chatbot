@@ -97,6 +97,18 @@ All require `controller` and have individual registered operation IDs:
 User-side `/controller/features` and `/controller/features.js` remain public
 feature flags; they neither expose administrative status nor mutate state.
 
+## Conversation ownership
+
+User chat messages and feedback are bound to a separate, server-issued anonymous
+chat cookie. A message ID or public `user_id` is not an ownership credential.
+There is no public conversation read/delete API. The administrator chat APIs
+remain explicitly privileged support operations: authenticated `chats` grants
+or the administrator role permit cross-owner inspection/deletion, including
+legacy history without an ownership hash. An ordinary chat cookie never grants
+administrator access. Chat queries select public/message fields, not ownership
+hashes. Future user-side conversation APIs must verify the chat cookie and scope
+their SQL to its owner hash instead of copying the cross-owner admin handlers.
+
 ## Allow/deny regression tests
 
 From the repository root, run:

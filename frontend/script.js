@@ -1,6 +1,5 @@
 // Configuration - Update this URL if your backend runs on a different port
         const BACKEND_URL = location.protocol === 'file:' ? 'http://localhost:5000' : location.origin;
-        const USER_ID = 'user_' + Math.random().toString(36).substr(2, 9);
 
         // DOM elements
         const chatMessages = document.getElementById('chatMessages');
@@ -221,6 +220,7 @@ function addFeedbackButtons(messageDiv, messageId) {
 async function sendFeedback(messageId, feedback) {
     const response = await fetch(`${BACKEND_URL}/feedback`, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             message_id: messageId,
@@ -528,12 +528,12 @@ window.addEventListener('pageshow', () => {
             try {
                 const response = await fetch(`${BACKEND_URL}/chat`, {
                     method: 'POST',
+                    credentials: 'same-origin',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        message: message,
-                        user_id: USER_ID
+                        message: message
                     })
                 });
 
