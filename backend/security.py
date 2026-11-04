@@ -6,6 +6,7 @@ from flask import g, jsonify, request
 from werkzeug.exceptions import HTTPException
 
 from database import logger
+from abuse_controls import configure_abuse_controls
 from settings import (
     browser_origins, normalize_origin, redact_secrets, safe_error_message,
     trusted_proxy_hops, trusted_proxy_networks, validate_settings,
@@ -65,6 +66,7 @@ def _redact_payload(payload):
 
 def configure_security(app, *, service):
     validate_settings()
+    configure_abuse_controls(app, service=service)
     app.config.update(DEBUG=False, PROPAGATE_EXCEPTIONS=False)
     origins = browser_origins(service)
     app.wsgi_app = TrustedProxyMiddleware(
@@ -101,6 +103,7 @@ def configure_security(app, *, service):
             origin = g.get('browser_origin')
             if origin is not None:
                 response.headers['Access-Control-Allow-Origin'] = origin
+                response.headers['Access-Control-Expose-Headers'] = 'Retry-After'
                 if request.method == 'OPTIONS':
                     response.headers['Access-Control-Allow-Methods'] = 'GET, HEAD, POST, OPTIONS'
                     response.headers['Access-Control-Allow-Headers'] = 'Content-Type'

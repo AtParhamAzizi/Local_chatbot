@@ -17,6 +17,7 @@ from serving import serve_development
 from admin_users import authenticate, create_user, update_user, serialize_user
 from admin_sessions import create_admin_session, load_admin_session, revoke_admin_session
 from admin_csrf import csrf_token, valid_csrf_token
+from abuse_controls import limit_requests, retry_message
 from admin_policy import OPERATION_POLICIES, PUBLIC, allowed_pages, permits, request_operation
 # from logger import logDrop
 
@@ -83,7 +84,16 @@ def protect_admin_response(response):
     return response
 
 
+def login_throttled(retry_after):
+    return render_template_string(
+        Path(os.path.join(ADMIN_USERS_DIR, 'login.html')).read_text(encoding='utf-8'),
+        error=retry_message(retry_after),
+        csrf_token=csrf_token(),
+    )
+
+
 @admin_app.route('/login', methods=['GET', 'POST'])
+@limit_requests('login', methods=('POST',), on_limit=login_throttled)
 def admin_login():
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
@@ -260,6 +270,7 @@ def admin_stats():
 
 
 @admin_app.route('/admin/api/upload', methods=['POST'])
+@limit_requests('upload')
 @logger.operation
 def admin_upload():
     logger.logDrop('Received a knowledge-base JSON upload')
@@ -516,6 +527,7 @@ def split_text(text, chunk_size=1200, overlap=200):
 
 
 @admin_app.route('/admin/api/pdf/upload', methods=['POST'])
+@limit_requests('upload')
 @logger.operation
 def admin_pdf_upload():
 

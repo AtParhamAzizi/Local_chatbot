@@ -1,4 +1,5 @@
 from security import configure_security
+from abuse_controls import limit_requests
 from database import get_conn, get_client_ip, logger
 from settings import safe_error_message
 from serving import serve_development
@@ -112,6 +113,7 @@ def _retrieve_top(query: str, k: int = 6):
 
 
 @ui_app.route('/chat', methods=['POST'])
+@limit_requests('chat')
 @logger.operation
 def chat():
     data    = request.get_json(silent=True) or {}

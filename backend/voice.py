@@ -15,7 +15,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from flask import jsonify, send_from_directory
+from flask import jsonify, request, send_from_directory
+
+from abuse_controls import check_request_limit, limit_requests, rate_limited_response, retry_message
 
 from STT.streaming import AudioStream, MAX_PACKET_BYTES, SAMPLE_RATE
 
@@ -41,6 +43,8 @@ COMPUTE_TYPE = os.environ.get(
 )
 LANGUAGE = os.environ.get("STT_LANGUAGE", "fa")
 VOICE_THRESHOLD = float(os.environ.get("STT_VOICE_THRESHOLD", "0.008"))
+MAX_SESSION_SECONDS = 120
+MAX_SESSION_AUDIO_BYTES = MAX_SESSION_SECONDS * SAMPLE_RATE * 2
 
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="whisper")
 _model_lock = threading.Lock()
@@ -123,6 +127,7 @@ def configure_voice(app):
         return send_from_directory(STT_DIR, "audio-worklet.js")
 
     @app.get("/voice/health")
+    @limit_requests('voice_health')
     def voice_health():
         if IMPORT_ERROR is None:
             _start_model_loading()
@@ -148,6 +153,14 @@ def configure_voice(app):
     options.setdefault("max_message_size", MAX_PACKET_BYTES)
     sock = Sock(app)
 
+    @app.before_request
+    def limit_voice_handshake():
+        if request.path == '/voice-stream' and request.method == 'GET':
+            retry_after = check_request_limit('voice')
+            if retry_after:
+                return rate_limited_response(retry_after)
+        return None
+
     @sock.route("/voice-stream")
     def voice_stream(websocket):
         status, error = _model_status()
@@ -155,7 +168,10 @@ def configure_voice(app):
             websocket.send(json.dumps({"type": "error", "message": error or "Model is loading."}))
             return
         if not _transcription_slot.acquire(blocking=False):
-            websocket.send(json.dumps({"type": "error", "message": "Another transcription is active."}))
+            websocket.send(json.dumps({
+                "type": "error", "code": "rate_limited", "retry_after": 5,
+                "message": "Another transcription is active. Please retry in 5 seconds.",
+            }))
             return
 
         future = None
@@ -163,10 +179,17 @@ def configure_voice(app):
         try:
             audio_stream = AudioStream(voice_threshold=VOICE_THRESHOLD)
             stopping = False
-            last_received = time.monotonic()
+            started = last_received = time.monotonic()
+            audio_bytes = 0
             websocket.send(json.dumps({"type": "ready", "sample_rate": SAMPLE_RATE}))
 
             while True:
+                if time.monotonic() - started >= MAX_SESSION_SECONDS:
+                    websocket.send(json.dumps({
+                        "type": "error", "code": "rate_limited", "retry_after": 5,
+                        "message": "Recording time limit reached. " + retry_message(5),
+                    }))
+                    return
                 if future is not None and future.done():
                     websocket.send(json.dumps({
                         "type": "transcript",
@@ -197,6 +220,13 @@ def configure_voice(app):
                         raise ValueError("Audio received after stop.")
                     if len(message) > MAX_PACKET_BYTES:
                         raise ValueError("Audio packet is too large.")
+                    audio_bytes += len(message)
+                    if audio_bytes > MAX_SESSION_AUDIO_BYTES:
+                        websocket.send(json.dumps({
+                            "type": "error", "code": "rate_limited", "retry_after": 5,
+                            "message": "Recording audio limit reached. " + retry_message(5),
+                        }))
+                        return
                     audio_stream.feed(message)
                 else:
                     command = json.loads(message)

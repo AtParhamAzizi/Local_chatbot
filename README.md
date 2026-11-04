@@ -404,6 +404,55 @@ to obtain its pre-login cookie and hidden `csrf_token`, then submit that field
 with the credentials. The pre-login token is discarded on successful login.
 These flows work in both explicit localhost development and HTTPS production.
 
+### Login and expensive-request abuse controls
+
+Both services enforce per-client sliding-window limits before expensive handlers:
+
+| Operation | Limit per client IP | Concurrent requests per IP |
+| --- | --- | --- |
+| Login POST (all credential attempts) | 5 per 60 seconds | 1 |
+| Chat | 20 per 60 seconds | 1 |
+| JSON and PDF uploads, combined | 6 per 300 seconds | 1 |
+| Voice WebSocket handshakes | 6 per 60 seconds | 1 |
+| Voice-health polling | 60 per 60 seconds | 1 |
+
+Excess HTTP traffic receives **429** with a positive `Retry-After` delay in
+seconds, `Cache-Control: no-store`, and a retry message. APIs also return
+`{"code":"rate_limited","retry_after":60,"error":"..."}` (delay varies).
+Login re-renders the form with the delay and preserves its CSRF proof. Chat
+shows the retry message and restores the unsent text; upload pages display the
+API error. Nothing automatically retries mutations. Wait the indicated time
+and submit again; a concurrency rejection may require waiting for the current
+request to finish. Voice handshake rejection happens before upgrade; browsers
+cannot read its HTTP body, so the chat UI advises waiting 60 seconds if limited.
+
+Active voice recordings are limited to 120 seconds of wall time and 120 seconds
+of PCM audio, so fast senders cannot bypass the audio budget. Recording limits
+and the existing global transcription-busy response send WebSocket `error`
+messages with `code: "rate_limited"`, `retry_after`, and a retry message. Slots
+are released on completion, disconnect, or error; an already-running
+transcription keeps its global slot until it finishes.
+
+Limits use only the socket IP or the IP validated by the trusted-proxy policy,
+not arbitrary forwarding headers, usernames, cookies, or chat `user_id`.
+Clients behind the same NAT share limits. Login throttling does not change or
+lock any account: attacking an account from one IP does not prevent another IP
+from signing in. Rejected requests never extend the sliding-window deadline.
+Successful attempts also count; clearing cookies does not reset the budget.
+
+Counters are thread-safe, bounded to 4096 client entries per operation group,
+and expire automatically. When full, expired inactive entries are reclaimed;
+otherwise new clients receive a temporary 429 instead of evicting live limits.
+State is in memory and resets when the worker restarts. This matches the
+supported single-worker runtime, not a distributed quota. Before adding workers
+or replicas, use a shared limiter or enforce matching limits at the trusted
+edge. Configure upstream body-size, connection, and request-time limits too;
+application throttling is not a substitute for network-level DoS protection.
+
+Offline regression tests cover expiry/recovery without sleeping, concurrency,
+bounded storage, spoofed identity, account isolation, authentication/CSRF
+preservation, and voice budgets. Run the backend test command documented above.
+
 ## Deployment security
 
 The default environment is `production`. Only explicit `APP_ENV=development` (or `dev`, `local`, `test`) enables development behavior; other values fail closed. Startup fails closed when any of these settings are missing: `DB_USER`, `DB_PASS`, `DB_NAME`, or `ADMIN_SESSION_SECRET`. Unexpected errors return generic messages. Audit logs redact configured database/session secrets, and exception logs record error types rather than raw exception text.

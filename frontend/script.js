@@ -365,7 +365,7 @@ function connectVoiceStream(session) {
                 fail(error);
             }
         };
-        socket.onerror = () => fail(new Error('اتصال زنده به سرور برقرار نشد.'));
+        socket.onerror = () => fail(new Error('اتصال زنده برقرار نشد. اگر درخواست‌ها محدود شده‌اند، ۶۰ ثانیه صبر کنید و دوباره تلاش کنید.'));
         socket.onclose = () => {
             clearTimeout(timeout);
             const error = new Error('اتصال به سرور گفتار قطع شد.');
@@ -523,6 +523,7 @@ window.addEventListener('pageshow', () => {
 
             // Show typing indicator
             showTyping();
+            let rateLimitMessage = '';
 
             try {
                 const response = await fetch(`${BACKEND_URL}/chat`, {
@@ -537,6 +538,11 @@ window.addEventListener('pageshow', () => {
                 });
 
                 if (!response.ok) {
+                    if (response.status === 429) {
+                        const limited = await response.json();
+                        rateLimitMessage = limited.error;
+                        messageInput.value = message;
+                    }
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
 
@@ -564,13 +570,13 @@ window.addEventListener('pageshow', () => {
 
             } catch (error) {
                 hideTyping();
-                addMessage("متاسفانه پاسخ دقیقی برای سوالتون پیدا نشد. برای ارتباط تلفنی میتوانید با شماره 1649 تماس بگیرید.", false);
+                addMessage(rateLimitMessage || "متاسفانه پاسخ دقیقی برای سوالتون پیدا نشد. برای ارتباط تلفنی میتوانید با شماره 1649 تماس بگیرید.", false);
                 console.error('Backend error:', error);
                 document.getElementById('recommendedQuestions').innerHTML = '';
 
 
                 // Update connection status
-                connectionStatus.className = 'connection-status error';
+                if (!rateLimitMessage) connectionStatus.className = 'connection-status error';
             } finally {
                 // Re-enable input
                 chatBusy = false;
