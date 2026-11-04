@@ -1,6 +1,7 @@
 from security import configure_security
 from abuse_controls import limit_requests
 from chat_sessions import chat_owner_hash, configure_chat_sessions
+from request_validation import CHAT_FIELDS, FEEDBACK_FIELDS, json_object
 from database import get_conn, get_client_ip, logger
 from settings import safe_error_message
 from serving import serve_development
@@ -119,8 +120,8 @@ def _retrieve_top(query: str, k: int = 6):
 @limit_requests('chat')
 @logger.operation
 def chat():
-    data    = request.get_json(silent=True) or {}
-    message = (data.get('message') or '').strip()
+    data = json_object(CHAT_FIELDS, required=('message',))
+    message = data['message']
 
 
 
@@ -203,18 +204,10 @@ def chat():
 @ui_app.route('/feedback', methods=['POST'])
 @logger.operation
 def feedback():
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({'error': 'A JSON object is required'}), 400
+    data = json_object(FEEDBACK_FIELDS, required=('message_id', 'feedback'))
 
-    message_id = data.get('message_id')
-    feedback_value = data.get('feedback')
-
-    if type(message_id) is not int or not 0 < message_id <= 9223372036854775807:
-        return jsonify({'error': 'message_id must be a positive integer'}), 400
-
-    if feedback_value not in ('like', 'dislike'):
-        return jsonify({'error': 'Invalid feedback'}), 400
+    message_id = data['message_id']
+    feedback_value = data['feedback']
 
     owner_hash = chat_owner_hash()
     if owner_hash is None:

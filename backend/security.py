@@ -7,6 +7,7 @@ from werkzeug.exceptions import HTTPException
 
 from database import logger
 from abuse_controls import configure_abuse_controls
+from request_validation import InvalidRequest, configure_request_limits
 from settings import (
     browser_origins, normalize_origin, redact_secrets, safe_error_message,
     trusted_proxy_hops, trusted_proxy_networks, validate_settings,
@@ -96,6 +97,8 @@ def configure_security(app, *, service):
         g.browser_origin = origin
         return None
 
+    configure_request_limits(app)
+
     @app.after_request
     def browser_origin_headers(response):
         if service == 'ui':
@@ -121,8 +124,16 @@ def configure_security(app, *, service):
         logger.logDrop(f'Request failed: {safe_error_message(error)}', logger.FAILED)
         return jsonify(error='Request failed. Please try again.'), 500
 
+    @app.errorhandler(InvalidRequest)
+    def invalid_request(error):
+        return jsonify(error=error.description, code='invalid_request'), 400
+
     @app.after_request
     def sanitize_error_response(response):
         if response.status_code >= 400 and response.is_json:
-            response.set_data(app.json.dumps(_redact_payload(response.get_json())))
+            payload = response.get_json()
+            if response.status_code in {400, 413, 415} and isinstance(payload, dict):
+                codes = {400: 'invalid_request', 413: 'payload_too_large', 415: 'unsupported_media_type'}
+                payload.setdefault('code', codes[response.status_code])
+            response.set_data(app.json.dumps(_redact_payload(payload)))
         return response

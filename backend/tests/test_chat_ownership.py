@@ -185,11 +185,19 @@ class ChatOwnershipTests(unittest.TestCase):
     def test_claimed_owner_fields_and_headers_do_not_grant_ownership(self):
         message_id = self.chat(self.owner)
         victim = self.history.rows[message_id]
-        self.chat(self.other, json={'message': 'hello', 'user_id': victim['user_id'], 'owner_hash': victim['owner_hash']})
+        response = self.other.post('/chat', json={
+            'message': 'hello', 'user_id': victim['user_id'], 'owner_hash': victim['owner_hash'],
+        })
+        self.assertEqual(response.status_code, 400)
+        self.chat(self.other, json={'message': 'hello', 'user_id': victim['user_id']})
         response = self.other.post('/feedback', json={
             'message_id': message_id, 'feedback': 'like',
             'user_id': victim['user_id'], 'owner_hash': victim['owner_hash'],
         }, headers={'X-Forwarded-For': victim['ip_address'], 'X-Owner-Hash': victim['owner_hash']})
+        self.assertEqual(response.status_code, 400)
+        response = self.other.post('/feedback', json={'message_id': message_id, 'feedback': 'like'}, headers={
+            'X-Forwarded-For': victim['ip_address'], 'X-Owner-Hash': victim['owner_hash'],
+        })
         self.assertEqual(response.status_code, 404)
         self.assertIsNone(victim['feedback'])
 

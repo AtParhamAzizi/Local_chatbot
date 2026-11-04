@@ -17,6 +17,7 @@ from admin import admin_app
 from admin_policy import CONTROLLER_ACTION_OPERATIONS, permits
 from controller import _free_memory, _gpu_info, _set_state, _state
 from database import logger
+from request_validation import json_object, text
 from user import ui_app
 
 _busy = {}
@@ -235,8 +236,8 @@ def register():
     @admin_app.post('/admin/api/controller/action')
     @logger.operation
     def controller_action():
-        data = request.get_json(silent=True) or {}
-        action = data.get('action')
+        data = json_object({'action': text(64, 1)}, required=('action',))
+        action = data['action']
         operation = CONTROLLER_ACTION_OPERATIONS.get(action) if isinstance(action, str) else None
         if not permits(g.admin_user, operation):
             return jsonify(error='Controller action is not permitted.'), 403

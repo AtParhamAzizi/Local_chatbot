@@ -8,8 +8,6 @@ import fitz
 import numpy as np
 from flask import request, jsonify, redirect, url_for, session, render_template_string, g
 
-import json
-
 from flask import Flask, request, jsonify, send_from_directory
 from database import get_conn, init_db,hash_question, logger, sha256_bytes
 from settings import admin_session_config, is_development, session_secret, redact_secrets, safe_error_message
@@ -19,6 +17,14 @@ from admin_sessions import create_admin_session, load_admin_session, revoke_admi
 from admin_csrf import csrf_token, valid_csrf_token
 from abuse_controls import limit_requests, retry_message
 from admin_policy import OPERATION_POLICIES, PUBLIC, allowed_pages, permits, request_operation
+from request_validation import (
+    CONVERSATION_FIELDS, MAX_ANSWER_CHARS, MAX_BIGINT, MAX_IMPORT_ROWS, MAX_JSON_UPLOAD_BYTES,
+    MAX_MESSAGE_CHARS, MAX_PDF_CHUNKS, MAX_PDF_PAGES, MAX_PDF_TEXT_CHARS,
+    MAX_PDF_UPLOAD_BYTES, PAGE_FIELDS, USER_FIELDS, USER_UPDATE_FIELDS, InvalidRequest, bounded_ids,
+    form_object, json_object, parse_json, query_integer, query_schema, read_upload,
+    text, validate_object,
+)
+from werkzeug.exceptions import RequestEntityTooLarge
 # from logger import logDrop
 
 
@@ -31,7 +37,6 @@ from interface import (
     set_embedding_model,
     ADMIN_DIR,
     ADMIN_PORT,
-    MAX_UPLOAD_BYTES,
     ALLOWED_EXT,
 )
 
@@ -96,8 +101,11 @@ def login_throttled(retry_after):
 @limit_requests('login', methods=('POST',), on_limit=login_throttled)
 def admin_login():
     if request.method == 'POST':
-        username = (request.form.get('username') or '').strip()
-        password = request.form.get('password') or ''
+        data = form_object({
+            'username': text(64, 1), 'password': text(1024, 1, strip=False), 'csrf_token': text(256, 1),
+        }, required=('username', 'password'))
+        username = data['username']
+        password = data['password']
         user = authenticate(username, password)
         if user:
             token = create_admin_session(user)
@@ -135,10 +143,10 @@ def admin_session():
 @admin_app.route('/admin/api/admin-users', methods=['GET', 'POST'])
 def admin_users_collection():
     if request.method == 'POST':
-        data = request.get_json(silent=True) or {}
+        data = json_object(USER_FIELDS, required=('username', 'password'))
         try:
             user_id = create_user(
-                data.get('username'), data.get('password'), data.get('permissions'), bool(data.get('is_admin'))
+                data['username'], data['password'], data.get('permissions'), data.get('is_admin', False)
             )
             return jsonify({'ok': True, 'id': user_id}), 201
         except ValueError as error:
@@ -158,7 +166,9 @@ def admin_users_collection():
 
 
 @admin_app.route('/admin/api/admin-users/<int:user_id>', methods=['PATCH', 'DELETE'])
+@bounded_ids(user_id=2147483647)
 def admin_user_item(user_id):
+    data = json_object(USER_UPDATE_FIELDS, nonempty=True) if request.method == 'PATCH' else None
     current = g.admin_user or {}
     if request.method == 'DELETE' and user_id == current.get('id'):
         return jsonify({'error': 'You cannot delete your own account.'}), 400
@@ -173,7 +183,6 @@ def admin_user_item(user_id):
                 cur.execute('DELETE FROM `admin-users` WHERE id = %s', (user_id,))
                 conn.commit()
                 return jsonify({'ok': True})
-            data = request.get_json(silent=True) or {}
             changed = update_user(
                 user_id,
                 password=data.get('password'),
@@ -225,11 +234,8 @@ def admin_models():
 @admin_app.route('/admin/api/models', methods=['POST'])
 @logger.operation
 def admin_set_model():
-    data = request.get_json(silent=True) or {}
-    model_id = str(data.get('model_id') or '').strip()
-
-    if not model_id:
-        return jsonify({'error': 'model_id is required'}), 400
+    data = json_object({'model_id': text(64, 1)}, required=('model_id',))
+    model_id = data['model_id']
 
     try:
         set_active_model(model_id)
@@ -276,58 +282,25 @@ def admin_upload():
     logger.logDrop('Received a knowledge-base JSON upload')
     started = time.time()
 
-    if 'file' not in request.files:
-        return jsonify({'error': 'فایلی ارسال نشده است'}), 400
+    raw, filename, replace = read_upload(ALLOWED_EXT, MAX_JSON_UPLOAD_BYTES)
+    payload = parse_json(raw)
+    if not isinstance(payload, list) or not payload:
+        raise InvalidRequest('The uploaded JSON must be a non-empty array of question/answer objects.')
+    if len(payload) > MAX_IMPORT_ROWS:
+        raise RequestEntityTooLarge()
 
-    file = request.files['file']
-    if not file.filename:
-        return jsonify({'error': 'نام فایل خالی است'}), 400
-
-    ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in ALLOWED_EXT:
-        return jsonify({'error': 'فرمت فایل باید JSON باشد'}), 400
-
-    raw = file.read()
-    if len(raw) > MAX_UPLOAD_BYTES:
-        return jsonify({'error': 'حجم فایل بیش از حد مجاز است'}), 413
-
-    try:
-        payload = json.loads(raw.decode('utf-8'))
-    except UnicodeDecodeError:
-        return jsonify({'error': 'فایل باید با انکودینگ UTF-8 ذخیره شده باشد'}), 400
-    except json.JSONDecodeError as e:
-        return jsonify({'error': f'JSON نامعتبر: {e.msg} (موقعیت {e.pos})'}), 400
-
-    if not isinstance(payload, list):
-        return jsonify({'error': 'ساختار فایل باید آرایه‌ای از آبجکت‌ها باشد'}), 400
-
-    replace = request.form.get('replace', 'false').lower() in ('1', 'true', 'yes', 'on')
-
-    rows, errors, seen = [], [], set()
-    for i, item in enumerate(payload):
-        if not isinstance(item, dict):
-            errors.append(f'ردیف {i + 1}: باید آبجکت باشد')
-            continue
-        q = item.get('question')
-        a = item.get('answer')
-        if not isinstance(q, str) or not q.strip():
-            errors.append(f'ردیف {i + 1}: فیلد question خالی یا نامعتبر')
-            continue
-        if not isinstance(a, str) or not a.strip():
-            errors.append(f'ردیف {i + 1}: فیلد answer خالی یا نامعتبر')
-            continue
-        q, a = q.strip(), a.strip()
+    rows, seen = [], set()
+    for item in payload:
+        item = validate_object(item, {
+            'question': text(MAX_MESSAGE_CHARS, 1), 'answer': text(MAX_ANSWER_CHARS, 1),
+        }, required=('question', 'answer'))
+        q, a = item['question'], item['answer']
         h = hash_question(q)
         if h in seen:
             continue
         seen.add(h)
         rows.append((q, a, h))
 
-    if not rows:
-        return jsonify({
-            'error':  'هیچ ردیف معتبری در فایل یافت نشد',
-            'errors': errors[:50],
-        }), 400
 
     try:
         vectors = embed_texts([r[0] for r in rows])
@@ -372,9 +345,6 @@ def admin_upload():
         conn.close()
 
     logger.logDrop(f'JSON import completed: inserted={inserted}, updated={updated}, skipped={skipped}')
-    if errors:
-        logger.logDrop(f'JSON import ignored {len(errors)} invalid entries', logger.WARNING)
-
     return jsonify({
         'received':     len(payload),
         'inserted':     inserted,
@@ -382,21 +352,18 @@ def admin_upload():
         'skipped':      skipped,
         'embedded':     inserted + updated,
         'duration_sec': round(time.time() - started, 2),
-        'errors':       errors[:50],
+        'errors':       [],
     })
 
 
 
 @admin_app.route('/admin/api/documents')
+@query_schema(PAGE_FIELDS)
 @logger.operation
 def admin_documents():
-    try:
-        page     = max(1, int(request.args.get('page', 1)))
-        per_page = min(100, max(1, int(request.args.get('per_page', 10))))
-    except ValueError:
-        return jsonify({'error': 'پارامترهای صفحه نامعتبر'}), 400
-
-    q      = (request.args.get('q') or '').strip()
+    page = g.validated_query.get('page', 1)
+    per_page = g.validated_query.get('per_page', 10)
+    q = g.validated_query.get('q', '')
     offset = (page - 1) * per_page
 
     conn = get_conn()
@@ -446,6 +413,7 @@ def admin_documents():
 
 
 @admin_app.route('/admin/api/documents/<int:doc_id>', methods=['DELETE'])
+@bounded_ids(doc_id=2147483647)
 @logger.operation
 def admin_delete(doc_id):
     conn = get_conn()
@@ -464,8 +432,6 @@ def admin_delete(doc_id):
 
 
 PDF_ALLOWED_EXT = {'.pdf'}
-
-MAX_PDF_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 PDF_CHUNK_SIZE = 900
 PDF_CHUNK_OVERLAP = 160
@@ -532,39 +498,8 @@ def split_text(text, chunk_size=1200, overlap=200):
 def admin_pdf_upload():
 
     started = time.time()
+    raw, filename, replace = read_upload(PDF_ALLOWED_EXT, MAX_PDF_UPLOAD_BYTES)
 
-    if 'file' not in request.files:
-        return jsonify({
-            'error': 'فایلی ارسال نشده است'
-        }), 400
-
-    file = request.files['file']
-
-    if not file.filename:
-        return jsonify({
-            'error': 'نام فایل خالی است'
-        }), 400
-
-    filename = file.filename
-
-    ext = Path(filename).suffix.lower()
-
-    if ext not in PDF_ALLOWED_EXT:
-        return jsonify({
-            'error': 'فقط فایل PDF پذیرفته می‌شود'
-        }), 400
-
-    raw = file.read()
-
-    if len(raw) > MAX_PDF_UPLOAD_BYTES:
-        return jsonify({
-            'error': 'حجم فایل بیش از حد مجاز است'
-        }), 413
-
-    if not raw:
-        return jsonify({
-            'error': 'فایل PDF خالی است'
-        }), 400
 
 
     try:
@@ -576,6 +511,10 @@ def admin_pdf_upload():
 
     pdf_page_count = pdf.page_count
 
+    if pdf_page_count > MAX_PDF_PAGES:
+        pdf.close()
+        raise RequestEntityTooLarge()
+
     if pdf.page_count == 0:
         pdf.close()
 
@@ -583,50 +522,8 @@ def admin_pdf_upload():
             'error': 'فایل PDF هیچ صفحه‌ای ندارد'
         }), 400
 
-    document_hash = sha256_bytes(raw)
-
-
-    conn = get_conn()
-
-    try:
-
-        with conn.cursor() as cur:
-
-            cur.execute(
-                """
-                SELECT id, filename, status
-                FROM pdf_documents
-                WHERE document_hash = %s
-                """,
-                (document_hash,)
-            )
-
-            existing = cur.fetchone()
-
-    finally:
-        conn.close()
-
-    replace = request.form.get(
-        'replace',
-        'false'
-    ).lower() in ('1', 'true', 'yes', 'on')
-
-    if existing and not replace:
-
-        pdf.close()
-
-        return jsonify({
-            'success': False,
-            'duplicate': True,
-            'message': 'این فایل PDF قبلاً بارگذاری شده است.',
-            'document_id': existing['id'],
-            'filename': existing['filename'],
-            'status': existing['status']
-        }), 409
-
-
-
     pages = []
+    total_text_chars = 0
 
     try:
 
@@ -636,6 +533,9 @@ def admin_pdf_upload():
 
             text = page.get_text("text", sort=True)
 
+            total_text_chars += len(text)
+            if total_text_chars > MAX_PDF_TEXT_CHARS:
+                raise RequestEntityTooLarge()
             text = text.strip()
 
             if text:
@@ -644,13 +544,10 @@ def admin_pdf_upload():
                     'text': text
                 })
 
+    except RequestEntityTooLarge:
+        raise
     except Exception as e:
-
-        pdf.close()
-
-        return jsonify({
-            'error': 'Request failed.'
-        }), 500
+        return jsonify({'error': 'Unable to extract PDF text.'}), 400
 
     finally:
         pdf.close()
@@ -678,7 +575,8 @@ def admin_pdf_upload():
         )
 
         for content in page_chunks:
-
+            if len(chunks) >= MAX_PDF_CHUNKS:
+                raise RequestEntityTooLarge()
             chunks.append({
                 'chunk_index': chunk_index,
                 'page_start': page['page'],
@@ -693,6 +591,23 @@ def admin_pdf_upload():
         return jsonify({
             'error': 'هیچ chunk قابل استفاده‌ای از PDF تولید نشد'
         }), 400
+
+    document_hash = sha256_bytes(raw)
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                'SELECT id, filename, status FROM pdf_documents WHERE document_hash = %s',
+                (document_hash,),
+            )
+            existing = cur.fetchone()
+    finally:
+        conn.close()
+    if existing and not replace:
+        return jsonify({
+            'success': False, 'duplicate': True, 'message': 'This PDF has already been uploaded.',
+            'document_id': existing['id'], 'filename': existing['filename'], 'status': existing['status'],
+        }), 409
 
     try:
 
@@ -893,37 +808,14 @@ def admin_pdf_upload():
 
 
 @admin_app.route('/admin/api/pdf/documents')
+@query_schema(PAGE_FIELDS)
 @logger.operation
 def admin_pdf_documents():
 
-    try:
-
-        page = max(
-            1,
-            int(request.args.get('page', 1))
-        )
-
-        per_page = min(
-            100,
-            max(
-                1,
-                int(request.args.get('per_page', 10))
-            )
-        )
-
-    except ValueError:
-
-        return jsonify({
-            'error': 'پارامترهای صفحه نامعتبر'
-        }), 400
-
-    q = (
-        request.args.get('q') or ''
-    ).strip()
-
-    offset = (
-        page - 1
-    ) * per_page
+    page = g.validated_query.get('page', 1)
+    per_page = g.validated_query.get('per_page', 10)
+    q = g.validated_query.get('q', '')
+    offset = (page - 1) * per_page
 
     conn = get_conn()
 
@@ -1025,6 +917,7 @@ def admin_pdf_documents():
     '/admin/api/pdf/documents/<int:doc_id>',
     methods=['DELETE']
 )
+@bounded_ids(doc_id=2147483647)
 @logger.operation
 def admin_pdf_delete(doc_id):
 
@@ -1198,6 +1091,7 @@ from flask import request, jsonify, redirect, url_for, session, render_template_
 # ============================================================
 
 @admin_app.route('/admin/api/chat/sessions', methods=['GET'])
+@query_schema({'limit': query_integer(1, 1000), 'q': text(256)})
 @logger.operation
 def admin_chat_sessions():
 
@@ -1422,6 +1316,7 @@ def admin_chat_sessions():
 
 
 @admin_app.route('/admin/api/chat/messages', methods=['GET'])
+@query_schema(CONVERSATION_FIELDS, required=('user_id',))
 @logger.operation
 def admin_chat_messages():
     """
@@ -1688,6 +1583,7 @@ def admin_chat_stats():
     '/admin/api/chat/sessions',
     methods=['DELETE']
 )
+@query_schema(CONVERSATION_FIELDS, required=('user_id',))
 @logger.operation
 def admin_chat_delete_session():
 
@@ -1779,6 +1675,7 @@ def admin_chat_delete_session():
     '/admin/api/chat/logs',
     methods=['DELETE']
 )
+@query_schema({'id': query_integer(1, MAX_BIGINT)}, required=('id',))
 @logger.operation
 def admin_chat_delete_message():
 

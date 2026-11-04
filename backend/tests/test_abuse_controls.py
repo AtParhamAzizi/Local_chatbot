@@ -13,6 +13,7 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
+import numpy as np
 from flask import Response
 
 
@@ -120,7 +121,7 @@ class FakeSock:
         return decorate
 
 
-class AbuseEndpointTests(unittest.TestCase):
+class AbuseEndpointFixture:
     @classmethod
     def setUpClass(cls):
         cls.resources = ExitStack()
@@ -139,6 +140,7 @@ class AbuseEndpointTests(unittest.TestCase):
 
         cls.forbidden_model = Mock(side_effect=AssertionError('Real model access is forbidden'))
         doubles = {
+            'numpy': np,
             'interface': module_double('interface', embed_texts=cls.forbidden_model,
                                        embedding_dim=cls.forbidden_model, set_embedding_model=cls.forbidden_model,
                                        BASE_DIR=str(BACKEND_DIR), ADMIN_DIR=str(BACKEND_DIR / 'admin'),
@@ -229,6 +231,8 @@ class AbuseEndpointTests(unittest.TestCase):
             self.assertEqual(response.json['code'], 'rate_limited')
         return retry_after
 
+
+class AbuseEndpointTests(AbuseEndpointFixture, unittest.TestCase):
     def test_login_limit_survives_cookie_and_username_changes_and_recovers(self):
         proof = self.login_proof()
         with patch.object(self.admin, 'authenticate', return_value=None) as authenticate:
@@ -315,14 +319,14 @@ class AbuseEndpointTests(unittest.TestCase):
         for path in paths:
             self.assertEqual(self.admin_open(path, 'POST').status_code, 403)
         for attempt in range(6):
-            response = self.admin_open(paths[attempt % 2], 'POST', headers=headers)
+            response = self.admin_open(paths[attempt % 2], 'POST', headers=headers, content_type='multipart/form-data')
             self.assertEqual(response.status_code, 400)
         for path in paths:
             self.assertEqual(self.assert_limited(self.admin_open(path, 'POST', headers=headers)), 300)
-        response = self.admin_open(paths[0], 'POST', headers=headers, address='192.0.2.2')
+        response = self.admin_open(paths[0], 'POST', headers=headers, address='192.0.2.2', content_type='multipart/form-data')
         self.assertEqual(response.status_code, 400)
         self.now += 300
-        self.assertEqual(self.admin_open(paths[1], 'POST', headers=headers).status_code, 400)
+        self.assertEqual(self.admin_open(paths[1], 'POST', headers=headers, content_type='multipart/form-data').status_code, 400)
 
     def test_voice_admission_is_before_upgrade_and_origin_rejection_does_not_consume_it(self):
         for attempt in range(8):

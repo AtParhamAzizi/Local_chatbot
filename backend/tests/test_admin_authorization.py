@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import importlib
+import json
 import sys
 import threading
 import types
@@ -366,7 +367,20 @@ class AdminAuthorizationTests(unittest.TestCase):
             for action in ['future_load', 'future_disable', 'unknown', None, [], {}, 12]:
                 with self.subTest(action=action):
                     response = self.open('/admin/api/controller/action', 'POST', json={'action': action}, headers=self.csrf_headers())
-                    self.assertEqual(response.status_code, 403)
+                    self.assertEqual(response.status_code, 403 if isinstance(action, str) else 400)
+            start_action.assert_not_called()
+            self.persist_state.assert_not_called()
+
+    def test_controller_rejects_malformed_and_unexpected_payloads_without_dispatch(self):
+        self.user = account(administrator=True)
+        with patch.object(self.controller, '_start_model_action') as start_action:
+            for payload in ([], None, {}, {'action': 'x' * 65},
+                            {'action': 'generator_load', 'unexpected': True}):
+                with self.subTest(payload=payload):
+                    response = self.open('/admin/api/controller/action', 'POST', data=json.dumps(payload),
+                                         content_type='application/json', headers=self.csrf_headers())
+                    self.assertEqual(response.status_code, 400)
+                    self.assertEqual(response.json['code'], 'invalid_request')
             start_action.assert_not_called()
             self.persist_state.assert_not_called()
 

@@ -172,7 +172,9 @@ Use the dashboard to import JSON records shaped like:
 ]
 ```
 
-PDF uploads are limited to 50 MB. JSON knowledge-base uploads are limited to 20 MB.
+PDF uploads are limited to 50 MiB, 200 pages and 256 chunks. JSON knowledge-base
+uploads are limited to 20 MiB and 256 records; every row must be valid. See
+"Request schemas and resource limits" for text, body and pagination bounds.
 
 ### Production (Linux or WSL)
 
@@ -484,6 +486,55 @@ application throttling is not a substitute for network-level DoS protection.
 Offline regression tests cover expiry/recovery without sleeping, concurrency,
 bounded storage, spoofed identity, account isolation, authentication/CSRF
 preservation, and voice budgets. Run the backend test command documented above.
+
+### Request schemas and resource limits
+
+Both apps use `backend/request_validation.py` to bound bodies before handlers
+and validate accepted inputs before retrieval, generation, password hashing,
+model changes, or embedding. Existing origin, authentication, CSRF, permission,
+and rate checks still apply; their 401/403/429 responses take precedence where
+applicable. Declared oversized bodies are rejected before reading or session lookup.
+
+| Input | Limit |
+| --- | --- |
+| Non-upload request body | 64 KiB |
+| JSON / PDF upload file | 20 MiB / 50 MiB |
+| Multipart request envelope | File limit plus 64 KiB |
+| Multipart parsing | 8 parts; 128 KiB per form field/parser buffer; filename 255 characters |
+| Chat message / imported question / imported answer | 4096 / 4096 / 16000 characters; nonblank strings |
+| JSON import | 1-256 question/answer objects; every row must be valid |
+| PDF processing | 200 pages; 500000 extracted characters; 256 chunks |
+| Document pagination | `page` 1-10000; `per_page` 1-100; search `q` at most 256 characters |
+| Chat-session listing | `limit` 1-1000; search `q` at most 256 characters |
+| Query string | 8 KiB |
+| Login/account credentials | Username at most 64 characters; password at most 1024 (whitespace preserved) |
+
+JSON APIs require a JSON object with the documented fields and exact field
+types. Unknown or duplicate keys, invalid UTF-8, non-finite JSON constants,
+wrong types, and out-of-range values are rejected instead of coerced or clamped.
+Feedback IDs must be positive JSON integers, not strings or booleans.
+The optional legacy chat `user_id` must be a string of at most 64 characters
+and is still ignored for identity. Account flags must be JSON booleans;
+permissions must be an array of at most 32 nonblank names (64 characters each)
+or the legacy `"*"` value. New usernames/passwords require 3/8 characters.
+
+Uploads require exactly one multipart `file`, with only optional `replace` and
+`csrf_token` fields. `replace` accepts `true/false`, `1/0`, `yes/no`, or `on/off`.
+File quotas apply while spooling multipart input, including CSRF form parsing,
+and reads are capped at the file limit plus one byte. Temporary files close on
+success and parser failure. Unknown-length bodies remain bounded when the WSGI
+server marks the stream terminated (as for supported chunked requests); without
+that signal, Werkzeug does not read an unbounded stream. Keep upstream body-size,
+connection and timeout limits as defense in depth.
+
+Client errors consistently return JSON with `error` and `code`:
+**400** `invalid_request` for invalid schemas/content, **413**
+`payload_too_large` for body/file/processing quotas, and **415**
+`unsupported_media_type` for the wrong request content type. Invalid JSON-import
+rows now reject the whole upload before any embedding or writes; successful
+responses retain `errors: []`. PDF limits are checked before embedding or
+replacement. Correct the input, reduce its size, or split a large import before
+resubmitting. Offline tests verify these rejections never invoke model work.
 
 ## Deployment security
 
