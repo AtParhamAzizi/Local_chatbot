@@ -18,3 +18,4 @@ feauturePlan.md
 .env
 .env.*
 !.env.example
+backend/req/

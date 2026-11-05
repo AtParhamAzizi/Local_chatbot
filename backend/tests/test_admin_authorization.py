@@ -178,10 +178,10 @@ class AdminAuthorizationTests(unittest.TestCase):
         cls.admin = importlib.import_module('admin')
         cls.controller = importlib.import_module('controller_api')
         cls.app = cls.admin.admin_app
-        cls.test_handler = Mock(return_value=Response(status=204))
+        cls.unmapped_handler_spy = Mock(return_value=Response(status=204))
 
         def unmapped_handler():
-            return cls.test_handler()
+            return cls.unmapped_handler_spy()
 
         for path in ('/admin/api/unmapped', '/admin/api/models/unmapped', '/unmapped-page'):
             cls.app.add_url_rule(path, endpoint='unmapped_operation', view_func=unmapped_handler, methods=['GET', 'POST'])
@@ -204,7 +204,7 @@ class AdminAuthorizationTests(unittest.TestCase):
         self.forbidden_database.reset_mock()
         self.model_loader.reset_mock()
         self.persist_state.reset_mock()
-        self.test_handler.reset_mock()
+        self.unmapped_handler_spy.reset_mock()
 
     def tearDown(self):
         self.forbidden_database.assert_not_called()
@@ -288,7 +288,7 @@ class AdminAuthorizationTests(unittest.TestCase):
                     self.assertEqual(self.open(path, method, headers=self.csrf_headers()).status_code, 403)
             for path in ('/adminmodel.html', '/adminmodel.js', '/adminmodel.css'):
                 self.assertEqual(self.open(path).status_code, 404)
-        self.test_handler.assert_not_called()
+        self.unmapped_handler_spy.assert_not_called()
 
     def test_all_mutations_still_require_session_bound_csrf(self):
         self.user = account(administrator=True)
