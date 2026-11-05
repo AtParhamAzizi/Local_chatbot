@@ -21,3 +21,5 @@ feauturePlan.md
 backend/req/
 backend/tests/browser/node_modules/
 backend/tests/browser-artifacts/
+.venv/
+.venv-tests/

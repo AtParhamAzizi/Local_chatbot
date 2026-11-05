@@ -242,3 +242,107 @@ The older `browser_security_smoke.py` / `.cjs` remains a separate F011/F012 CSP,
 worklet and WebSocket compatibility check on fixed ports 5000/8000 with its own
 optional speech dependencies. It is not the primary journey regression runner
 and is not invoked by this suite or default unittest discovery.
+
+## Continuous integration (F016)
+
+`.github/workflows/ci.yml` runs on every pull request, pushes to `main`, merge
+queue groups, and manual dispatch. There are no path filters or successful skips
+for missing prerequisites. All jobs use disposable GitHub-hosted CPU runners,
+read-only repository permissions, SHA-pinned actions and no deployment secrets.
+Pull requests use `pull_request`, never privileged `pull_request_target` execution.
+
+The independent required jobs are:
+
+| Check | What runs |
+| --- | --- |
+| Source checks | Python 3.12 compiles all Git-tracked/nonignored new `.py` files in memory, without importing them or writing bytecode; Node 22 checks all `.js`, `.cjs`, `.mjs` files with `node --check`; Git checks whitespace in proposed changes. |
+| Offline | Python 3.12/3.13 on Ubuntu 24.04 and Python 3.13 on Windows 2025, each running the entire guarded default suite twice. Only `tests/requirements.txt` is installed. |
+| Flask / disposable MySQL | Python 3.13, the small integration dependency profile and Docker Compose; the real Flask/MySQL suite runs twice against its own tmpfs MySQL 8.4 container. No configured database is used. |
+| Browser smoke (Chromium) | Python 3.13, Node 22, `npm ci` from the lockfile, and separately provisioned Chromium/system libraries; all primary browser journeys run twice against ephemeral fixtures. |
+
+`Merge checks` always runs after these jobs and fails unless **every** result is
+`success`, including every offline matrix entry. Failed assertions, test errors,
+empty discovery, failed setup/cleanup, cancellation and skipped prerequisite jobs
+cannot produce a green gate. Test commands are not piped through tools that hide
+exit codes and do not use `continue-on-error`. Browser JSON reports, screenshots
+and traces are uploaded even after failure and retained for seven days. Logs
+and artifacts contain dummy test data; do not introduce deployment credentials.
+
+### Enable the merge requirement
+
+After the workflow first runs, a repository administrator must configure a
+GitHub branch ruleset/protection rule for `main`: require pull requests and the
+**`Merge checks`** status check from GitHub Actions before merging. Disable bypass
+for administrators if the project requires that guarantee. Workflow files alone
+cannot enable repository protection. Require the aggregate name, not individual
+matrix names, so Python/platform updates do not silently remove the requirement.
+Keep `merge_group` enabled if using a merge queue. Canceled superseded runs are
+not passing runs; the newest commit must pass.
+
+### Reproduce checks locally
+
+From the repository root, with the dependency profiles/prerequisites above:
+
+```text
+python -B backend/tests/check_source.py
+python -B backend/tests/run_tests.py --repeat 2 -v
+python -B backend/tests/run_mysql_tests.py --repeat 2
+python -B backend/tests/browser_smoke.py --channel chromium --repeat 2
+```
+
+Source checks require Git, Python and Node, but no Python third-party packages.
+They use Git's inventory rather than recursively traversing ignored environments,
+node_modules or model assets. Deleted files are excluded. The Python check never
+imports application startup or model loaders. Whitespace policy checks trailing
+spaces, blank lines at EOF and spaces before tabs, on changed lines only; it does
+not reformat legacy code. No Python/JavaScript formatter or linter is currently
+configured, so CI does not invent a formatting baseline or claim lint coverage.
+Add future configured style commands to this workflow when adopting them.
+
+`--base <commit>` chooses the whitespace comparison base. Local runs default to
+`HEAD` (including staged, unstaged and nonignored untracked changes). CI uses the
+PR base SHA, merge-group base SHA or previous push SHA, with full Git history;
+manual dispatch uses `HEAD^`. An initial push's zero SHA means the empty tree.
+Invalid/missing bases fail rather than silently omitting whitespace checks.
+
+### Prove the gate rejects regressions
+
+On a disposable local branch/worktree, deliberately change
+`RequestValidationTests.assert_error` in `test_request_validation.py` to expect
+HTTP 200 instead of 400. Run the **same CI command**
+`python -B backend/tests/run_tests.py --repeat 2 -v`: it must exit nonzero with
+API-contract failures. Restore the change before continuing. Similarly, change
+the `qa.stats` operation policy in `backend/admin_policy.py` from `json_upload`
+to `PUBLIC`; the permission matrix must fail the
+same command. Never commit either deliberate break into the real change.
+For a remote end-to-end acceptance check, submit such a temporary PR and verify
+that `Offline` and `Merge checks` are red and the protected merge is unavailable,
+then close the PR. `test_ci_checks.py` also guards assertion/error exit-code
+propagation, empty discovery and fail-closed syntax/whitespace prerequisites.
+
+Local acceptance on November 5, 2026: source checks and actionlint 1.7.12 passed;
+176 offline tests, 18 MySQL tests and 18 Chrome journeys each passed twice.
+The deliberate API expectation and permission-policy breaks each made the exact
+offline CI command exit 1, and both changes were restored. All 256 combinations
+of success/failure/cancelled/skipped prerequisite results were tested against the
+workflow's actual aggregate shell script; only all-success exited 0. Hosted
+GitHub execution and repository rules were not changed here. Local Linux package
+provisioning was blocked by PyPI DNS failures, and the Chromium download returned
+a CDN location restriction; browser validation used installed Chrome instead.
+
+### GPU and real-model evaluations are not merge checks
+
+No merge job installs the full application/CUDA requirements, downloads weights,
+loads real embedding/generation/Whisper models, starts `backend/main.py`, or runs
+the manual retrieval script `backend/test.py`. Offline import/file/socket guards
+remain active; MySQL and browser runners keep their separate strict boundaries.
+CUDA visibility is disabled and model-hub offline flags are set as defense in
+depth. Package, browser and container provisioning still require public registry
+access; test isolation does not mean dependency installation is network-free.
+
+Real-model/GPU quality or hardware/audio evaluations remain separate manual work
+in an explicitly provisioned environment with approved models and disposable
+evaluation data. There is no automated quality evaluator yet. A future evaluation
+workflow should be manually dispatched, separate from `Merge checks`, and never
+run unreviewed PR code on a credentialed/self-hosted GPU runner. The older optional
+fixed-port browser compatibility smoke is also outside the primary merge suite.

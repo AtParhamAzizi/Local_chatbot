@@ -866,3 +866,16 @@ The running chatbot can stay up. Use `--channel msedge` for Edge or
 `--grep "feedback|microphone"` for focused cases. Failed cases retain screenshots,
 traces and a JSON report in ignored `backend/tests/browser-artifacts/` directories.
 See `backend/tests/TESTING.md` for setup, Chromium installation, coverage and limits.
+
+### Continuous integration
+
+GitHub Actions runs syntax/changed-whitespace checks, the offline suite on Linux
+and Windows, disposable MySQL integration and Chromium browser journeys on pull
+requests, `main` pushes and merge queues. Every suite runs twice; all checks are
+CPU-only with no production credentials, configured database or real models.
+The aggregate `Merge checks` fails if any prerequisite fails or is skipped.
+Enable **`Merge checks`** as a required status check in the `main` branch ruleset
+to prevent failed changes from merging; the workflow cannot set repository rules.
+Run `python -B backend/tests/check_source.py` locally for source checks. No
+formatter/linter is currently configured. See `backend/tests/TESTING.md` for the
+full commands, negative-control verification and separate GPU evaluation policy.
