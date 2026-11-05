@@ -1,0 +1,5 @@
+-r requirements-production.txt
+-r backend/STT/requirements.txt
+
+# MySQL 8 uses caching_sha2_password for the container's application account.
+PyMySQL[rsa]>=1.1,<2

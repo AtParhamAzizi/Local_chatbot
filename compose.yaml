@@ -1,0 +1,65 @@
+services:
+  chatbot:
+    build:
+      context: .
+      args:
+        INSTALL_PROFILE: cpu
+    init: true
+    restart: unless-stopped
+    environment:
+      APP_ENV: development
+      APP_HOST: 0.0.0.0
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME:-chatbot_db}
+      DB_USER: ${DB_USER:-chatbot_app}
+      DB_PASS: ${DB_PASS:?Set DB_PASS in .env}
+      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:?Set ADMIN_SESSION_SECRET in .env}
+      GEN_DEVICE: cpu
+      STT_DEVICE: cpu
+    ports:
+      - "127.0.0.1:5000:5000"
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - type: bind
+        source: ./backend/model
+        target: /app/backend/model
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./backend/modelgen
+        target: /app/backend/modelgen
+        read_only: true
+        bind:
+          create_host_path: false
+      - whisper-models:/app/backend/STT/.models
+      - huggingface-cache:/home/chatbot/.cache/huggingface
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-chatbot_db}
+      MYSQL_USER: ${DB_USER:-chatbot_app}
+      MYSQL_PASSWORD: ${DB_PASS:?Set DB_PASS in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'MYSQL_PWD="$${MYSQL_PASSWORD}" mysql --protocol=TCP --host=127.0.0.1 --user="$${MYSQL_USER}" --database="$${MYSQL_DATABASE}" --execute="SELECT 1" > /dev/null'
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+volumes:
+  mysql-data:
+  whisper-models:
+  huggingface-cache:

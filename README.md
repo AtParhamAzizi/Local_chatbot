@@ -1,4 +1,4 @@
-# Local RAG Chatbot
+﻿# Local RAG Chatbot
 
 A local, Persian-language retrieval-augmented generation (RAG) chatbot with a user chat interface and an administrator dashboard. It stores question-and-answer records, PDF knowledge-base chunks, chat history, feedback, and application logs in MySQL.
 
@@ -26,6 +26,95 @@ The project now includes a refreshed **Liquid Glass** visual experience:
 - Python 3.10 or newer.
 - A running MySQL server (8.0+ recommended).
 - Enough disk space and RAM/VRAM for both local Qwen models. Generation uses CUDA automatically when PyTorch detects a compatible GPU, with an explicit warning before falling back to CPU. The embedding model stays on CPU to reserve VRAM for generation.
+
+## Docker setup (Windows, macOS, and Linux)
+
+The container includes Python 3.12, an isolated virtual environment at `/opt/venv`,
+the main and speech-to-text Python dependencies, and the production server. Compose
+also starts MySQL 8.4; you do not need Python or MySQL installed on the host.
+Install Docker Engine with Docker Compose v2, or Docker Desktop, and use **Linux
+containers**. The default image uses CPU inference, including on Apple Silicon;
+allow enough container memory for both models (start with at least 12 GB for CPU
+use and increase it if model loading exhausts memory).
+
+1. Copy `.env.example` to `.env` (`Copy-Item .env.example .env` in PowerShell,
+   or `cp .env.example .env` on macOS/Linux). Fill in `DB_PASS`,
+   `MYSQL_ROOT_PASSWORD`, and `ADMIN_SESSION_SECRET` with distinct, strong random
+   values. Use at least 32 characters for the session secret. Keep this file
+   private; it is excluded from Git and the Docker build context. Compose reads
+   it and injects the configured values; the Python application still does not
+   load `.env` files itself.
+
+2. Keep the complete local model downloads in these directories on the host:
+
+   ```text
+   backend/model/Qwen3-Embedding-0.6B/
+   backend/modelgen/qwen3.5-2B/
+   ```
+
+   Both need `config.json`, tokenizer files, and all model weights. Compose mounts
+   `backend/model/` and `backend/modelgen/` read-only instead of copying large model
+   files into the image. These directories must already exist. The application
+   loads these text models offline and does not download missing weights.
+
+3. Build and start both services from the repository root:
+
+   ```sh
+   docker compose up --build -d
+   docker compose logs -f chatbot
+   ```
+
+   Initial dependency installation and model loading can take several minutes.
+   Compose waits for the application database account to connect successfully
+   before starting the chatbot. Open `http://localhost:5000` for chat and
+   `http://localhost:8000` for administration once initialization completes.
+
+4. Create your first administrator interactively (password input is hidden):
+
+   ```sh
+   docker compose exec chatbot python backend/setup_admin.py
+   ```
+
+   If model initialization is still in progress, you can instead run the same
+   setup independently with `docker compose run --rm chatbot python backend/setup_admin.py`.
+
+This Compose configuration is for **local use**: it explicitly enables the
+application's development mode for localhost HTTP and publishes both ports only
+on host loopback. The Docker image itself defaults to production mode. For a
+production deployment, override `APP_ENV=production`, supply both allowed-origin
+settings and the trusted HTTPS proxy configuration described below, and use a
+least-privilege database account. Do not expose this local configuration publicly.
+
+MySQL data (including accounts and chat history), Whisper downloads, and the Hugging
+Face cache use named volumes. `docker compose down` preserves them; adding `-v`
+**deletes them**. MySQL initialization variables only apply to a fresh database
+volume; changing `.env` does not rotate an existing database password. Existing
+host MySQL data is not migrated automatically. Model-selection and controller
+preferences stored in the container's backend directory survive a restart but
+reset when that container is replaced. Whisper may download its model on first
+voice use; the text models remain local. To move to another computer, transfer
+the repository and model directories, configure private credentials there, and
+back up/restore the database separately if you want to retain existing data.
+
+### Optional NVIDIA GPU container
+
+On a compatible NVIDIA host with GPU access configured for Docker, use:
+
+```sh
+docker compose -f compose.yaml -f compose.gpu.yaml up --build -d
+docker compose -f compose.yaml -f compose.gpu.yaml exec chatbot python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+```
+
+The GPU override selects the existing CUDA 11.8 dependency profile, including
+matching PyTorch/TorchAudio, Accelerate, and bitsandbytes, and requires an NVIDIA
+GPU rather than silently falling back to CPU. This optional profile targets
+Linux x86-64 containers and needs a compatible NVIDIA driver and container GPU
+runtime (on Windows, use Docker Desktop's supported WSL2 GPU setup). macOS users
+should use the default CPU configuration; this does not provide Apple Metal GPU
+acceleration. Voice inference stays on CPU because the pinned text-generation
+CUDA profile does not provide the separate CUDA/cuDNN setup required by current
+faster-whisper GPU inference. Use both `-f` options for subsequent GPU Compose
+commands, including administrator setup, logs, and shutdown.
 
 ## Setup
 
