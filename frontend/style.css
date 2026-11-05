@@ -107,6 +107,8 @@ body::after { right: -16vw; bottom: -18vw; background: #8b5cf6; }
 }
 
 .message {
+    direction: rtl;
+    text-align: right;
     max-width: 84%;
     padding: 12px 15px;
     border: 1px solid var(--line);

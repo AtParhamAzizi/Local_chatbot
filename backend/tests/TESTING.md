@@ -136,3 +136,109 @@ target; it never falls back to `DB_*`. `test_mysql_isolation.py` belongs to the
 offline suite and checks provisioning/cleanup, ignored deployment variables,
 connection/socket restrictions and patch restoration without contacting Docker
 or MySQL.
+
+## Browser regression smoke suite (F015)
+
+Use Python 3.12/3.13 with the offline test dependencies, Node.js 20 or newer,
+and an installed Chrome or Edge. From the repository root:
+
+```powershell
+.venv-tests\Scripts\python -m pip install -r backend/tests/requirements.txt
+npm ci --prefix backend/tests/browser
+.venv-tests\Scripts\python -B backend/tests/browser_smoke.py --channel chrome --repeat 2
+```
+
+Use `.venv-tests/bin/python` on Linux. The committed npm lockfile pins the
+Playwright test dependencies; package installation requires registry access or
+a populated cache. Execution uses installed browsers, with no model downloads,
+MySQL, Docker, microphone hardware or application credentials. Edge runs with
+`--channel msedge`. To use Playwright's downloaded Chromium instead:
+
+```text
+node backend/tests/browser/node_modules/@playwright/test/cli.js install chromium
+python -B backend/tests/browser_smoke.py --channel chromium
+```
+
+On Linux, provision the browser's required system libraries as well (Playwright's
+`install --with-deps chromium` command can install them with suitable privileges).
+An existing installation can be reused by setting `PLAYWRIGHT_MODULE` to an
+absolute **@playwright/test** package directory, not just `playwright-core`.
+Leave that variable unset to use this repository's pinned installation.
+
+The 18 named scenarios exercise the actual served HTML/CSS/JavaScript:
+
+- Persian document/input/message direction, mixed Persian/Latin text rendered as
+  text rather than HTML, bubble placement and no horizontal overflow at desktop
+  (1280 px) and mobile (390 px) widths; keyboard sending and recommendations.
+- Quick-question filling, visible pending-request state, disabled controls while
+  sending, and usable text/voice controls after completion.
+- Failed feedback with no optimistic selection or saved rating, retry by clicking
+  the same button, successful selection, and replacing a rating.
+- Invalid login, password visibility, successful form login with real CSRF
+  handling, logout and rejection of a replayed signed cookie.
+- Administrator, PDF-only and no-grant navigation: allowed items and initial iframe,
+  real page switching, blank no-grant content and direct forbidden-page/API checks.
+- Theme persistence across reloads, login and iframe changes, same-origin tab/frame
+  synchronization, actual color changes and separate user/admin origin storage.
+- Microphone permission denial, missing device, worklet/connection failure,
+  unavailable backend and unsupported APIs, preserving drafts and text chat.
+  Mid-recording device disconnection keeps the partial transcript and releases
+  capture; a successful mocked stop sends one final transcript and closes audio.
+
+Each scenario gets a fresh browser context and resets only the fixture's
+in-memory accounts/sessions/history, faults and limiters. Cases run serially with
+zero automatic retries; `--repeat 2` repeats them with fresh contexts. Locators
+and network responses are awaited instead of fixed sleeps. Focus a flow with
+`--grep "feedback|microphone"`; no matching cases is a failure, not a successful skip.
+Unhandled errors from pages/iframes or unexpected external application requests
+also fail the suite. Required packages/browsers must exist; they are never
+silently skipped or automatically installed by the runner.
+
+The runner binds two **ephemeral IPv4 loopback ports**, never an existing user or
+admin service, so the running chatbot need not be stopped. There is no target-URL
+override. A fresh runner-issued token authorizes fixture reset/state endpoints,
+and every case verifies that handshake before navigation. These endpoints exist
+only in `browser_support.py`, not in the deployed application. The server imports
+applications with a cleared test environment; deployment database/session secrets
+are also removed from the browser subprocess environment. All real DB connection
+factories, model imports, model-file reads and outbound Python sockets are
+forbidden. The fixture asserts that real DB/model adapters were not called even
+if an error handler swallowed their exceptions. Servers, threads and process
+patches are cleaned up on success, failure and runner timeout.
+
+Only account lookup/session persistence, model/retrieval adapters, admin read data,
+voice health and chat persistence are doubles. Login credential verification,
+cookies, CSRF, authorization, static pages, chat/feedback routes and browser UI
+behavior are real. Feedback failure is injected at the fixture's persistence
+boundary; happy-path chat/login/feedback responses are not fulfilled by browser
+route mocks. Deterministic AudioContext, media tracks, worklet and WebSocket doubles
+exercise the real frontend lifecycle without recording physical audio; browser
+fake-device flags provide a second safeguard. This suite does not evaluate actual
+MySQL (use F014), STT quality, physical microphone permissions, real audio transport,
+or production HTTPS/proxy behavior.
+
+Every invocation prints its unique ignored `backend/tests/browser-artifacts/<id>`
+directory. `report.json` lists case results; failed cases retain screenshots,
+Playwright traces, browser-error attachments and assertion context. To inspect a
+failure, use:
+
+```text
+node backend/tests/browser/node_modules/@playwright/test/cli.js show-trace <path-to-trace.zip>
+```
+
+Artifacts contain only dummy fixture data, including disposable test credentials,
+but should still be handled as test diagnostics rather than deployed assets.
+Old artifact directories are not pruned automatically. `test_browser_fixture.py`
+validates credential/permission checks, fault injection, fixture controls and patch
+restoration in the default offline suite without launching a browser.
+
+The smoke suite initially caught real LTR message-text inheritance and a login
+theme script that redirected to login because it used an authenticated asset URL.
+Messages now explicitly use RTL text without changing bubble order. Login loads
+the same shared script through the exact public `/login-theme.js` alias; dashboard
+assets remain authenticated, with authorization-matrix coverage.
+
+The older `browser_security_smoke.py` / `.cjs` remains a separate F011/F012 CSP,
+worklet and WebSocket compatibility check on fixed ports 5000/8000 with its own
+optional speech dependencies. It is not the primary journey regression runner
+and is not invoked by this suite or default unittest discovery.

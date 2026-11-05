@@ -849,3 +849,20 @@ unique Docker project on exit. Never point destructive fixtures at developer or
 production data. Model adapters are doubles; Flask, SQL, PDF extraction and
 database effects are real. Missing prerequisites fail instead of silently skipping.
 See `backend/tests/TESTING.md` for isolation guarantees, coverage and cleanup.
+
+For primary browser journeys, install Node.js 20+, Chrome (or Edge), and the pinned
+Playwright dependencies:
+
+```sh
+npm ci --prefix backend/tests/browser
+python -B backend/tests/browser_smoke.py --channel chrome --repeat 2
+```
+
+The 18 browser cases cover desktop/mobile RTL chat, login/logout, role-based
+navigation, theme persistence, feedback failure/retry and mocked microphone
+failures/recovery. The runner serves disposable in-memory fixtures on random
+loopback ports; it never uses live accounts, databases, models or physical audio.
+The running chatbot can stay up. Use `--channel msedge` for Edge or
+`--grep "feedback|microphone"` for focused cases. Failed cases retain screenshots,
+traces and a JSON report in ignored `backend/tests/browser-artifacts/` directories.
+See `backend/tests/TESTING.md` for setup, Chromium installation, coverage and limits.

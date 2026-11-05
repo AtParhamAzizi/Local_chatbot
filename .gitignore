@@ -19,3 +19,5 @@ feauturePlan.md
 .env.*
 !.env.example
 backend/req/
+backend/tests/browser/node_modules/
+backend/tests/browser-artifacts/

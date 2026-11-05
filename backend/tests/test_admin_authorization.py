@@ -27,6 +27,7 @@ ROUTE_MATRIX = [
     ('admin_login', 'POST', '/login', 'public'),
     ('login_css', 'GET', '/login.css', 'public'),
     ('login_js', 'GET', '/login.js', 'public'),
+    ('login_theme', 'GET', '/login-theme.js', 'public'),
     ('admin_index', 'GET', '/', 'authenticated'),
     ('dashboard_asset', 'GET', '/dashboard.css', 'authenticated'),
     ('dashboard_asset', 'GET', '/dashboard.js', 'authenticated'),

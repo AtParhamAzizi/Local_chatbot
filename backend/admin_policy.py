@@ -66,6 +66,7 @@ ENDPOINT_OPERATIONS = {
     'admin_login': {**_read('login.view'), 'POST': 'login.submit'},
     'login_css': _read('login.assets'),
     'login_js': _read('login.assets'),
+    'login_theme': _read('login.assets'),
     'admin_index': _read('dashboard.view'),
     'dashboard_asset': _read('dashboard.assets'),
     'admin_session': _read('session.read'),

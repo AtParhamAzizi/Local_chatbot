@@ -209,6 +209,12 @@ def login_css():
 def login_js():
     return send_from_directory(ADMIN_USERS_DIR, 'login.js')
 
+
+@admin_app.route('/login-theme.js')
+def login_theme():
+    return send_from_directory(os.path.dirname(ADMIN_DIR), 'theme.js')
+
+
 @admin_app.route('/dashboard.css')
 @admin_app.route('/dashboard.js')
 @admin_app.route('/theme.js')
