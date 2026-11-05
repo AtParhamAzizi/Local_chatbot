@@ -16,6 +16,7 @@ A local, Persian-language (RTL) RAG chatbot. Python/Flask, MySQL, local HuggingF
 
 Flask, Flask-Cors, flask-sock, simple-websocket, PyMySQL, numpy, torch, transformers (>=5.2,<6), PyMuPDF (`fitz`), faster-whisper, av.
 GPU profile: `requirements-cuda.txt` (cu118 index, torch/torchaudio 2.7.1+cu118, accelerate, bitsandbytes 0.47.0). Primary platform is Windows (`run_gpu.cmd`, `.venv\Scripts\python.exe`).
+Recorded F017 installation uses `scripts/dependencies.py install/verify --profile cpu|cu118` and native hash-pinned locks under `requirements/locks/`. Windows x64 CPython 3.13 and Linux x86-64 CPython 3.12 are the recorded targets; see `requirements/README.md` for recreation and upgrade/rollback. Bounded root requirement files remain resolver inputs, not release locks.
 `backend/STT/requirements.txt` is only for the standalone STT demo.
 `requirements-production.txt` adds Gunicorn for Linux/WSL production serving; native Windows is local-development only.
 
@@ -60,6 +61,8 @@ backend/
   controller_state.json  (gitignored, runtime) persisted voice/chat feature toggles
 frontend/             User chat UI: index.html, script.js, style.css, theme.js
 requirements.txt, requirements-cuda.txt, run_gpu.cmd, README.md, LICENSE
+requirements/          Native CPU/cu118 wheel locks, shared constraints, upgrade guide and validation record
+scripts/dependencies.py  Fresh-environment installer, dependency smoke verifier and native report-to-lock recorder
 ```
 
 ## 4. Startup pipeline (`backend/main.py: main()` / `create_apps()`)
@@ -365,3 +368,11 @@ Each run prints an ignored `backend/tests/browser-artifacts/<id>` folder contain
 `backend/tests/check_source.py` uses Git's tracked/nonignored new file inventory, compiles Python without executing imports or writing bytecode, runs `node --check` on JavaScript, and applies `git diff --check` whitespace policy to proposed changes. No formatter/linter is configured. Its local base defaults to `HEAD`; CI uses the event's base SHA with full history. Missing tools, malformed source, invalid bases and whitespace errors fail closed. `test_ci_checks.py` checks these boundaries plus regression-runner assertion/error/empty-discovery failure propagation.
 
 The always-evaluated `Merge checks` aggregate requires every prerequisite result to be `success`; failures, cancellations and skips fail it. A repository administrator must require that exact check in the `main` branch ruleset to enforce merge blocking; workflow files cannot enable branch protection. See `backend/tests/TESTING.md` for setup and deliberate API/permission negative controls. GPU/real-model quality and physical-audio evaluations stay separate manual work, not merge prerequisites; no automated model-quality evaluator exists yet. Never run unreviewed PR code on a credentialed GPU runner.
+
+## Reproducible CPU/GPU dependencies (F017)
+
+`requirements/locks/{cpu,cu118}-{windows-py313,linux-py312}.txt` records the complete native wheel graphs with exact versions and SHA-256 hashes. CPU uses the actual PyTorch 2.7.1+cpu build without CUDA libraries/quantization companions. The older-GPU profile retains matching PyTorch/TorchAudio 2.7.1+cu118 and bitsandbytes 0.47.0; Linux additionally records NVIDIA CUDA 11 libraries and Triton rather than copying a Windows freeze. Shared `requirements/constraints.txt` is the upgrade baseline; `requirements-cpu.txt` and `requirements-cuda.txt` select variants. Current speech remains CPU/int8, not an accidental second CUDA stack.
+
+`scripts/dependencies.py install` accepts only fresh native virtual environments, selects the target lock, and invokes hash-required/wheel-only pip plus `pip check`. Repeated `--wheelhouse` arguments disable indexes. `verify` checks exact inventory and small binary/model-class/tensor operations with sockets/DNS blocked, no application startup, DB, model weights or downloads. Default GPU verification runs actual FP16/NF4 hardware kernels; `--software-only` explicitly certifies imports only. `record` converts a complete native pip dry-run report to a reviewed lock and rejects incompatible or incomplete artifacts/targets. Normal text/model quality and capacity evaluations remain separate.
+
+x86-64 Docker builds consume and verify these locks; existing ARM64 CPU builds retain a version-constrained route outside the tested artifact matrix. `run_gpu.cmd` still checks CUDA and does not silently fall back or overwrite an existing environment. `backend/tests/test_dependency_profiles.py` checks lock/constraint consistency, platform/variant isolation and fail-closed tooling within the fast offline suite. The manual `Dependency profiles` workflow recreates native CPU or CUDA-software profiles independently of merge checks. Native GPU/driver evidence and remaining limitations are in `requirements/VALIDATION.md`; the upgrade/rollback procedure requires native regeneration, fresh installs and older-GPU requalification rather than a blanket CUDA upgrade.

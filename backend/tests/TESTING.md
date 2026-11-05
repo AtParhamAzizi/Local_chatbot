@@ -346,3 +346,20 @@ evaluation data. There is no automated quality evaluator yet. A future evaluatio
 workflow should be manually dispatched, separate from `Merge checks`, and never
 run unreviewed PR code on a credentialed/self-hosted GPU runner. The older optional
 fixed-port browser compatibility smoke is also outside the primary merge suite.
+
+## Dependency-profile regression checks (F017)
+
+The default offline suite includes `test_dependency_profiles.py`. It uses the
+small `packaging` test dependency to check active requirement ranges against
+all four native CPU/CUDA locks, plus exact/hash syntax, shared constraints,
+CPU/GPU graph separation and the older-GPU pins. Installer/recorder tests use
+scoped doubles and temporary files: no wheels, models, CUDA or databases are
+installed/contacted by these tests. Wrong/missing/extra distributions, unsupported
+targets, profile mixups and failed pip commands fail closed.
+
+Actual fresh application-profile recreation uses `scripts/dependencies.py`, not
+this offline suite. Follow `requirements/README.md` for native interpreters,
+hash-locked installation, CPU verification and explicit GPU hardware verification.
+`requirements/VALIDATION.md` records the tested versions and limits. The manual
+`Dependency profiles` workflow is deliberately separate from the fast merge gate;
+hosted CUDA import-only results never certify GPU hardware or real-model quality.

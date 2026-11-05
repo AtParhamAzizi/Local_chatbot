@@ -1,0 +1,54 @@
+name: Dependency profiles
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Native lock to recreate (CUDA software imports do not certify hardware)
+        type: choice
+        required: true
+        default: cpu
+        options: [cpu, cu118]
+
+permissions:
+  contents: read
+
+jobs:
+  recreate:
+    name: Recreate ${{ inputs.profile }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            python: '3.12'
+          - os: windows-2025
+            python: '3.13'
+    env:
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
+      STT_LOCAL_FILES_ONLY: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Recreate and check native profile
+        shell: bash
+        env:
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          set -euo pipefail
+          python -m venv .venv-profile
+          if [ "$RUNNER_OS" = Windows ]; then
+            interpreter=.venv-profile/Scripts/python.exe
+          else
+            interpreter=.venv-profile/bin/python
+          fi
+          "$interpreter" -B scripts/dependencies.py install --profile "$PROFILE"
+          "$interpreter" -B scripts/dependencies.py verify --profile "$PROFILE" --software-only

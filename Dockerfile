@@ -17,16 +17,24 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y ca-certificates libgomp1 libstdc++6 \
     && rm -rf /var/lib/apt/lists/* \
     && python -m venv "$VIRTUAL_ENV" \
-    && python -m pip install --upgrade pip \
     && useradd --create-home --user-group --uid 10001 chatbot
 
 COPY requirements*.txt ./
+COPY requirements/ ./requirements/
+COPY scripts/dependencies.py ./scripts/dependencies.py
 COPY backend/STT/requirements.txt ./backend/STT/requirements.txt
 
 RUN case "$INSTALL_PROFILE" in \
-        cpu) python -m pip install 'torch>=2.4' --index-url https://download.pytorch.org/whl/cpu \
-             && python -m pip install -r requirements-docker.txt ;; \
-        cuda) python -m pip install -r requirements-docker.txt -r requirements-cuda.txt ;; \
+        cpu) if [ "$(uname -m)" = x86_64 ]; then \
+                 python scripts/dependencies.py install --profile cpu \
+                 && python scripts/dependencies.py verify --profile cpu; \
+             else \
+                 echo 'ARM64 CPU uses version constraints, not the tested x86-64 artifact locks' \
+                 && python -m pip install 'torch==2.7.1' --index-url https://download.pytorch.org/whl/cpu \
+                 && python -m pip install -c requirements/constraints.txt -r requirements-docker.txt; \
+             fi ;; \
+        cuda) python scripts/dependencies.py install --profile cu118 \
+              && python scripts/dependencies.py verify --profile cu118 --software-only ;; \
         *) echo 'INSTALL_PROFILE must be cpu or cuda' >&2; exit 1 ;; \
     esac \
     && python -m pip check
