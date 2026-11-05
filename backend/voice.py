@@ -18,6 +18,7 @@ from pathlib import Path
 from flask import jsonify, request, send_from_directory
 
 from abuse_controls import check_request_limit, limit_requests, rate_limited_response, retry_message
+from public_errors import public_error
 
 from STT.streaming import AudioStream, MAX_PACKET_BYTES, SAMPLE_RATE
 
@@ -131,19 +132,18 @@ def configure_voice(app):
     def voice_health():
         if IMPORT_ERROR is None:
             _start_model_loading()
-        status, error = _model_status()
+        status, _ = _model_status()
+        if status != 'ready':
+            code = 'voice_model_failed' if status == 'error' else 'voice_' + status
+            return jsonify(status=status, **public_error(503, code)), 503
         return jsonify(
             status=status,
-            error=(
-                "Voice dependencies are unavailable. Run: "
-                "python -m pip install -r requirements.txt. " + error
-                if status == "unavailable" else error
-            ),
+            error=None,
             model=MODEL_NAME,
             device=DEVICE,
             language=LANGUAGE,
             sample_rate=SAMPLE_RATE,
-        ), 200 if status == "ready" else 503
+        ), 200
 
     if Sock is None:
         return
@@ -163,9 +163,11 @@ def configure_voice(app):
 
     @sock.route("/voice-stream")
     def voice_stream(websocket):
-        status, error = _model_status()
+        status, _ = _model_status()
         if status != "ready":
-            websocket.send(json.dumps({"type": "error", "message": error or "Model is loading."}))
+            code = 'voice_model_failed' if status == 'error' else 'voice_' + status
+            failure = public_error(503, code)
+            websocket.send(json.dumps({"type": "error", "code": failure['code'], "message": failure['error']}))
             return
         if not _transcription_slot.acquire(blocking=False):
             websocket.send(json.dumps({
@@ -241,7 +243,8 @@ def configure_voice(app):
         except Exception as error:
             logging.getLogger(__name__).error("Streaming transcription failed (%s)", type(error).__name__)
             try:
-                websocket.send(json.dumps({"type": "error", "message": "Transcription failed. Please try again."}))
+                failure = public_error(500, 'transcription_failed')
+                websocket.send(json.dumps({"type": "error", "code": failure['code'], "message": failure['error']}))
             except ConnectionClosed:
                 pass
         finally:

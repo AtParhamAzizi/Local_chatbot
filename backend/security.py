@@ -7,9 +7,10 @@ from werkzeug.exceptions import HTTPException
 
 from database import logger
 from abuse_controls import configure_abuse_controls
+from public_errors import public_error
 from request_validation import InvalidRequest, configure_request_limits
 from settings import (
-    browser_origins, normalize_origin, redact_secrets, safe_error_message,
+    browser_origins, is_development, normalize_origin, safe_error_message,
     trusted_proxy_hops, trusted_proxy_networks, validate_settings,
 )
 
@@ -55,14 +56,17 @@ class TrustedProxyMiddleware:
         return self.app(environ, start_response)
 
 
-def _redact_payload(payload):
-    if isinstance(payload, str):
-        return redact_secrets(payload)
-    if isinstance(payload, list):
-        return [_redact_payload(value) for value in payload]
-    if isinstance(payload, dict):
-        return {key: _redact_payload(value) for key, value in payload.items()}
-    return payload
+def report_only_policy(origins):
+    sockets = sorted(origin.replace('https://', 'wss://', 1).replace('http://', 'ws://', 1)
+                     for origin in origins)
+    return '; '.join((
+        "default-src 'self'", "base-uri 'self'", "object-src 'none'",
+        "script-src 'self'", "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:", "font-src 'self'",
+        "connect-src 'self' " + ' '.join(sockets),
+        "frame-src 'self' blob:", "worker-src 'self' blob:",
+        "media-src 'self' blob:", "form-action 'self'",
+    ))
 
 
 def configure_security(app, *, service):
@@ -70,6 +74,7 @@ def configure_security(app, *, service):
     configure_abuse_controls(app, service=service)
     app.config.update(DEBUG=False, PROPAGATE_EXCEPTIONS=False)
     origins = browser_origins(service)
+    candidate_policy = report_only_policy(origins)
     app.wsgi_app = TrustedProxyMiddleware(
         app.wsgi_app, trusted_proxy_hops(), trusted_proxy_networks(),
     )
@@ -101,6 +106,18 @@ def configure_security(app, *, service):
 
     @app.after_request
     def browser_origin_headers(response):
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN' if service == 'admin' else 'DENY'
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        microphone = '(self)' if service == 'ui' else '()'
+        response.headers['Permissions-Policy'] = (
+            f'camera=(), geolocation=(), microphone={microphone}, payment=(), usb=()'
+        )
+        ancestors = "'self'" if service == 'admin' else "'none'"
+        response.headers['Content-Security-Policy'] = f'frame-ancestors {ancestors}'
+        response.headers['Content-Security-Policy-Report-Only'] = candidate_policy
+        if not is_development() and request.is_secure:
+            response.headers['Strict-Transport-Security'] = 'max-age=31536000'
         if service == 'ui':
             response.vary.add('Origin')
             origin = g.get('browser_origin')
@@ -118,22 +135,34 @@ def configure_security(app, *, service):
     def unexpected_error(error):
         if isinstance(error, HTTPException):
             response = error.get_response()
-            response.set_data(app.json.dumps({'error': error.name}))
+            response.set_data(app.json.dumps(public_error(response.status_code)))
             response.content_type = 'application/json'
             return response
         logger.logDrop(f'Request failed: {safe_error_message(error)}', logger.FAILED)
-        return jsonify(error='Request failed. Please try again.'), 500
+        return jsonify(public_error(500)), 500
 
     @app.errorhandler(InvalidRequest)
     def invalid_request(error):
-        return jsonify(error=error.description, code='invalid_request'), 400
+        return jsonify(public_error(400)), 400
 
     @app.after_request
     def sanitize_error_response(response):
-        if response.status_code >= 400 and response.is_json:
-            payload = response.get_json()
-            if response.status_code in {400, 413, 415} and isinstance(payload, dict):
-                codes = {400: 'invalid_request', 413: 'payload_too_large', 415: 'unsupported_media_type'}
-                payload.setdefault('code', codes[response.status_code])
-            response.set_data(app.json.dumps(_redact_payload(payload)))
+        if response.status_code >= 400:
+            original = response.get_json(silent=True) if response.is_json else None
+            original = original if isinstance(original, dict) else {}
+            payload = public_error(response.status_code, original.get('code'))
+            response.headers['X-Error-Code'] = payload['code']
+            response.headers['Cache-Control'] = 'no-store'
+            if (request.endpoint == 'admin_login' and response.mimetype == 'text/html'
+                    and response.status_code in {401, 429}):
+                return response
+            status = original.get('status')
+            if isinstance(status, str) and status in {'loading', 'error', 'unavailable', 'disabled'}:
+                payload['status'] = status
+            retry_after = original.get('retry_after')
+            if response.status_code == 429 and type(retry_after) is int and 1 <= retry_after <= 86400:
+                payload['retry_after'] = retry_after
+                payload['error'] = f'Too many requests. Please retry in {retry_after} seconds.'
+            response.set_data(app.json.dumps(payload))
+            response.content_type = 'application/json'
         return response

@@ -62,7 +62,7 @@ def model_status():
     if model_future is None or not model_future.done():
         return "loading", None
     error = model_future.exception()
-    return ("error", str(error)) if error else ("ready", None)
+    return ("error", "Voice model failed to load.") if error else ("ready", None)
 
 
 def transcribe_audio(audio):
@@ -106,14 +106,17 @@ def static_asset(filename):
 @app.get("/health")
 def health():
     status, error = model_status()
-    return jsonify(
+    payload = dict(
         status=status,
         error=error,
         model=MODEL_NAME,
         device=DEVICE,
         language=LANGUAGE,
         sample_rate=SAMPLE_RATE,
-    ), 200 if status == "ready" else 503
+    )
+    if status != "ready":
+        payload['code'] = 'voice_model_failed' if status == 'error' else 'voice_loading'
+    return jsonify(payload), 200 if status == "ready" else 503
 
 
 @sock.route("/stream")
@@ -125,10 +128,11 @@ def stream_audio(websocket):
 
     status, error = model_status()
     if status != "ready":
-        websocket.send(json.dumps({"type": "error", "message": error or "Model is loading."}))
+        code = 'voice_model_failed' if status == 'error' else 'voice_loading'
+        websocket.send(json.dumps({"type": "error", "code": code, "message": error or "Model is loading."}))
         return
     if not transcription_slot.acquire(blocking=False):
-        websocket.send(json.dumps({"type": "error", "message": "Another transcription is active."}))
+        websocket.send(json.dumps({"type": "error", "code": "rate_limited", "message": "Another transcription is active."}))
         return
 
     future = None
@@ -182,7 +186,7 @@ def stream_audio(websocket):
     except Exception as error:
         app.logger.exception("Streaming transcription failed")
         try:
-            websocket.send(json.dumps({"type": "error", "message": str(error)}))
+            websocket.send(json.dumps({"type": "error", "code": "transcription_failed", "message": "Transcription failed. Please try again."}))
         except ConnectionClosed:
             pass
     finally:
@@ -192,27 +196,28 @@ def stream_audio(websocket):
 @app.post("/voice")
 def voice():
     if "audio" not in request.files:
-        return jsonify(error="No audio file provided."), 400
+        return jsonify(error="No audio file provided.", code="invalid_request"), 400
     status, error = model_status()
     if status != "ready":
-        return jsonify(error=error or "Model is loading."), 503
+        code = 'voice_model_failed' if status == 'error' else 'voice_loading'
+        return jsonify(error=error or "Model is loading.", code=code), 503
     if not transcription_slot.acquire(blocking=False):
-        return jsonify(error="Another transcription is active."), 429
+        return jsonify(error="Another transcription is active.", code="rate_limited"), 429
 
     future = None
     try:
         try:
             audio = decode_audio(request.files["audio"].stream, sampling_rate=SAMPLE_RATE)
         except Exception:
-            return jsonify(error="The uploaded file could not be decoded as audio."), 400
+            return jsonify(error="The uploaded file could not be decoded as audio.", code="invalid_request"), 400
         if not audio.size or audio.size > SAMPLE_RATE * 60:
-            return jsonify(error="Audio must contain between 0 and 60 seconds of sound."), 400
+            return jsonify(error="Audio must contain between 0 and 60 seconds of sound.", code="invalid_request"), 400
         future = executor.submit(transcribe_audio, audio)
         transcript = future.result()
         return jsonify(transcript=transcript, reply=transcript, recommended_questions=[])
     except Exception:
         app.logger.exception("Uploaded audio transcription failed")
-        return jsonify(error="Transcription failed. Check the server log."), 500
+        return jsonify(error="Transcription failed. Please try again.", code="transcription_failed"), 500
     finally:
         release_slot(future)
 

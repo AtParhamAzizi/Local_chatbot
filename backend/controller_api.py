@@ -94,7 +94,7 @@ def _run_model_action(action):
         _errors.pop(target, None)
         logger.logDrop(f'Controller action completed: {action}')
     except Exception as error:
-        _errors[target] = 'Model action failed.'
+        _errors[target] = 'model_action_failed'
         logger.logDrop(f'Controller action {action} failed: {type(error).__name__}', logger.FAILED)
     finally:
         with _busy_lock:

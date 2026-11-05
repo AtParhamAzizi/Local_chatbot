@@ -629,6 +629,70 @@ resubmitting. Offline tests verify these rejections never invoke model work.
 
 The default environment is `production`. Only explicit `APP_ENV=development` (or `dev`, `local`, `test`) enables development behavior; other values fail closed. Startup fails closed when any of these settings are missing: `DB_USER`, `DB_PASS`, `DB_NAME`, or `ADMIN_SESSION_SECRET`. Unexpected errors return generic messages. Audit logs redact configured database/session secrets, and exception logs record error types rather than raw exception text.
 
+### Public errors and browser headers (F011)
+
+Both services normalize failure responses to allowlisted `{code, error}` JSON.
+Clients should branch on `code`, not the human-readable message. Codes include
+`invalid_request` (400), `authentication_required` (401), `forbidden` (403),
+`not_found` (404), `method_not_allowed` (405), `conflict` (409),
+`payload_too_large` (413), `unsupported_media_type` (415), `rate_limited` (429),
+`internal_error` (500), and `service_unavailable` (503). Other HTTP statuses retain
+their status with `request_failed` or `internal_error`. Exceptions, HTTP exception
+descriptions, SQL, paths, and arbitrary `details`/nested diagnostics are never
+copied into failures. Safe voice `status` values and bounded rate-limit
+`retry_after` values remain available. Existing `Allow`, `Retry-After`, and CORS
+headers are preserved. All failures are no-store and include `X-Error-Code`,
+including HEAD responses and the login form's HTML 401/429 responses.
+
+Voice failures use `voice_loading`, `voice_unavailable`, or `voice_model_failed`
+(503); WebSocket error messages include a public `code` alongside `message`,
+including `transcription_failed` and `rate_limited`. Unhealthy voice responses
+do not expose model configuration or installation instructions. Controller
+background failures expose `model_action_failed`; failed PDF ingestion stores
+`pdf_processing_failed`, not exception text. The standalone STT demo also avoids
+returning raw model/transcription exceptions.
+
+The following headers apply to pages, assets, redirects, and errors on both apps:
+
+| Header | Policy |
+| --- | --- |
+| `X-Content-Type-Options` | `nosniff`; served scripts/worklet keep JavaScript MIME types |
+| `X-Frame-Options` | Admin `SAMEORIGIN` preserves its dashboard iframe; user app `DENY` |
+| Enforced `Content-Security-Policy` | Only `frame-ancestors 'self'` for admin, `'none'` for user |
+| `Referrer-Policy` | `strict-origin-when-cross-origin`; preserves same-origin login form origin checks |
+| `Permissions-Policy` | Microphone `(self)` on user, disabled on admin; camera, geolocation, payment, USB disabled |
+| `Strict-Transport-Security` | `max-age=31536000` only on production HTTPS, using the validated connection/proxy scheme |
+
+The full candidate CSP is **report-only**, not enforced. It allows same-origin
+scripts (including the audio worklet), same-origin fetch plus WebSocket origins
+derived from each service's configured origin allowlist, same-origin/blob frames
+for the dashboard and PDF preview, local/blob media/workers, data/blob images,
+and inline styles used by the current UI. It does not permit inline scripts or
+`eval`. It deliberately does not force HTTPS upgrades on local development.
+There is no report upload endpoint: inspect browser console messages or collect
+`securitypolicyviolation` events locally, avoiding storage of potentially
+sensitive document URLs or script samples in server logs.
+
+Report-mode evaluation on November 5, 2026, using offline Chrome and Edge smoke tests:
+chat, feedback, microphone permission, AudioWorklet loading, voice WebSocket
+ready/stop/done, login/logout, dashboard iframe navigation, CSRF mutations, all
+admin page scripts, and blob PDF preview passed with **zero enforced-policy
+violations**. The candidate reported `script-src-elem` for the controller's
+injected inline feature-state script and `script-src-attr` for quick-question
+handlers. Admin table delete buttons also use inline handlers. Full CSP
+enforcement must wait for these to move to external scripts/listeners or suitable
+nonces/hashes and for repeat testing on deployment origins/HTTPS and supported
+browsers. Do not copy the report-only policy wholesale into enforcement.
+
+Run the offline regressions with
+`python -B -m unittest discover -s backend/tests -v`. For the optional real-browser
+smoke test, provide Node.js, an installed Chrome (or `PLAYWRIGHT_CHANNEL=msedge`),
+and Playwright. Set `PLAYWRIGHT_MODULE` to an absolute installed `playwright` or
+`@playwright/test` module directory if it is outside the normal Node module path,
+then run `python -B backend/tests/browser_security_smoke.py`. Stop the running
+chatbot first: the smoke test binds loopback ports 5000 and 8000 and uses only
+test database/model/account doubles, not live accounts or model weights.
+
 Use a dedicated MySQL account with only the permissions needed by this application. Run database creation and account setup as an administrator, then configure the application with the restricted account:
 
 ```sql

@@ -10,7 +10,8 @@ from flask import request, jsonify, redirect, url_for, session, render_template_
 
 from flask import Flask, request, jsonify, send_from_directory
 from database import get_conn, init_db,hash_question, logger, sha256_bytes
-from settings import admin_session_config, is_development, session_secret, redact_secrets, safe_error_message
+from settings import admin_session_config, is_development, session_secret, safe_error_message
+from pymysql.err import IntegrityError
 from serving import serve_development
 from admin_users import authenticate, create_user, update_user, serialize_user
 from admin_sessions import create_admin_session, load_admin_session, revoke_admin_session
@@ -84,8 +85,6 @@ def require_admin_session():
 @admin_app.after_request
 def protect_admin_response(response):
     response.headers['Cache-Control'] = 'no-store'
-    if not is_development() and request.is_secure:
-        response.headers['Strict-Transport-Security'] = 'max-age=31536000'
     return response
 
 
@@ -149,11 +148,13 @@ def admin_users_collection():
                 data['username'], data['password'], data.get('permissions'), data.get('is_admin', False)
             )
             return jsonify({'ok': True, 'id': user_id}), 201
-        except ValueError as error:
-            return jsonify({'error': redact_secrets(str(error))}), 400
-        except Exception as error:
-            if 'Duplicate entry' in str(error):
+        except ValueError:
+            return jsonify({'error': 'Invalid account details.'}), 400
+        except IntegrityError as error:
+            if error.args and error.args[0] == 1062:
                 return jsonify({'error': 'That username already exists.'}), 409
+            raise
+        except Exception:
             return jsonify({'error': 'Unable to create user.'}), 500
     conn = get_conn()
     try:
@@ -192,8 +193,8 @@ def admin_user_item(user_id):
             )
             if changed and user_id == current.get('id'):
                 session.clear()
-    except ValueError as error:
-        return jsonify({'error': redact_secrets(str(error))}), 400
+    except ValueError:
+        return jsonify({'error': 'Invalid account details.'}), 400
     finally:
         conn.close()
     return jsonify({'ok': True})
@@ -762,7 +763,7 @@ def admin_pdf_upload():
                         WHERE id = %s
                         """,
                         (
-                            safe_error_message(e),
+                            'pdf_processing_failed',
                             document_id
                         )
                     )
