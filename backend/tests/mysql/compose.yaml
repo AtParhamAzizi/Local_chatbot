@@ -1,0 +1,19 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${F014_DB_NAME:?Use run_mysql_tests.py}
+      MYSQL_USER: f014_app
+      MYSQL_PASSWORD: ${F014_DB_PASSWORD:?Use run_mysql_tests.py}
+      MYSQL_ROOT_PASSWORD: ${F014_ROOT_PASSWORD:?Use run_mysql_tests.py}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--skip-log-bin"]
+    ports:
+      - "127.0.0.1::3306"
+    tmpfs:
+      - /var/lib/mysql:rw,nosuid,size=1g
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$${MYSQL_PASSWORD}\" mysql --protocol=TCP --host=127.0.0.1 --user=\"$${MYSQL_USER}\" --database=\"$${MYSQL_DATABASE}\" --execute='SELECT 1' > /dev/null"]
+      interval: 2s
+      timeout: 5s
+      retries: 90
+      start_period: 30s

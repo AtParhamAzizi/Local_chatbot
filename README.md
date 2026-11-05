@@ -825,3 +825,27 @@ The schema-scoped `CREATE`, `ALTER`, `INDEX`, and `REFERENCES` grants support au
 Rotate the formerly embedded database password and session signing key on existing deployments; removing them from source does not revoke credentials. Changing the session key invalidates existing admin sessions. Keep passwords out of version control, command-line arguments, and logs.
 
 Set `DB_USER=chatbot_app`, `DB_PASS=<strong-random-password>`, and `DB_NAME=chatbot_db`. Do not grant `ALL PRIVILEGES`, and do not run the application as `root`.
+
+## Automated tests
+
+The lightweight offline suite needs no MySQL, Docker, GPU or model files:
+
+```sh
+python -m pip install -r backend/tests/requirements.txt
+python -B backend/tests/run_tests.py --repeat 2
+```
+
+For Flask API integration against real MySQL, start Docker with Linux containers:
+
+```sh
+python -m pip install -r backend/tests/mysql/requirements.txt
+python -B backend/tests/run_mysql_tests.py --repeat 2
+```
+
+The integration runner creates its own MySQL 8.4 container, random schema,
+credentials and loopback port. It ignores deployment database settings and `.env`,
+blocks unprovisioned connections, stores data only in tmpfs, and removes its
+unique Docker project on exit. Never point destructive fixtures at developer or
+production data. Model adapters are doubles; Flask, SQL, PDF extraction and
+database effects are real. Missing prerequisites fail instead of silently skipping.
+See `backend/tests/TESTING.md` for isolation guarantees, coverage and cleanup.
