@@ -33,10 +33,23 @@
         <div class="recommended-questions" id="recommendedQuestions">
         </div>
 
-        <!-- <div class="voice-panel">
+        <details class="privacy-notice" id="privacyNotice">
+            <summary>حریم خصوصی و نگهداری داده‌ها</summary>
+            <div class="privacy-details">
+                <p>متن پیام و پاسخ برای بررسی کیفیت پاسخ‌ها توسط مدیران مجاز نگهداری می‌شود؛ برای آموزش خودکار مدل استفاده نمی‌شود. اطلاعات حساس وارد نکنید.</p>
+                <p>{% if privacy.chat_days %}مهلت حذف گفتگوها: {{ privacy.chat_days }} روز پس از ثبت پیام.{% else %}ذخیره گفتگو غیرفعال است.{% endif %}
+                {% if privacy.feedback_days and privacy.chat_days %}بازخورد برای ارزیابی کیفیت پاسخ، حداکثر {{ [privacy.feedback_days, privacy.chat_days] | min }} روز پس از ثبت پیام نگهداری می‌شود و همراه پیام حذف می‌شود.{% else %}ذخیره بازخورد غیرفعال است.{% endif %}</p>
+                <p>{% if privacy.ip_days and privacy.chat_days %}نشانی IP برای عیب‌یابی، حداکثر {{ [privacy.ip_days, privacy.chat_days] | min }} روز همراه گفتگو ذخیره می‌شود.{% else %}نشانی IP در تاریخچه گفتگو ذخیره نمی‌شود.{% endif %} IP برای محدودسازی درخواست‌ها موقتاً در حافظه استفاده می‌شود.</p>
+                <p>{% if privacy.log_days %}گزارش‌های عملیاتی برای امنیت و رفع خطا، {{ privacy.log_days }} روز نگهداری می‌شوند؛ متن گفتگو و مقدار بازخورد در گزارش‌های جدید ثبت نمی‌شود.{% else %}ذخیره گزارش‌های برنامه در پایگاه داده غیرفعال است.{% endif %}</p>
+                <p>{% if privacy.delete_enabled %}پاک‌سازی دوره‌ای هر {{ privacy.interval_seconds }} ثانیه اجرا می‌شود؛ حذف ممکن است تا اجرای بعدی طول بکشد.{% else %}حذف خودکار فعلاً توسط گرداننده متوقف شده است؛ داده‌های قبلی تا ازسرگیری پاک‌سازی باقی می‌مانند.{% endif %} حذف زودتر گفتگو را از گرداننده سامانه بخواهید. نسخه‌های پشتیبان و گزارش‌های زیرساخت، سیاست نگهداری جداگانه دارند.</p>
+                <p>یک کوکی ناشناس برای اثبات مالکیت پیام و بازخورد تا ۲۴ ساعت معتبر است؛ حذف کوکی، گفتگوهای ذخیره‌شده را حذف نمی‌کند.</p>
+            </div>
+        </details>
+        <div class="voice-panel">
             <span id="voiceStatus" class="voice-status" role="status" aria-live="polite" data-waiting="true">در حال بررسی گفت‌وگوی صوتی...</span>
-            <label class="voice-replies"><input id="voiceReplies" type="checkbox" checked> پخش پاسخ صوتی</label> 
-        </div> -->
+            <p id="playbackPrivacy">تبدیل گفتار به متن روی سرور همین سامانه انجام می‌شود، نه لزوماً روی دستگاه شما؛ فایل صوتی ذخیره نمی‌شود و متنِ ارسال‌شده تابع سیاست گفتگو است. پخش صوت با مرورگر ممکن است متن پاسخ را برای سرویس اینترنتی سازنده مرورگر یا سیستم‌عامل بفرستد.</p>
+            <label class="voice-replies"><input id="voiceReplies" type="checkbox" aria-describedby="playbackPrivacy"> با آگاهی از این موضوع، پخش پاسخ صوتی را فعال می‌کنم</label>
+        </div>
         <div class="chat-input">
             <input type="text" id="messageInput" placeholder="اینجا بنویسید..." autocomplete="off">
             <button id="voiceButton" class="voice-button" type="button" aria-label="شروع ضبط صدا" aria-pressed="false" aria-describedby="voiceStatus" title="شروع ضبط صدا" disabled>

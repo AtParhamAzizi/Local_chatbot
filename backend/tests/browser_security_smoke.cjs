@@ -29,6 +29,32 @@ async function main() {
         assert.equal(response.headers()['x-content-type-options'], 'nosniff');
         assert.equal(response.headers()['content-security-policy'], "frame-ancestors 'none'");
         await page.waitForFunction(() => window.__CTL_FEATURES__?.voice === true);
+        await page.locator('#privacyNotice summary').click();
+        await page.locator('#privacyNotice .privacy-details').waitFor({ state: 'visible' });
+        assert.match(await page.locator('#playbackPrivacy').innerText(), /سرویس اینترنتی/);
+        assert.equal(await page.locator('#voiceReplies').isChecked(), false);
+        const speech = await page.evaluate(() => {
+            const calls = [];
+            window.SpeechSynthesisUtterance = class TestUtterance {
+                constructor(text) { this.text = text; }
+            };
+            Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: {
+                getVoices: () => [{ lang: 'fa-IR', localService: false }],
+                cancel: () => calls.push('cancel'),
+                speak: () => calls.push('speak'),
+            } });
+            speakVoiceReply('test reply');
+            const beforeOptIn = [...calls];
+            const checkbox = document.getElementById('voiceReplies');
+            checkbox.checked = true;
+            speakVoiceReply('test reply');
+            checkbox.checked = false;
+            checkbox.dispatchEvent(new Event('change'));
+            return { beforeOptIn, afterOptIn: calls };
+        });
+        assert.deepEqual(speech.beforeOptIn, []);
+        assert.deepEqual(speech.afterOptIn, ['cancel', 'speak', 'cancel']);
+        await page.locator('#privacyNotice summary').click();
         const chatResponse = page.waitForResponse(response => response.url().endsWith('/chat') && response.status() === 200);
         await page.locator('.quick-question-btn').first().click();
         await page.locator('#sendButton').click();
@@ -121,7 +147,7 @@ async function main() {
         const report = [...new Set(violations.map(({ directive, disposition, blockedURI }) =>
             `${disposition}: ${directive} (${blockedURI})`))];
         process.stdout.write(JSON.stringify({
-            result: 'passed', flows: ['chat', 'feedback', 'microphone', 'audio-worklet', 'voice-websocket',
+            result: 'passed', flows: ['privacy-notice', 'playback-opt-in', 'chat', 'feedback', 'microphone', 'audio-worklet', 'voice-websocket',
                 'login', 'admin-iframe', 'csrf-mutation', 'blob-pdf-preview', 'admin-pages', 'logout'],
             cspViolations: report,
         }, null, 2) + '\n');

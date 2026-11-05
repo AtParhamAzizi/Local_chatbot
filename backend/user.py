@@ -3,11 +3,11 @@ from abuse_controls import limit_requests
 from chat_sessions import chat_owner_hash, configure_chat_sessions
 from request_validation import CHAT_FIELDS, FEEDBACK_FIELDS, json_object
 from database import get_conn, get_client_ip, logger
-from settings import safe_error_message
+from settings import retention_settings, safe_error_message
 from serving import serve_development
 import os
 import numpy as np
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, redirect, render_template
 from generator import generate_reply
 from database import get_conn
 
@@ -23,7 +23,7 @@ from voice import configure_voice
 
 
 FRONTEND_DIR = os.path.join(os.path.dirname(BASE_DIR), 'frontend')
-ui_app = Flask('ui', static_folder=FRONTEND_DIR, static_url_path='')
+ui_app = Flask('ui', static_folder=FRONTEND_DIR, static_url_path='', template_folder=FRONTEND_DIR)
 configure_security(ui_app, service='ui')
 configure_chat_sessions(ui_app)
 configure_voice(ui_app)
@@ -35,8 +35,16 @@ configure_voice(ui_app)
 @ui_app.route('/')
 @logger.operation
 def ui_index():
-    chat_owner_hash(create=True)
-    return send_from_directory(FRONTEND_DIR, 'index.html')
+    policy = retention_settings()
+    if policy.chat_days:
+        chat_owner_hash(create=True)
+    return render_template('index.html', privacy=policy)
+
+
+@ui_app.route('/index.html')
+@logger.operation
+def ui_index_alias():
+    return redirect('/')
 
 
 @ui_app.route('/health')
@@ -126,7 +134,8 @@ def chat():
 
 
 
-    ip = get_client_ip()
+    policy = retention_settings()
+    ip = (get_client_ip() or '') if policy.ip_days else ''
 
 
 
@@ -135,8 +144,8 @@ def chat():
     if not message:
         return jsonify({'error': 'پیام خالی است'}), 400
 
-    owner_hash = chat_owner_hash(create=True)
-    user_id = 'chat_' + owner_hash[:32]
+    owner_hash = chat_owner_hash(create=True) if policy.chat_days else None
+    user_id = 'chat_' + owner_hash[:32] if owner_hash else None
 
     try:
         hits = _retrieve_top(message, k=6)
@@ -159,26 +168,30 @@ def chat():
 
     recommended = [hit['question'] for hit in hits[1:4] if hit.get('question')]
 
+    message_id = None
     try:
-        conn = get_conn()
+        conn = get_conn() if policy.chat_days else None
         try:
-            with conn.cursor() as cursor:
-                cursor.execute("""
-                    INSERT INTO chat_history
-                        (user_id, owner_hash, ip_address, user_message, bot_response, feedback_at, created_at)
-                    VALUES (%s, %s, %s, %s, %s, NULL, NOW())
-                """, (user_id, owner_hash, ip, message, reply))
-                message_id = cursor.lastrowid
-            conn.commit()
-            logger.logDrop(f'Chat reply saved with message_id={message_id}')
+            if conn is not None:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO chat_history
+                            (user_id, owner_hash, ip_address, user_message, bot_response, feedback_at, created_at)
+                        VALUES (%s, %s, %s, %s, %s, NULL, NOW())
+                    """, (user_id, owner_hash, ip, message, reply))
+                    message_id = cursor.lastrowid
+                conn.commit()
+                logger.logDrop('Chat reply saved')
         finally:
-            conn.close()
+            if conn is not None:
+                conn.close()
     except Exception as error:
         logger.logDrop(f'Unable to save chat history: {safe_error_message(error)}', logger.FAILED)
         return jsonify({'error': 'Unable to save chat history. Please try again.'}), 503
 
     return jsonify({
         'message_id': message_id,
+        'feedback_enabled': bool(policy.chat_days and policy.feedback_days),
         'reply': reply,
         'recommended_questions': recommended,
         'score': round(hits[0]['score'], 4) if hits else None,
@@ -208,6 +221,9 @@ def feedback():
 
     message_id = data['message_id']
     feedback_value = data['feedback']
+    policy = retention_settings()
+    if not policy.chat_days or not policy.feedback_days:
+        return jsonify({'error': 'Feedback storage is disabled.'}), 403
 
     owner_hash = chat_owner_hash()
     if owner_hash is None:
@@ -230,7 +246,7 @@ def feedback():
                     if cursor.fetchone() is None:
                         return jsonify({'error': 'Message not found'}), 404
             conn.commit()
-            logger.logDrop(f'Feedback saved: message_id={message_id}, feedback={feedback_value}')
+            logger.logDrop('Feedback saved')
         finally:
             conn.close()
     except Exception as error:

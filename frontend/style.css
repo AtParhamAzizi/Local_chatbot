@@ -153,6 +153,12 @@ body::after { right: -16vw; bottom: -18vw; background: #8b5cf6; }
 .voice-status.error { color: #fb7185; }
 .voice-replies { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .voice-replies input { accent-color: var(--accent); }
+.privacy-notice { flex-shrink: 0; padding: 8px 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.7; }
+.privacy-notice summary { cursor: pointer; color: var(--ink); }
+.privacy-details { max-height: 24vh; overflow-y: auto; }
+.privacy-details p { margin: 6px 0; }
+.voice-panel { flex-shrink: 0; }
+#playbackPrivacy { flex-basis: 100%; line-height: 1.6; }
 .voice-panel + .chat-input { border-top: 0; padding-top: 6px; }
 .chat-input .voice-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .chat-input .voice-button { color: var(--ink); background: rgba(255,255,255,.08); border-color: rgba(125,211,252,.3); }

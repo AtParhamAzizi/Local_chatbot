@@ -4,6 +4,7 @@ import json
 import os
 import re
 import secrets
+from dataclasses import dataclass
 from datetime import timedelta
 from ipaddress import ip_address, ip_network
 from urllib.parse import quote, quote_plus, urlsplit
@@ -61,6 +62,34 @@ def session_lifetime_seconds():
 
 def session_idle_seconds():
     return _integer_setting("ADMIN_SESSION_IDLE_SECONDS", 1800, 60, session_lifetime_seconds())
+
+
+@dataclass(frozen=True)
+class RetentionPolicy:
+    chat_days: int = 30
+    ip_days: int = 0
+    feedback_days: int = 30
+    log_days: int = 14
+    delete_enabled: bool = True
+    interval_seconds: int = 3600
+    batch_size: int = 1000
+    max_batches: int = 100
+
+
+def retention_settings():
+    deletion = _value('RETENTION_DELETE_ENABLED', '1').strip().lower()
+    if deletion not in {'0', '1', 'false', 'true'}:
+        raise ConfigurationError('RETENTION_DELETE_ENABLED must be 0, 1, false, or true')
+    return RetentionPolicy(
+        chat_days=_integer_setting('RETENTION_CHAT_DAYS', 30, 0, 3650),
+        ip_days=_integer_setting('RETENTION_IP_DAYS', 0, 0, 3650),
+        feedback_days=_integer_setting('RETENTION_FEEDBACK_DAYS', 30, 0, 3650),
+        log_days=_integer_setting('RETENTION_LOG_DAYS', 14, 0, 3650),
+        delete_enabled=deletion in {'1', 'true'},
+        interval_seconds=_integer_setting('RETENTION_INTERVAL_SECONDS', 3600, 60, 86400),
+        batch_size=_integer_setting('RETENTION_BATCH_SIZE', 1000, 1, 10000),
+        max_batches=_integer_setting('RETENTION_MAX_BATCHES', 100, 1, 1000),
+    )
 
 
 def trusted_proxy_hops():
@@ -133,6 +162,7 @@ def admin_session_config():
 
 def validate_settings():
     bind_host()
+    retention_settings()
     session_idle_seconds()
     hops = trusted_proxy_hops()
     networks = trusted_proxy_networks()

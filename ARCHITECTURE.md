@@ -28,6 +28,7 @@ backend/
   settings.py         APP_ENV, validated APP_HOST (loopback default), credentials, shared ports
   security.py         Explicit browser-origin guards/CORS, peer-validated forwarding, safe errors
   public_errors.py    Allowlisted public failure codes/messages shared by HTTP and voice
+  retention.py        Bounded privacy cleanup, shared scheduled worker, and dry-run/apply CLI
   request_validation.py Strict request schemas, bounded JSON/form parsing and upload spooling
   abuse_controls.py   Bounded per-client sliding windows and concurrent-request admission
   chat_sessions.py    Server-issued anonymous chat cookies and message ownership hashes
@@ -82,7 +83,8 @@ Import side effects: importing `user` calls `configure_voice(ui_app)`; importing
 5. `init_history_table()` -> `chat_history`
 6. `get_embedder()` (interface.py) loads the embedding model on CPU
 7. `get_generator()` (generator.py) loads the LLM (CUDA if available)
-8. Return both apps to the selected runtime. Development starts user serving in a daemon thread and admin serving on the main thread. Production serves both through the worker's shared thread pool. Both profiles default to `APP_HOST=127.0.0.1`; LAN exposure requires explicitly setting an interface address or wildcard. Debugger and reloader are disabled.
+8. `start_retention_worker(ui_app, admin_app)` starts one shared privacy-cleanup daemon after table/model initialization; its first sweep runs immediately, then hourly by default. No cleanup starts on import.
+9. Return both apps to the selected runtime. Development starts user serving in a daemon thread and admin serving on the main thread. Production serves both through the worker's shared thread pool. Both profiles default to `APP_HOST=127.0.0.1`; LAN exposure requires explicitly setting an interface address or wildcard. Debugger and reloader are disabled.
 
 The Whisper model is not loaded at startup. It loads lazily on the first `/voice/health` call or the controller `voice_load` action.
 
@@ -112,7 +114,7 @@ Env: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`. The active config is
 3. No hits: fixed Persian fallback reply (phone 1649), logged as WARNING.
    Hits: `generate_reply(message, hits[:6])`. If generation raises, the reply falls back to `hits[0]['answer']` or `['content']`, then to the fallback text.
 4. `recommended_questions` = `question` of `hits[1:4]` (QA hits only).
-5. INSERT into `chat_history`, including the server-derived `user_id` and `owner_hash`. On failure returns 503.
+5. INSERT into `chat_history`, including the server-derived `user_id` and `owner_hash`. IP is `''` unless `RETENTION_IP_DAYS > 0`. On failure returns 503. With `RETENTION_CHAT_DAYS=0`, skip history/cookie creation and return `message_id: null`; answering still works. Response `feedback_enabled` is false if chat or feedback retention is zero, and the frontend hides rating controls.
 6. Response: `{message_id, reply, recommended_questions, score, sources:[{type, filename, pages, score}]}`.
 
 Scoring:
@@ -164,7 +166,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 
 ### 6.7 Feedback (`user.py: feedback()`, POST `/feedback`)
 
-`{message_id: int > 0, feedback: 'like'|'dislike'}` updates `chat_history`; a new rating overwrites the old one. The signed chat cookie is required; missing, tampered, or expired proof returns 401 without a history lookup. Both the UPDATE and its unchanged-row existence check constrain `id` AND the current `owner_hash`. Unknown, foreign, and legacy-unowned rows all return the same 404. Invalid input returns 400; a DB error returns 503. Client-supplied user IDs, ownership fields, and IP headers cannot grant ownership. Chat/feedback responses are no-store.
+`{message_id: int > 0, feedback: 'like'|'dislike'}` updates `chat_history`; a new rating overwrites the old one. Zero chat/feedback retention disables feedback with 403 before DB access. The signed chat cookie is required; missing, tampered, or expired proof returns 401 without a history lookup. Both the UPDATE and its unchanged-row existence check constrain `id` AND the current `owner_hash`. Unknown, foreign, and legacy-unowned rows all return the same 404. Invalid input returns 400; a DB error returns 503. Client-supplied user IDs, ownership fields, and IP headers cannot grant ownership. Chat/feedback responses are no-store.
 ### 6.8 Voice / STT
 
 - `voice.py: configure_voice(app)` registers on the user app: GET `/voice/audio-worklet.js`, GET `/voice/health`, and WebSocket `/voice-stream` (flask-sock; registered only if the voice dependencies imported). `/voice/health` starts the background model load and returns 200 when ready, or 503 with status `loading|error|unavailable`.
@@ -173,7 +175,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 - `STT/streaming.py`: `AudioStream` (`feed`, `_feed_frame`, `_finalize`, `next_job`, `finish`, `has_pending`), `TranscriptionJob`, `SAMPLE_RATE=16000`, `MAX_PACKET_BYTES` (16000 bytes, 0.5 s). Voice detection is RMS energy per 100 ms frame (`voice_threshold`). A segment closes after 0.7 s of silence or 12 s of audio, and a partial transcript is produced every 1 s. More than 3 queued segments raises "cannot keep up".
 - Env: `STT_MODEL` (base), `STT_DEVICE` (cpu), `STT_COMPUTE_TYPE` (int8, or float16 on cuda), `STT_LANGUAGE` (fa; `auto` = detect), `STT_VOICE_THRESHOLD` (0.008), `STT_CPU_THREADS` (min(4, cpus)), `STT_LOCAL_FILES_ONLY`.
 - `STT/STT.py` is a standalone demo server (`/`, `/health`, WS `/stream`, POST `/voice`) that also defaults to port 5000 (`STT_PORT`). Never run it together with `main.py`. Its UI files are gitignored.
-- Frontend flow: mic -> AudioWorklet (downsamples to 16 kHz PCM16) -> WebSocket -> live transcript in the input box. On stop, the final text goes through the normal `/chat`. Spoken replies use the browser's `speechSynthesis` (a Persian voice if available) and only apply to messages sent by voice when the "voice replies" checkbox is on.
+- Frontend flow: mic -> AudioWorklet (downsamples to 16 kHz PCM16) -> WebSocket -> live transcript in the input box. On stop, the final text goes through the normal `/chat`. Spoken replies use the browser's `speechSynthesis` (a Persian voice if available) and only apply to messages sent by voice when the "voice replies" checkbox is on. Playback defaults off; the visible notice distinguishes local server-side STT/no audio files from browser/OS playback that may send reply text to a network provider.
 
 ### 6.9 Runtime controller (`controller.py`, `controller_api.py`)
 
@@ -191,7 +193,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 
 - `logger.logDrop(message, level)`, or the legacy `logDrop(level, log_from, message, warninglevel)`. `_write()` inserts into `adminlogger` and falls back to the `chatbot.audit` Python logger on DB error. A thread-local flag prevents recursive logging. Caller file and function are inferred with `inspect`.
 - Levels: `logger.INFORMATION=1`, `logger.WARNING=2`, `logger.FAILED=3`.
-- `@logger.operation` wraps nearly every function. It logs completion, exceptions, and Flask HTTP outcomes (4xx = warning, 5xx = failed, including the response `error`/`message`). It never logs request bodies or model inputs. Note that this writes one DB row per decorated call, including every search and embedding call.
+- `@logger.operation` wraps nearly every function. It logs completion, exception types, and Flask HTTP outcomes (4xx = warning, 5xx = failed, with an allowlisted public code, never the response body). It never logs request bodies or model inputs. Chat/feedback logs omit message IDs and rating values. `RETENTION_LOG_DAYS=0` suppresses DB logs and their fallback copies. Otherwise this writes one DB row per decorated call, including every search and embedding call.
 - Decorator order for routes: `@app.route(...)` on top, `@logger.operation` below it.
 
 ## 7. HTTP API
@@ -327,3 +329,15 @@ Both apps enforce nosniff, `strict-origin-when-cross-origin`, and a Permissions 
 The rest of CSP is sent only as `Content-Security-Policy-Report-Only`. The candidate allows local scripts/worklets, styles (including current inline styles), same-origin fetch and configured WebSocket origins, and same-origin/blob iframe PDF previews. No telemetry endpoint is exposed; evaluation uses browser console/`securitypolicyviolation` events without uploading URLs/samples. Chrome and Edge smoke evaluation found only inline-script/handler reports, with no enforced violations across chat/feedback, fake microphone + real worklet/voice socket, login/logout, admin iframe/pages, CSRF mutations, and blob PDF preview. The controller-injected feature-state script and existing inline click handlers need migration/nonces/hashes before full CSP enforcement. See README for rollout gates and commands.
 
 `backend/tests/test_safe_errors_headers.py` covers injected exception/response leaks, protocol headers, authentication/validation codes, voice failures, MIME compatibility, iframe policy and production-only trusted-scheme HSTS. `backend/tests/browser_security_smoke.py` + `.cjs` optionally exercise installed Chrome/Edge with Playwright and offline model/DB doubles on loopback ports 5000/8000. They are not part of default unittest discovery and never use real model weights/accounts.
+
+## Privacy and retention (F012)
+
+`settings.RetentionPolicy` / `retention_settings()` validate finite environment-controlled lifetimes: `RETENTION_CHAT_DAYS=30`, `RETENTION_IP_DAYS=0`, `RETENTION_FEEDBACK_DAYS=30`, `RETENTION_LOG_DAYS=14` (each 0-3650). Chat/replies support authorized quality/support review, feedback supports answer evaluation, optional IPs support troubleshooting (not ownership), and logs support security/operations. Zero disables new storage for that category and purges old data, never means forever. Whole-chat deletion also erases grouping/owner/IP/feedback; IP/feedback ages are anchored to message creation and cannot outlive their chat row. Existing schema is sufficient: erased IPs use the non-null empty-string sentinel, and feedback/timestamp are cleared together. Application logs no longer copy message IDs, rating values, or arbitrary error bodies.
+
+`retention.run_retention()` obtains a database-scoped named lock, sets its connection to UTC, takes one DB-clock cutoff, and hard-deletes expired `chat_history` / `adminlogger` rows and clears expired IP/feedback fields. Null legacy timestamps expire; zero-day categories purge even future-dated rows. Fixed SQL allowlists and ordered LIMIT batches avoid reading personal data into Python. Each batch commits independently; failures roll back the current batch and retain only committed counts. Defaults: 1000 rows/batch, 100 batches/category, 3600 seconds between sweeps (`RETENTION_BATCH_SIZE`, `RETENTION_MAX_BATCHES`, `RETENTION_INTERVAL_SECONDS`). A full final batch conservatively reports `partial` for monitoring/retry. One shared daemon starts in `main.create_apps()` after initialization; `serve_development()` idempotently starts it for standalone runners too. The master/import paths never start cleanup.
+
+`RETENTION_DELETE_ENABLED=0` pauses automatic/manual retention-job mutations, not collection or existing authorized admin erasure routes; it is not record-level legal holds. `python -B backend/retention.py --dry-run` (also the CLI default) previews independent aggregate counts without DB writes; `--apply` honors that pause. No models load. Each invocation emits a `privacy_retention` completion record with timestamp/status/counts/flags/fixed failure code only, never text/IPs/identifiers/SQL/exception messages. Applied-job records also use the normal expiring DB logger when enabled/available; Python log output remains available otherwise. No indefinitely retained special archive is created. Monitor failed/partial/locked sweeps; expiry can lag until successful cleanup. Defaults apply to existing rows on next startup; preview first or explicitly pause before upgrade.
+
+`ui_index()` now renders `frontend/index.html` with the effective policy; `/index.html` redirects to `/` so it does not serve the template as a static page. The Persian privacy notice explains purposes/ages, pause status, cookie lifetime, authorized early-deletion requests, and external backup/log policies. The visible voice notice distinguishes server-side local Whisper (bounded RAM audio, no recording files; submitted transcripts follow chat retention) from potentially network-backed browser speech playback. Playback is opt-in per page, unchecked by default, and unchecking cancels queued speech. Default development/Gunicorn access logging is disabled to avoid another visitor-IP/query-ID copy. Infrastructure logs, database backups/binlogs, exports and speech-provider retention remain operator-managed; restored snapshots require cleanup before serving. Knowledge documents and administrator accounts are not age-deleted.
+
+`backend/tests/test_retention.py` runs translated cleanup SQL against an in-memory store, including expiry/null boundaries, pause/zero-day policies, independent field ages, dry-run, caps/idempotence, lock collisions, rollback/committed counts, safe completion records, configuration bounds and startup wiring. `test_privacy.py` covers actual routes' collection controls and rendered notice plus privacy-safe logs. The optional browser smoke also checks notice visibility and playback opt-in/cancellation. See README for purpose/configuration tables and operational recovery limits.

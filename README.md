@@ -625,6 +625,124 @@ responses retain `errors: []`. PDF limits are checked before embedding or
 replacement. Correct the input, reduce its size, or split a large import before
 resubmitting. Offline tests verify these rejections never invoke model work.
 
+## Privacy defaults and retention (F012)
+
+Chatbot operators must publish their own contact details and choose lifetimes
+appropriate to their deployment. These defaults are data-minimization choices,
+not a legal-compliance guarantee. The served Persian UI explains the actual
+configured policy, including a warning when automatic deletion is paused.
+
+| Data | Purpose and access | Default and deletion |
+| --- | --- | --- |
+| Chat text, replies, anonymous grouping/owner hash | Authorized `chats` operators review answer quality and support issues; not automatic model training | 30 days from message creation, then hard-delete the entire row |
+| Feedback and its timestamp | Authorized quality review of the linked answer | 30 days from message creation, never longer than its chat row; clear both fields on expiry |
+| Chat IP address | Optional short-lived troubleshooting metadata; never identity/ownership proof | Not stored in new chat history (`''` sentinel); clear existing addresses on cleanup |
+| Application audit logs | Authorized `system_reports` operators diagnose errors and security events | 14 days, then hard-delete; new chat/feedback logs omit message IDs, text and rating values |
+| Microphone audio | Transcribe speech on the application server using local Whisper | Bounded in-memory buffers only, not stored as audio files; submitted transcripts follow chat policy |
+| Anonymous cookie | Prove message/feedback ownership | Fixed 24-hour validity; removing the cookie does not delete stored history |
+
+Browser speech playback is separate from Whisper STT. It uses the browser/OS
+`speechSynthesis` voices, prefers a voice reporting `localService`, and can fall
+back to a network-backed voice. Playback is **unchecked by default** and the
+visible notice warns that enabling it may send answer text to a browser/OS
+provider. Turning it off cancels queued playback. Local STT means processing on
+the application server, not necessarily the user's device. Whisper can download
+model files on first use unless `STT_LOCAL_FILES_ONLY=1`; that is separate from
+uploading audio to a transcription vendor. Avoid sending sensitive information.
+
+Configure these environment variables before startup; restart after changes.
+Native Python does not automatically load `.env`; export the values in the
+launch environment. Docker Compose passes the `.env.example` retention settings
+through to the chatbot service.
+
+| Setting | Default | Allowed values / meaning |
+| --- | --- | --- |
+| `RETENTION_CHAT_DAYS` | `30` | Integer 0-3650; `0` disables new history and purges existing history when deletion runs |
+| `RETENTION_IP_DAYS` | `0` | Integer 0-3650; `0` avoids new persisted IPs and clears legacy IPs; positive values opt into storage |
+| `RETENTION_FEEDBACK_DAYS` | `30` | Integer 0-3650; `0` disables new feedback and clears existing feedback/timestamps |
+| `RETENTION_LOG_DAYS` | `14` | Integer 0-3650; `0` disables new application DB audit logs/fallback copies and purges old DB logs |
+| `RETENTION_DELETE_ENABLED` | `1` | `0/1/false/true`; false pauses retention mutations, not collection or authorized manual erasure |
+| `RETENTION_INTERVAL_SECONDS` | `3600` | Integer 60-86400 between sweeps |
+| `RETENTION_BATCH_SIZE` | `1000` | Integer 1-10000 rows per mutation/commit |
+| `RETENTION_MAX_BATCHES` | `100` | Integer 1-1000 batches per category per sweep |
+
+Zero never means indefinite retention. Positive IP/feedback lifetimes are also
+bounded by the parent chat lifetime. Changes to feedback do not reset its age.
+Deletion uses the database's clock with a UTC session and an inclusive expiry
+boundary (`created_at <= cutoff`); missing legacy timestamps are treated as
+expired. Zero-day policies purge that category even for future-dated legacy
+rows. Whole-chat deletion takes precedence and removes its text, reply, grouping
+label, ownership hash, IP and feedback together. No detached feedback copies are
+kept. In-memory per-client abuse controls still use validated IPs temporarily;
+those bounded process-local entries expire/reclaim or disappear on restart.
+
+**Upgrade behavior:** deletion is enabled by default in both development and
+production and applies to existing rows on the next startup. Preview with the
+same deployment environment before starting the upgraded application. To pause
+first, explicitly set `RETENTION_DELETE_ENABLED=0`; the UI then states that old
+data remains pending. This operational pause is not a record-level legal-hold
+system. Existing authenticated/CSRF-protected admin conversation/message deletes
+still hard-delete the selected rows and associated feedback immediately; they
+do not archive them in logs or wait for an expiry job. Users can request early
+erasure from an authorized operator. There is no unauthenticated deletion API.
+
+`backend/retention.py` runs automatically in the shared serving worker after
+schema/model initialization, immediately and then at the configured interval.
+The standalone development runners also start it. Importing modules or running
+tests does not start cleanup. Each sweep uses a database-scoped MySQL named lock
+so scheduled/manual processes do not overlap, fixed table/column allowlists,
+bounded ordered mutations, and one transaction per batch. It never reads chat
+text, addresses, owner hashes or individual IDs into Python. It does not touch
+knowledge documents, administrator accounts, or model files. Each committed
+batch survives a later failure; only the current batch rolls back.
+
+For an external scheduled job or a manual preview, use the same environment as
+the server (no model weights are loaded):
+
+```powershell
+python -B backend/retention.py --dry-run
+python -B backend/retention.py --apply
+```
+
+No flags also means dry-run. Dry-run performs only session/lock operations and
+aggregate counts, and does not write database audit records. Its per-category
+counts can overlap (a chat eligible for deletion can also have an expired IP or
+feedback); actual sweeps delete chats first. `--apply` honors the deletion pause.
+Exit code 1 reports failure, a possible remaining backlog (`partial`), or an
+overlapping job (`skipped_locked`); completed previews/sweeps and acknowledged
+policy pauses return 0. A capped sweep conservatively reports `partial` even if
+its last full batch happened to clear the backlog. Rerun or increase the batch
+budget until a subsequent sweep reports `completed`. Expired rows can remain
+until the next successful sweep; monitor failures and backlogs, not just process
+uptime. While the service is stopped, use an external scheduler if expiry must
+continue.
+
+Each invocation emits a structured `privacy_retention` record containing only
+completion time, status, dry-run flag, aggregate committed counts (candidate
+counts for previews), batch-limit
+flag, and a fixed error code on failure. No text, IPs, user/message IDs, hashes,
+SQL, credentials, paths or raw exceptions are included. Records go to the
+`chatbot.retention` Python log (CLI also prints JSON); applied-job records also
+go to `adminlogger` when DB logging is enabled/available and expire under the
+same log policy. Records still reach the Python log when DB logging is disabled
+or unavailable. They are not a separate indefinitely retained audit archive.
+
+Deletion is logical deletion from live application tables, not secure media
+erasure. Database backups, binary logs, replicas, proxy/container/service logs,
+browser/OS speech providers, and exported admin data need their own bounded
+retention and erasure procedures. Rotate/expire backups and reapply cleanup
+before serving a restored database; old snapshots otherwise restore deleted
+data. Application sweeps cannot delete those external copies. Default development
+access logging is suppressed and production Gunicorn access logging is disabled
+to avoid creating another copy of visitor IPs and query identifiers; configure
+any upstream logging deliberately.
+
+Offline tests execute translated cleanup SQL against an in-memory database and
+cover boundary/null timestamps, zero-day policies, deletion pause, dry-run,
+bounded progress, overlapping locks, committed counts/rollback, safe records,
+startup wiring, collection defaults, and rendered notices. The optional browser
+smoke test also verifies the visible notice and speech opt-in/cancellation.
+
 ## Deployment security
 
 The default environment is `production`. Only explicit `APP_ENV=development` (or `dev`, `local`, `test`) enables development behavior; other values fail closed. Startup fails closed when any of these settings are missing: `DB_USER`, `DB_PASS`, `DB_NAME`, or `ADMIN_SESSION_SECRET`. Unexpected errors return generic messages. Audit logs redact configured database/session secrets, and exception logs record error types rather than raw exception text.

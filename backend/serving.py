@@ -3,6 +3,12 @@
 import os
 
 from settings import ADMIN_PORT, UI_PORT, bind_host, is_development, validate_settings
+from werkzeug.serving import WSGIRequestHandler
+
+
+class NoAccessLogRequestHandler(WSGIRequestHandler):
+    def log_request(self, code='-', size='-'):
+        return
 
 
 def serve_development(app, port):
@@ -12,6 +18,8 @@ def serve_development(app, port):
             "The Flask development server requires APP_ENV=development. "
             "Use python backend/main.py for production."
         )
+    from retention import start_retention_worker
+    start_retention_worker(app)
     app.run(
         host=bind_host(),
         port=port,
@@ -19,6 +27,7 @@ def serve_development(app, port):
         use_debugger=False,
         use_reloader=False,
         threaded=True,
+        request_handler=NoAccessLogRequestHandler,
     )
 
 
@@ -65,6 +74,7 @@ def serve_production(create_apps):
                 "preload_app": False,
                 "reload": False,
                 "forwarded_allow_ips": "",
+                "accesslog": None,
             }
             for name, value in options.items():
                 self.cfg.set(name, value)

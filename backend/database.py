@@ -7,7 +7,8 @@ import threading
 from functools import wraps
 from flask import request
 import pymysql.cursors
-from settings import database_config, redact_secrets, safe_error_message
+from settings import database_config, redact_secrets, retention_settings, safe_error_message
+from public_errors import public_error
 
 
 DB_CONFIG = {
@@ -47,6 +48,8 @@ class logger:
     def _write(filename, function_name, message, warninglevel):
         if type(warninglevel) is not int or warninglevel not in (1, 2, 3):
             raise ValueError('warninglevel must be 1 (information), 2 (warning), or 3 (failed)')
+        if retention_settings().log_days == 0:
+            return False
         if getattr(logger._state, 'writing', False):
             return False
 
@@ -112,9 +115,8 @@ class logger:
                 if status >= 400 and hasattr(response, 'get_json'):
                     payload = response.get_json(silent=True)
                     if isinstance(payload, dict):
-                        detail = payload.get('error') or payload.get('message')
-                        if detail:
-                            message = f'{message}: {detail}'
+                        code = public_error(status, payload.get('code'))['code']
+                        message = f'{message}: {code}'
             logger._write(filename, function_name, message, warninglevel)
             return result
 

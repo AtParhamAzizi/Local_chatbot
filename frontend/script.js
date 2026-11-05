@@ -559,7 +559,7 @@ window.addEventListener('pageshow', () => {
                 // }
 
                 hideTyping();
-                addMessage(data.reply, false, data.message_id);   // <-- pass message_id
+                addMessage(data.reply, false, data.feedback_enabled === false ? null : data.message_id);
                 if (speakReply) speakVoiceReply(data.reply);
                 if (data.recommended_questions && data.recommended_questions.length > 0) {
                     showRecommendedQuestions(data.recommended_questions);

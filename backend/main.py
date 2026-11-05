@@ -16,6 +16,7 @@ def create_apps():
         init_documents_chunk_table, init_documents_table, init_history_table,
     )
     from generator import get_generator
+    from retention import start_retention_worker
     import controller_api
 
     init_logger_table()
@@ -27,6 +28,7 @@ def create_apps():
     init_history_table()
     get_embedder()
     get_generator()
+    start_retention_worker(ui_app, admin_app)
 
     logger.logDrop('Database and local models initialized')
 
