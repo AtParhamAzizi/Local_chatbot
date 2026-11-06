@@ -49,7 +49,7 @@ class PrivacyEndpointTests(AbuseEndpointFixture, unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertIsNone(response.json['message_id'])
             self.assertFalse(response.json['feedback_enabled'])
-            self.assertIsNone(self.ui_client.get_cookie(self.user.ui_app.config['SESSION_COOKIE_NAME']))
+            self.assertIsNone(self.ui_client.get_cookie(self.ui_app.config['SESSION_COOKIE_NAME']))
             response = self.ui_client.post('/feedback', json={'message_id': 1, 'feedback': 'like'})
             self.assertEqual(response.status_code, 403)
         database.assert_not_called()

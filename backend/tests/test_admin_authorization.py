@@ -178,7 +178,8 @@ class AdminAuthorizationTests(unittest.TestCase):
         cls.resources.enter_context(patch.object(cls.database.logger, '_write', return_value=True))
         cls.admin = importlib.import_module('admin')
         cls.controller = importlib.import_module('controller_api')
-        cls.app = cls.admin.admin_app
+        cls.app = importlib.import_module('application').create_admin_app()
+        cls.controller.register(sys.modules['user'].ui_app, cls.app)
         cls.unmapped_handler_spy = Mock(return_value=Response(status=204))
 
         def unmapped_handler():

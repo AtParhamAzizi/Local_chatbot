@@ -167,6 +167,9 @@ class AbuseEndpointFixture:
         cls.admin = importlib.import_module('admin')
         cls.user = importlib.import_module('user')
         cls.voice = importlib.import_module('voice')
+        application = importlib.import_module('application')
+        cls.admin_app = application.create_admin_app()
+        cls.ui_app = application.create_ui_app()
 
     def setUp(self):
         self.resources = ExitStack()
@@ -180,14 +183,14 @@ class AbuseEndpointFixture:
         self.resources.enter_context(patch.object(self.voice, '_model_status', return_value=('ready', None)))
         self.slot = threading.BoundedSemaphore(1)
         self.resources.enter_context(patch.object(self.voice, '_transcription_slot', self.slot))
-        for app in (self.admin.admin_app, self.user.ui_app):
+        for app in (self.admin_app, self.ui_app):
             app.extensions['abuse_controls'] = {
                 name: ClientLimiter(limiter.limit, limiter.window, clock=lambda: self.now)
                 for name, limiter in app.extensions['abuse_controls'].items()
             }
-        self.admin_client = self.admin.admin_app.test_client()
-        self.ui_client = self.user.ui_app.test_client()
-        self.sock = self.user.ui_app.extensions['test_voice_socket']
+        self.admin_client = self.admin_app.test_client()
+        self.ui_client = self.ui_app.test_client()
+        self.sock = self.ui_app.extensions['test_voice_socket']
         self.sock.websocket = FakeSocket()
 
     def tearDown(self):
@@ -214,7 +217,7 @@ class AbuseEndpointFixture:
         with self.admin_client.session_transaction() as signed_session:
             signed_session['admin_session'] = token
         proof = hmac.new(
-            self.admin.admin_app.secret_key.encode(), b'admin-csrf\x00' + token.encode(), hashlib.sha256,
+            self.admin_app.secret_key.encode(), b'admin-csrf\x00' + token.encode(), hashlib.sha256,
         ).hexdigest()
         return {'X-CSRF-Token': proof}
 
@@ -241,7 +244,7 @@ class AbuseEndpointTests(AbuseEndpointFixture, unittest.TestCase):
                     'username': f'account-{attempt}', 'password': 'wrong', 'csrf_token': proof,
                 })
                 self.assertEqual(response.status_code, 401)
-            other_browser = self.admin.admin_app.test_client()
+            other_browser = self.admin_app.test_client()
             other_proof = self.login_proof(other_browser)
             response = self.admin_open('/login', 'POST', client=other_browser, data={
                 'username': 'target', 'password': 'correct', 'csrf_token': other_proof,
@@ -270,7 +273,7 @@ class AbuseEndpointTests(AbuseEndpointFixture, unittest.TestCase):
                 self.admin_open('/login', 'POST', data={
                     'username': 'target', 'password': 'wrong', 'csrf_token': proof,
                 })
-        ordinary_client = self.admin.admin_app.test_client()
+        ordinary_client = self.admin_app.test_client()
         ordinary_proof = self.login_proof(ordinary_client)
         with patch.object(self.admin, 'authenticate', return_value={'id': 1}), \
                 patch.object(self.admin, 'create_admin_session', return_value='ordinary-session'), \

@@ -309,7 +309,7 @@ class RequestValidationTests(AbuseEndpointFixture, unittest.TestCase):
         document.close.assert_called_once()
 
     def test_valid_schema_boundaries_keep_types_and_password_whitespace(self):
-        with self.admin.admin_app.test_request_context('/admin/api/admin-users', method='POST', json={
+        with self.admin_app.test_request_context('/admin/api/admin-users', method='POST', json={
             'username': 'u' * 64, 'password': ' ' + 'p' * 1022 + ' ', 'permissions': '*', 'is_admin': False,
         }):
             payload = self.validation.json_object(self.validation.USER_FIELDS, required=('username', 'password'))

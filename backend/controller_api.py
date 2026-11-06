@@ -1,8 +1,7 @@
 """Controller routes and model actions (see controller.py for state helpers).
 
-Importing this module registers its hooks on the existing user and admin
-Flask apps. generator.py, interface.py, voice.py, user.py and admin.py are
-not modified; only their module-level singletons are read or reset.
+Hooks and routes are registered explicitly on factory-created applications.
+Only the process-shared model and controller singletons are read or reset.
 """
 
 import json
@@ -13,12 +12,10 @@ from flask import Response, g, jsonify, request
 import generator
 import interface
 import voice
-from admin import admin_app
 from admin_policy import CONTROLLER_ACTION_OPERATIONS, permits
 from controller import _free_memory, _gpu_info, _set_state, _state
 from database import logger
 from request_validation import json_object, text
-from user import ui_app
 
 _busy = {}
 _errors = {}
@@ -179,7 +176,12 @@ FEATURES_JS = """(function () {
 """
 
 
-def register():
+def register(ui_app, admin_app):
+    register_ui(ui_app)
+    register_admin(admin_app)
+
+
+def register_ui(ui_app):
     if ui_app.extensions.get('controller'):
         return
     ui_app.extensions['controller'] = True
@@ -222,6 +224,12 @@ def register():
         response.headers['Cache-Control'] = 'no-store'
         return response
 
+
+def register_admin(admin_app):
+    if admin_app.extensions.get('controller'):
+        return
+    admin_app.extensions['controller'] = True
+
     @admin_app.get('/controller')
     def controller_page():
         from interface import ADMIN_DIR
@@ -251,6 +259,3 @@ def register():
                 return jsonify(error='Another action is already running for this model.'), 409
             return jsonify(get_status()), 202
         return jsonify(error='Unknown action'), 400
-
-
-register()

@@ -24,7 +24,9 @@ Recorded F017 installation uses `scripts/dependencies.py install/verify --profil
 
 ```
 backend/
-  main.py             Entry point: init DB tables + models, import controller_api, start both servers
+  main.py             Entry point: explicit serving initialization and runtime selection
+  application.py      Side-effect-free factory imports; fresh apps and explicit route registration
+  bootstrap.py        Explicit database, shared model, controller-state and retention startup
   serving.py          Development server guard and production Gunicorn socket-port dispatcher
   settings.py         APP_ENV, validated APP_HOST (loopback default), credentials, shared ports
   security.py         Explicit browser-origin guards/CORS, peer-validated forwarding, safe errors
@@ -40,7 +42,7 @@ backend/
   user.py             User Flask app: /, /health, /chat, /feedback; _retrieve_top orchestration
   admin.py            Admin Flask app: dashboard/static routes + all /admin/api/* (~1700 lines)
   controller.py       Runtime controller state (controller_state.json), memory/GPU helpers
-  controller_api.py   Controller routes + hooks on both apps; registers itself on import
+  controller_api.py   Controller routes + hooks registered explicitly on supplied apps
   database.py         DB_CONFIG, get_conn, table creators, `logger` class, get_client_ip, hashing helpers
   interface.py        Embedding model (load/embed) + shared constants (ports, limits, MIN_SCORE, ADMIN_DIR)
   generator.py        Generation LLM (load/generate), SYSTEM_PROMPT, sampling params
@@ -65,18 +67,39 @@ requirements/          Native CPU/cu118 wheel locks, shared constraints, upgrade
 scripts/dependencies.py  Fresh-environment installer, dependency smoke verifier and native report-to-lock recorder
 ```
 
-## 4. Startup pipeline (`backend/main.py: main()` / `create_apps()`)
+## 4. Factories and startup (`application.py`, `bootstrap.py`, `main.py`)
 
 `main()` validates settings before importing the database/model/application modules.
 Explicit `APP_ENV=development` (also `dev`, `local`, `test`) selects development;
 all other values select production. Production launches Gunicorn with one `gthread`
-worker, eight threads, no preload/reload, and a 300-second timeout. `create_apps()`
+worker, eight threads, no preload/reload, and a 300-second timeout. `create_serving_apps()`
 runs inside the worker after fork, so the master never loads models/CUDA. Its
 `PortDispatcher` routes by the listening `SERVER_PORT`, retaining the original
 WSGI environment, including the raw socket needed by Flask-Sock. Both apps share
 model/controller state. Native Windows production exits without a dev-server fallback.
 
-Import side effects: importing `user` calls `configure_voice(ui_app)`; importing `controller` loads `controller_state.json`; `import controller_api` runs `register()`, which adds hooks and routes to both apps.
+Importing `application` (or `main.create_apps`) and `bootstrap` needs no deployment
+configuration, database connection, model dependencies, model files or running servers.
+`application.create_ui_app()` / `create_admin_app()` validate settings, create fresh
+Flask instances, configure security/sessions and register the service's routes.
+`application.create_apps()` (also exported by `main`) builds both and calls
+`controller_api.register(ui_app, admin_app)` for the shared controller routes/hooks.
+Factory calls do not initialize tables, write audit logs, read controller state,
+load/download models, start retention or bind sockets. Application construction
+still requires the application's installed dependencies and valid settings;
+model adapters may be doubled in tests. Requests can perform normal database/model
+work, so tests must supply adapters before exercising those routes.
+
+`user` and `admin` expose handlers and `register_ui_routes(app)` /
+`register_admin_routes(app)`, not module-global Flask apps. Endpoint names and
+authorization policies are unchanged. Importing `controller_api` does not attach
+hooks, and importing `controller` no longer loads persisted state (including its
+database-backed error logging). State and models remain process-shared by design;
+Flask configuration, hooks and admission limiters belong to each fresh app.
+
+Only `main.create_serving_apps()` assembles the apps and explicitly invokes
+`bootstrap.initialize_runtime(ui_app, admin_app)` before returning them to a server.
+The runtime initialization order is:
 
 1. `init_logger_table()` -> `adminlogger` (also migrates an old CHAR/VARCHAR `message` column to TEXT)
 2. `init_db()` -> `qa_documents`
@@ -84,12 +107,19 @@ Import side effects: importing `user` calls `configure_voice(ui_app)`; importing
 3. `init_documents_table()` -> `pdf_documents`
 4. `init_documents_chunk_table()` -> `pdf_chunks`
 5. `init_history_table()` -> `chat_history`
-6. `get_embedder()` (interface.py) loads the embedding model on CPU
-7. `get_generator()` (generator.py) loads the LLM (CUDA if available)
+6. `controller._load_state()` loads persisted feature toggles after database setup
+7. `bootstrap.initialize_models()` calls `get_embedder()` (interface.py, CPU), then `get_generator()` (generator.py, CUDA if available)
 8. `start_retention_worker(ui_app, admin_app)` starts one shared privacy-cleanup daemon after table/model initialization; its first sweep runs immediately, then hourly by default. No cleanup starts on import.
 9. Return both apps to the selected runtime. Development starts user serving in a daemon thread and admin serving on the main thread. Production serves both through the worker's shared thread pool. Both profiles default to `APP_HOST=127.0.0.1`; LAN exposure requires explicitly setting an interface address or wildcard. Debugger and reloader are disabled.
 
 The Whisper model is not loaded at startup. It loads lazily on the first `/voice/health` call or the controller `voice_load` action.
+
+Management commands can import `bootstrap.initialize_database()` and invoke it
+explicitly without importing models or applications. `initialize_models()` is a
+separate explicit operation. Never pass the assembly-only `create_apps` directly
+to a production server; the supported launcher passes `create_serving_apps` to
+Gunicorn so initialization stays in the worker. `serve_development()` only serves
+an already-prepared app; it does not implicitly start retention or initialize services.
 
 ## 5. Database (MySQL, utf8mb4, created by `database.py`)
 
@@ -183,7 +213,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 ### 6.9 Runtime controller (`controller.py`, `controller_api.py`)
 
 - State: `_state = {voice_enabled, chat_enabled}` (both default true), persisted atomically in `backend/controller_state.json` (`_load_state`, `_save_state`, `_set_state`). Helpers: `_free_memory()` (gc + `torch.cuda.empty_cache`) and `_gpu_info()`.
-- `controller_api.register()` runs at import and is idempotent (`ui_app.extensions['controller']`). It only reads and resets singletons in `generator`, `interface` and `voice`; those modules are not modified.
+- `controller_api.register(ui_app, admin_app)` explicitly calls `register_ui` and `register_admin`, each idempotent per supplied app (`app.extensions['controller']`). It only reads and resets singletons in `generator`, `interface` and `voice`; importing it registers nothing.
 - Hooks on the user app:
   - `controller_gate` (before_request): `/voice*` returns 403 when voice is off, and `/chat` returns 503 when chat is off.
   - `controller_inject` (after_request on `/` HTML): injects `window.__CTL_FEATURES__` and `<script src="/controller/features.js">`, and disables caching.
@@ -197,7 +227,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 - `logger.logDrop(message, level)`, or the legacy `logDrop(level, log_from, message, warninglevel)`. `_write()` inserts into `adminlogger` and falls back to the `chatbot.audit` Python logger on DB error. A thread-local flag prevents recursive logging. Caller file and function are inferred with `inspect`.
 - Levels: `logger.INFORMATION=1`, `logger.WARNING=2`, `logger.FAILED=3`.
 - `@logger.operation` wraps nearly every function. It logs completion, exception types, and Flask HTTP outcomes (4xx = warning, 5xx = failed, with an allowlisted public code, never the response body). It never logs request bodies or model inputs. Chat/feedback logs omit message IDs and rating values. `RETENTION_LOG_DAYS=0` suppresses DB logs and their fallback copies. Otherwise this writes one DB row per decorated call, including every search and embedding call.
-- Decorator order for routes: `@app.route(...)` on top, `@logger.operation` below it.
+- Handlers retain `@logger.operation` and validation/admission decorators; explicit route registrars bind those wrapped handlers without changing endpoint names.
 
 ## 7. HTTP API
 
@@ -279,7 +309,7 @@ All admin mutations (every method except GET/HEAD/OPTIONS) require CSRF proof af
 | `TRUSTED_PROXY_CIDRS` | Trusted socket/intermediary proxy IPs or IPv4/IPv6 CIDRs | empty; required when hop count is nonzero |
 
 Run: `python backend\main.py` (run from anywhere; imports are flat, relative to `backend/`), or `.\run_gpu.cmd` (requires `.venv`, asserts CUDA, sets `GEN_DEVICE=cuda`). User UI at `http://localhost:5000`, admin dashboard at `http://localhost:8000`.
-`admin.py` and `user.py` each have a `__main__` block for running one app alone in explicit development mode. Both runners use `serve_development()`, which refuses production. Use `backend/main.py` for production initialization and shared serving. See README runtime profiles for HTTPS/WebSocket proxy requirements.
+`admin.py` and `user.py` each have a `__main__` block for serving one app in explicit development mode. Both first call `create_serving_apps()` to initialize the shared services and register all hooks, then use `serve_development()`, which refuses production. Use `backend/main.py` for shared serving and production. See README runtime profiles for HTTPS/WebSocket proxy requirements.
 
 ## 10. Conventions and gotchas
 
@@ -287,7 +317,7 @@ Run: `python backend\main.py` (run from anywhere; imports are flat, relative to 
 - DB pattern: `conn = get_conn()`, `with conn.cursor()`, `conn.close()` in `finally`. Autocommit is on; existing code still calls `conn.commit()` on writes.
 - Modules import each other by flat names (`from database import ...`), so `backend/` must be the script directory or on `sys.path`.
 - `database.py` is imported by almost every module (the logger lives there), so keep it dependency-light to avoid circular imports.
-- Import graph: `generator` -> `searchForAnswer`, `model_registry`; `interface` -> `model_registry`; `user` -> `interface`, `generator`, `searchForAnswer`, `voice`; `admin` -> `generator`, `interface`, `model_registry`, `database`; `controller_api` -> `admin`, `user`, `controller`, `generator`, `interface`, `voice`.
+- Import graph: factories import application modules only when called; `generator` -> `searchForAnswer`, `model_registry`; `interface` -> `model_registry`; `user` -> `interface`, `generator`, `searchForAnswer`; `admin` -> `generator`, `interface`, `model_registry`, `database`; `controller_api` -> `controller`, `generator`, `interface`, `voice` (not the apps).
 - Feature changes that touch the user page or model lifecycle should go through `controller_api.py` hooks, which follows the existing "don't modify the core modules" pattern.
 - Security and production caveats: both apps default to loopback with debug disabled and require explicit development selection to use Flask's server. Production uses threaded Gunicorn on Linux/WSL and requires explicit browser-origin lists. Unapproved/opaque origins are denied before handlers on both apps; admin remains same-origin only. See README for CORS, proxy trust, credential, and network restrictions.
 - `backend/tests/test_core_units.py` covers hashing, current Persian lexical normalization, chunking, scoring/retrieval, permissions and parsing with scoped model/database doubles. Install only `backend/tests/requirements.txt`, then run `python -B backend/tests/run_tests.py --repeat 2`; this discovers all default regressions while forbidding real network/database work, model dependency imports and model-directory reads. See `backend/tests/TESTING.md` for clean-environment setup and focused discovery. `test_admin_authorization.py` retains the complete operation-policy and Flask authorization matrix. Standard `python -B -m unittest discover -s backend/tests -v` also works. `backend/test.py` remains a separate manual retrieval check, not a regression test.
@@ -337,7 +367,7 @@ The rest of CSP is sent only as `Content-Security-Policy-Report-Only`. The candi
 
 `settings.RetentionPolicy` / `retention_settings()` validate finite environment-controlled lifetimes: `RETENTION_CHAT_DAYS=30`, `RETENTION_IP_DAYS=0`, `RETENTION_FEEDBACK_DAYS=30`, `RETENTION_LOG_DAYS=14` (each 0-3650). Chat/replies support authorized quality/support review, feedback supports answer evaluation, optional IPs support troubleshooting (not ownership), and logs support security/operations. Zero disables new storage for that category and purges old data, never means forever. Whole-chat deletion also erases grouping/owner/IP/feedback; IP/feedback ages are anchored to message creation and cannot outlive their chat row. Existing schema is sufficient: erased IPs use the non-null empty-string sentinel, and feedback/timestamp are cleared together. Application logs no longer copy message IDs, rating values, or arbitrary error bodies.
 
-`retention.run_retention()` obtains a database-scoped named lock, sets its connection to UTC, takes one DB-clock cutoff, and hard-deletes expired `chat_history` / `adminlogger` rows and clears expired IP/feedback fields. Null legacy timestamps expire; zero-day categories purge even future-dated rows. Fixed SQL allowlists and ordered LIMIT batches avoid reading personal data into Python. Each batch commits independently; failures roll back the current batch and retain only committed counts. Defaults: 1000 rows/batch, 100 batches/category, 3600 seconds between sweeps (`RETENTION_BATCH_SIZE`, `RETENTION_MAX_BATCHES`, `RETENTION_INTERVAL_SECONDS`). A full final batch conservatively reports `partial` for monitoring/retry. One shared daemon starts in `main.create_apps()` after initialization; `serve_development()` idempotently starts it for standalone runners too. The master/import paths never start cleanup.
+`retention.run_retention()` obtains a database-scoped named lock, sets its connection to UTC, takes one DB-clock cutoff, and hard-deletes expired `chat_history` / `adminlogger` rows and clears expired IP/feedback fields. Null legacy timestamps expire; zero-day categories purge even future-dated rows. Fixed SQL allowlists and ordered LIMIT batches avoid reading personal data into Python. Each batch commits independently; failures roll back the current batch and retain only committed counts. Defaults: 1000 rows/batch, 100 batches/category, 3600 seconds between sweeps (`RETENTION_BATCH_SIZE`, `RETENTION_MAX_BATCHES`, `RETENTION_INTERVAL_SECONDS`). A full final batch conservatively reports `partial` for monitoring/retry. One shared daemon starts explicitly in `bootstrap.initialize_runtime()` after database/model initialization. Factory/import paths and the serving helpers never start cleanup; standalone launchers also use the explicit runtime bootstrap.
 
 `RETENTION_DELETE_ENABLED=0` pauses automatic/manual retention-job mutations, not collection or existing authorized admin erasure routes; it is not record-level legal holds. `python -B backend/retention.py --dry-run` (also the CLI default) previews independent aggregate counts without DB writes; `--apply` honors that pause. No models load. Each invocation emits a `privacy_retention` completion record with timestamp/status/counts/flags/fixed failure code only, never text/IPs/identifiers/SQL/exception messages. Applied-job records also use the normal expiring DB logger when enabled/available; Python log output remains available otherwise. No indefinitely retained special archive is created. Monitor failed/partial/locked sweeps; expiry can lag until successful cleanup. Defaults apply to existing rows on next startup; preview first or explicitly pause before upgrade.
 

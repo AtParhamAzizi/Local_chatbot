@@ -18,8 +18,6 @@ def serve_development(app, port):
             "The Flask development server requires APP_ENV=development. "
             "Use python backend/main.py for production."
         )
-    from retention import start_retention_worker
-    start_retention_worker(app)
     app.run(
         host=bind_host(),
         port=port,

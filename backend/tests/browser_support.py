@@ -74,8 +74,9 @@ class BrowserApps:
             self.accounts = importlib.import_module('admin_users')
             self.admin = importlib.import_module('admin')
             self.user = importlib.import_module('user')
-            self.ui_app = self.user.ui_app
-            self.admin_app = self.admin.admin_app
+            application = importlib.import_module('application')
+            self.ui_app = application.create_ui_app()
+            self.admin_app = application.create_admin_app()
             password_hash = self.accounts._hash_password(PASSWORD)
             self.rows = {
                 username: dict(id=account_id, username=username, password_hash=password_hash,

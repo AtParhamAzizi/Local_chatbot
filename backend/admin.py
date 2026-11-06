@@ -1,4 +1,3 @@
-from security import configure_security
 import os
 import time
 import re
@@ -8,9 +7,9 @@ import fitz
 import numpy as np
 from flask import request, jsonify, redirect, url_for, session, render_template_string, g
 
-from flask import Flask, request, jsonify, send_from_directory
-from database import get_conn, init_db,hash_question, logger, sha256_bytes
-from settings import admin_session_config, is_development, session_secret, safe_error_message
+from flask import request, jsonify, send_from_directory
+from database import get_conn, hash_question, logger, sha256_bytes
+from settings import is_development, safe_error_message
 from pymysql.err import IntegrityError
 from serving import serve_development
 from admin_users import authenticate, create_user, update_user, serialize_user
@@ -43,13 +42,8 @@ from interface import (
 
 
 
-admin_app = Flask('admin', static_folder=None)
-admin_app.secret_key = session_secret()
-admin_app.config.update(admin_session_config())
-configure_security(admin_app, service='admin')
 ADMIN_USERS_DIR = os.path.join(os.path.dirname(ADMIN_DIR), 'admin-users')
 
-@admin_app.route('/', methods=['GET'])
 @logger.operation
 def admin_index():
     if not g.admin_user:
@@ -57,7 +51,6 @@ def admin_index():
     return send_from_directory(os.path.dirname(ADMIN_DIR), 'dashboard.html')
 
 
-@admin_app.before_request
 def require_admin_session():
     g.admin_user = None
     if not is_development() and not request.is_secure:
@@ -82,7 +75,6 @@ def require_admin_session():
     return None
 
 
-@admin_app.after_request
 def protect_admin_response(response):
     response.headers['Cache-Control'] = 'no-store'
     return response
@@ -96,7 +88,6 @@ def login_throttled(retry_after):
     )
 
 
-@admin_app.route('/login', methods=['GET', 'POST'])
 @limit_requests('login', methods=('POST',), on_limit=login_throttled)
 def admin_login():
     if request.method == 'POST':
@@ -127,19 +118,16 @@ def admin_login():
     )
 
 
-@admin_app.route('/logout', methods=['POST'])
 def admin_logout():
     revoke_admin_session(session.get('admin_session'))
     session.clear()
     return redirect(url_for('admin_login'))
 
 
-@admin_app.route('/admin/api/session')
 def admin_session():
     return jsonify({'user': g.admin_user, 'csrf_token': csrf_token(), 'allowed_pages': allowed_pages(g.admin_user)})
 
 
-@admin_app.route('/admin/api/admin-users', methods=['GET', 'POST'])
 def admin_users_collection():
     if request.method == 'POST':
         data = json_object(USER_FIELDS, required=('username', 'password'))
@@ -166,7 +154,6 @@ def admin_users_collection():
     return jsonify({'users': users, 'current_user_id': g.admin_user['id']})
 
 
-@admin_app.route('/admin/api/admin-users/<int:user_id>', methods=['PATCH', 'DELETE'])
 @bounded_ids(user_id=2147483647)
 def admin_user_item(user_id):
     data = json_object(USER_UPDATE_FIELDS, nonempty=True) if request.method == 'PATCH' else None
@@ -200,36 +187,27 @@ def admin_user_item(user_id):
     return jsonify({'ok': True})
 
 
-@admin_app.route('/login.css')
 def login_css():
     return send_from_directory(ADMIN_USERS_DIR, 'login.css')
 
 
-@admin_app.route('/login.js')
 def login_js():
     return send_from_directory(ADMIN_USERS_DIR, 'login.js')
 
 
-@admin_app.route('/login-theme.js')
 def login_theme():
     return send_from_directory(os.path.dirname(ADMIN_DIR), 'theme.js')
 
 
-@admin_app.route('/dashboard.css')
-@admin_app.route('/dashboard.js')
-@admin_app.route('/theme.js')
-@admin_app.route('/admin-csrf.js')
 def dashboard_asset():
     return send_from_directory(os.path.dirname(ADMIN_DIR), request.path.lstrip('/'))
 
 
-@admin_app.route('/admin/<path:filename>')
 def admin_page_asset(filename):
     return send_from_directory(ADMIN_DIR, filename)
 
 
 
-@admin_app.route('/admin/api/models', methods=['GET'])
 @logger.operation
 def admin_models():
     return jsonify({
@@ -238,7 +216,6 @@ def admin_models():
     })
 
 
-@admin_app.route('/admin/api/models', methods=['POST'])
 @logger.operation
 def admin_set_model():
     data = json_object({'model_id': text(64, 1)}, required=('model_id',))
@@ -259,7 +236,6 @@ def admin_set_model():
         return jsonify({'error': 'Invalid model selection.'}), 400
     except Exception as exc:
         return jsonify({'error': 'Unable to change model.'}), 500
-@admin_app.route('/admin/api/stats')
 @logger.operation
 def admin_stats():
     conn = get_conn()
@@ -282,7 +258,6 @@ def admin_stats():
 
 
 
-@admin_app.route('/admin/api/upload', methods=['POST'])
 @limit_requests('upload')
 @logger.operation
 def admin_upload():
@@ -364,7 +339,6 @@ def admin_upload():
 
 
 
-@admin_app.route('/admin/api/documents')
 @query_schema(PAGE_FIELDS)
 @logger.operation
 def admin_documents():
@@ -419,7 +393,6 @@ def admin_documents():
     })
 
 
-@admin_app.route('/admin/api/documents/<int:doc_id>', methods=['DELETE'])
 @bounded_ids(doc_id=2147483647)
 @logger.operation
 def admin_delete(doc_id):
@@ -499,7 +472,6 @@ def split_text(text, chunk_size=1200, overlap=200):
     return chunks
 
 
-@admin_app.route('/admin/api/pdf/upload', methods=['POST'])
 @limit_requests('upload')
 @logger.operation
 def admin_pdf_upload():
@@ -814,7 +786,6 @@ def admin_pdf_upload():
 
 
 
-@admin_app.route('/admin/api/pdf/documents')
 @query_schema(PAGE_FIELDS)
 @logger.operation
 def admin_pdf_documents():
@@ -920,10 +891,6 @@ def admin_pdf_documents():
     })
 
 
-@admin_app.route(
-    '/admin/api/pdf/documents/<int:doc_id>',
-    methods=['DELETE']
-)
 @bounded_ids(doc_id=2147483647)
 @logger.operation
 def admin_pdf_delete(doc_id):
@@ -962,7 +929,6 @@ def admin_pdf_delete(doc_id):
 
 
 
-@admin_app.route('/admin/api/pdf/stats')
 @logger.operation
 def admin_pdf_stats():
 
@@ -1027,9 +993,10 @@ def admin_pdf_stats():
     })
 
 
-@logger.operation
 def admin_run():
-    logger.logDrop(f'Starting the admin service on port {ADMIN_PORT}')
+    from main import create_serving_apps
+
+    _, admin_app = create_serving_apps()
     serve_development(admin_app, ADMIN_PORT)
 
 
@@ -1038,7 +1005,6 @@ def admin_run():
 
 
 #logger api
-@admin_app.route("/admin/api/logs", methods=["GET"])
 @logger.operation
 def get_admin_logs():
     conn = None
@@ -1097,7 +1063,6 @@ from flask import request, jsonify, redirect, url_for, session, render_template_
 # ADMIN CHAT API
 # ============================================================
 
-@admin_app.route('/admin/api/chat/sessions', methods=['GET'])
 @query_schema({'limit': query_integer(1, 1000), 'q': text(256)})
 @logger.operation
 def admin_chat_sessions():
@@ -1322,7 +1287,6 @@ def admin_chat_sessions():
 
 
 
-@admin_app.route('/admin/api/chat/messages', methods=['GET'])
 @query_schema(CONVERSATION_FIELDS, required=('user_id',))
 @logger.operation
 def admin_chat_messages():
@@ -1474,7 +1438,6 @@ def admin_chat_messages():
 # CHAT STATISTICS
 # ============================================================
 
-@admin_app.route('/admin/api/chat/stats', methods=['GET'])
 @logger.operation
 def admin_chat_stats():
     """
@@ -1586,10 +1549,6 @@ def admin_chat_stats():
 # DELETE CHAT SESSION
 # ============================================================
 
-@admin_app.route(
-    '/admin/api/chat/sessions',
-    methods=['DELETE']
-)
 @query_schema(CONVERSATION_FIELDS, required=('user_id',))
 @logger.operation
 def admin_chat_delete_session():
@@ -1678,10 +1637,6 @@ def admin_chat_delete_session():
 # DELETE SINGLE MESSAGE
 # ============================================================
 
-@admin_app.route(
-    '/admin/api/chat/logs',
-    methods=['DELETE']
-)
 @query_schema({'id': query_integer(1, MAX_BIGINT)}, required=('id',))
 @logger.operation
 def admin_chat_delete_message():
@@ -1757,7 +1712,41 @@ def admin_chat_delete_message():
 
 
 
+def register_admin_routes(app):
+    app.before_request(require_admin_session)
+    app.after_request(protect_admin_response)
+    app.add_url_rule('/', view_func=admin_index, methods=['GET'])
+    app.add_url_rule('/login', view_func=admin_login, methods=['GET', 'POST'])
+    app.add_url_rule('/logout', view_func=admin_logout, methods=['POST'])
+    app.add_url_rule('/admin/api/session', view_func=admin_session)
+    app.add_url_rule('/admin/api/admin-users', view_func=admin_users_collection, methods=['GET', 'POST'])
+    app.add_url_rule('/admin/api/admin-users/<int:user_id>', view_func=admin_user_item, methods=['PATCH', 'DELETE'])
+    app.add_url_rule('/login.css', view_func=login_css)
+    app.add_url_rule('/login.js', view_func=login_js)
+    app.add_url_rule('/login-theme.js', view_func=login_theme)
+    app.add_url_rule('/admin-csrf.js', view_func=dashboard_asset)
+    app.add_url_rule('/theme.js', view_func=dashboard_asset)
+    app.add_url_rule('/dashboard.js', view_func=dashboard_asset)
+    app.add_url_rule('/dashboard.css', view_func=dashboard_asset)
+    app.add_url_rule('/admin/<path:filename>', view_func=admin_page_asset)
+    app.add_url_rule('/admin/api/models', view_func=admin_models, methods=['GET'])
+    app.add_url_rule('/admin/api/models', view_func=admin_set_model, methods=['POST'])
+    app.add_url_rule('/admin/api/stats', view_func=admin_stats)
+    app.add_url_rule('/admin/api/upload', view_func=admin_upload, methods=['POST'])
+    app.add_url_rule('/admin/api/documents', view_func=admin_documents)
+    app.add_url_rule('/admin/api/documents/<int:doc_id>', view_func=admin_delete, methods=['DELETE'])
+    app.add_url_rule('/admin/api/pdf/upload', view_func=admin_pdf_upload, methods=['POST'])
+    app.add_url_rule('/admin/api/pdf/documents', view_func=admin_pdf_documents)
+    app.add_url_rule('/admin/api/pdf/documents/<int:doc_id>', view_func=admin_pdf_delete, methods=['DELETE'])
+    app.add_url_rule('/admin/api/pdf/stats', view_func=admin_pdf_stats)
+    app.add_url_rule('/admin/api/logs', view_func=get_admin_logs, methods=['GET'])
+    app.add_url_rule('/admin/api/chat/sessions', view_func=admin_chat_sessions, methods=['GET'])
+    app.add_url_rule('/admin/api/chat/messages', view_func=admin_chat_messages, methods=['GET'])
+    app.add_url_rule('/admin/api/chat/stats', view_func=admin_chat_stats, methods=['GET'])
+    app.add_url_rule('/admin/api/chat/sessions', view_func=admin_chat_delete_session, methods=['DELETE'])
+    app.add_url_rule('/admin/api/chat/logs', view_func=admin_chat_delete_message, methods=['DELETE'])
+
+
 if __name__ == '__main__':
-    init_db()
     print(f'[admin] http://localhost:{ADMIN_PORT}')
     admin_run()

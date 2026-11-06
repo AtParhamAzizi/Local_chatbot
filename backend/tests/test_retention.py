@@ -284,13 +284,14 @@ class RetentionTests(unittest.TestCase):
         database.logger.logDrop.assert_not_called()
         self.assertIn('completed', captured.output[0])
 
-    def test_factory_initializes_tables_and_models_before_starting_shared_worker(self):
+    def test_serving_initializes_tables_and_models_before_starting_shared_worker(self):
         calls = Mock()
         modules = {}
         for name, functions in {
             'database': ('init_logger_table', 'init_db', 'init_admin_users_table', 'init_documents_table',
                          'init_documents_chunk_table', 'init_history_table'),
             'interface': ('get_embedder',), 'generator': ('get_generator',),
+            'controller': ('_load_state',),
         }.items():
             module = types.ModuleType(name)
             for function in functions:
@@ -299,33 +300,30 @@ class RetentionTests(unittest.TestCase):
                 calls.attach_mock(operation, function)
             modules[name] = module
         modules['database'].logger = Mock()
-        for module_name, attribute in (('user', 'ui_app'), ('admin', 'admin_app')):
-            module = types.ModuleType(module_name)
-            setattr(module, attribute, Flask('startup_' + module_name))
-            modules[module_name] = module
-        modules['controller_api'] = types.ModuleType('controller_api')
-        with patch.dict(sys.modules, modules), \
+        expected_apps = (Flask('startup_user'), Flask('startup_admin'))
+        with patch.dict(sys.modules, modules), patch.dict('os.environ', {'APP_ENV': 'test'}, clear=True), \
                 patch.object(self.retention, 'start_retention_worker') as start, \
                 redirect_stdout(io.StringIO()):
             calls.attach_mock(start, 'start_retention_worker')
             main = importlib.import_module('main')
-            with patch.object(main, 'validate_settings'), patch.object(main, 'bind_host', return_value='127.0.0.1'):
-                apps = main.create_apps()
-        self.assertEqual(apps, (modules['user'].ui_app, modules['admin'].admin_app))
+            with patch.object(main, 'validate_settings'), patch.object(main, 'bind_host', return_value='127.0.0.1'), \
+                    patch.object(main, 'create_apps', return_value=expected_apps):
+                apps = main.create_serving_apps()
+        self.assertEqual(apps, expected_apps)
         self.assertEqual([call[0] for call in calls.mock_calls], [
             'init_logger_table', 'init_db', 'init_admin_users_table', 'init_documents_table',
-            'init_documents_chunk_table', 'init_history_table', 'get_embedder', 'get_generator',
+            'init_documents_chunk_table', 'init_history_table', '_load_state', 'get_embedder', 'get_generator',
             'start_retention_worker',
         ])
 
-    def test_development_runner_starts_worker_and_omits_access_logs(self):
+    def test_development_runner_only_serves_and_omits_access_logs(self):
         serving = importlib.import_module('serving')
         app = Mock()
         with patch.object(serving, 'validate_settings'), patch.object(serving, 'is_development', return_value=True), \
                 patch.object(serving, 'bind_host', return_value='127.0.0.1'), \
                 patch.object(self.retention, 'start_retention_worker') as start:
             serving.serve_development(app, 5000)
-        start.assert_called_once_with(app)
+        start.assert_not_called()
         self.assertIs(app.run.call_args.kwargs['request_handler'], serving.NoAccessLogRequestHandler)
         with patch.object(serving.WSGIRequestHandler, 'log_request') as log:
             serving.NoAccessLogRequestHandler.log_request(Mock(), '200', '100')

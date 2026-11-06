@@ -37,7 +37,7 @@ class SafeErrorsHeadersTests(AbuseEndpointFixture, unittest.TestCase):
                  (MethodNotAllowed(['GET'], description=INTERNALS), 405, 'method_not_allowed')]
         for error, status, code in cases:
             with self.subTest(error=type(error).__name__), patch.dict(
-                self.user.ui_app.view_functions, {'health': Mock(side_effect=error)},
+                self.ui_app.view_functions, {'health': Mock(side_effect=error)},
             ):
                 response = self.ui_client.get('/health')
                 self.assert_public(response, status, code)
@@ -53,7 +53,7 @@ class SafeErrorsHeadersTests(AbuseEndpointFixture, unittest.TestCase):
             ('<html>' + INTERNALS + '</html>', 'text/html'),
         ]:
             with self.subTest(mimetype=mimetype, body=body[:30]), patch.dict(
-                self.user.ui_app.view_functions,
+                self.ui_app.view_functions,
                 {'health': lambda: Response(body, status=500, mimetype=mimetype)},
             ):
                 self.assert_public(self.ui_client.get('/health'), 500, 'internal_error')

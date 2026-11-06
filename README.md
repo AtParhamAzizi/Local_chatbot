@@ -428,11 +428,37 @@ their formerly client-chosen IDs, so they remain unowned and no longer accept
 anonymous feedback; authorized administrators retain inspection/deletion access.
 Restart through `backend/main.py` to apply the migration before serving requests.
 
+## Application factories and initialization
+
+With `backend/` on `sys.path`, import `create_apps` from `application` (also
+available from `main`). Importing the factories requires no deployment settings,
+database, model dependencies or model files. Calling `create_apps()` requires
+valid settings and installed application dependencies; it returns fresh
+`(ui_app, admin_app)` instances with routes, security and controller hooks, but
+does not create tables, write logs, load/download models or start workers/servers.
+The individual `create_ui_app()` / `create_admin_app()` factories register only
+their service's routes; `create_apps()` additionally registers the controller.
+Requests can still trigger database/model work, so use test adapters for those.
+Configure the environment before constructing apps; shared database/model
+configuration and model/controller state remain process-scoped, not tenant-scoped.
+
+For management work, `from bootstrap import initialize_database` imports safely;
+calling `initialize_database()` explicitly creates/upgrades tables without
+importing model or application modules. `initialize_models()` is separate.
+Normal launchers use `main.create_serving_apps()`, which assembles both apps,
+initializes tables, reads controller state, loads embedding/generation models,
+and finally starts the shared retention worker. Production does this inside
+the Gunicorn worker, never its master. Keep using `python backend/main.py` for
+serving; passing assembly-only factories directly to a WSGI server bypasses the
+required initialization. The low-level serving helpers no longer start retention.
+
 ## Project layout
 
 ```text
 backend/
   main.py             Initializes shared services and selects the runtime profile
+  application.py      Fresh Flask app factories with no implicit service startup
+  bootstrap.py        Explicit database, model and background-worker initialization
   serving.py          Local Flask serving and threaded production Gunicorn runtime
   settings.py         Validated environment, loopback binding, and credentials
   user.py             User-facing chat API

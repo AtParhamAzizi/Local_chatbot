@@ -76,8 +76,9 @@ class FlaskMySQLTests(unittest.TestCase):
         cls.accounts = importlib.import_module('admin_users')
         cls.admin = importlib.import_module('admin')
         cls.user = importlib.import_module('user')
-        cls.admin_app = cls.admin.admin_app
-        cls.ui_app = cls.user.ui_app
+        application = importlib.import_module('application')
+        cls.admin_app = application.create_admin_app()
+        cls.ui_app = application.create_ui_app()
 
     def setUp(self):
         self.resources = ExitStack()

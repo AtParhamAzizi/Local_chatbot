@@ -16,11 +16,6 @@ import os
 import tempfile
 import threading
 
-import torch
-
-import generator
-import interface
-import voice
 from database import logger
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -65,6 +60,8 @@ def _set_state(**changes):
 
 
 def _free_memory():
+    import torch
+
     gc.collect()
     try:
         if torch.cuda.is_available():
@@ -75,6 +72,8 @@ def _free_memory():
 
 def _gpu_info():
     try:
+        import torch
+
         if not torch.cuda.is_available():
             return {'available': False}
         free, total = torch.cuda.mem_get_info()
@@ -86,6 +85,3 @@ def _gpu_info():
         }
     except Exception:
         return {'available': False}
-
-
-_load_state()

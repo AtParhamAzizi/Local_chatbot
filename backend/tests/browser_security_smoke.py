@@ -62,7 +62,7 @@ def main():
         interface._model = None
         interface._dim = None
         interface.MODEL_ID = 'test'
-        importlib.import_module('controller_api')
+        importlib.import_module('controller_api').register(BrowserFixture.ui_app, BrowserFixture.admin_app)
 
         responses = {
             'admin_stats': {'total_documents': 0, 'embedded_documents': 0, 'dim': 0},
@@ -77,9 +77,9 @@ def main():
             'admin_users_collection': {'users': [], 'current_user_id': 1},
         }
         for endpoint, payload in responses.items():
-            admin.admin_app.view_functions[endpoint] = lambda payload=payload: jsonify(payload)
+            BrowserFixture.admin_app.view_functions[endpoint] = lambda payload=payload: jsonify(payload)
 
-        for app, port in ((user.ui_app, 5000), (admin.admin_app, 8000)):
+        for app, port in ((BrowserFixture.ui_app, 5000), (BrowserFixture.admin_app, 8000)):
             server = make_server('127.0.0.1', port, app, threaded=True)
             servers.append(server)
             threading.Thread(target=server.serve_forever, daemon=True).start()

@@ -1,13 +1,12 @@
-from security import configure_security
 from abuse_controls import limit_requests
-from chat_sessions import chat_owner_hash, configure_chat_sessions
+from chat_sessions import chat_owner_hash
 from request_validation import CHAT_FIELDS, FEEDBACK_FIELDS, json_object
 from database import get_conn, get_client_ip, logger
 from settings import retention_settings, safe_error_message
 from serving import serve_development
 import os
 import numpy as np
-from flask import Flask, request, jsonify, redirect, render_template
+from flask import request, jsonify, redirect, render_template
 from generator import generate_reply
 from database import get_conn
 
@@ -19,20 +18,14 @@ from interface import (
     UI_PORT,
     MIN_SCORE,
 )
-from voice import configure_voice
 
 
 FRONTEND_DIR = os.path.join(os.path.dirname(BASE_DIR), 'frontend')
-ui_app = Flask('ui', static_folder=FRONTEND_DIR, static_url_path='', template_folder=FRONTEND_DIR)
-configure_security(ui_app, service='ui')
-configure_chat_sessions(ui_app)
-configure_voice(ui_app)
 
 
 
 
 
-@ui_app.route('/')
 @logger.operation
 def ui_index():
     policy = retention_settings()
@@ -41,13 +34,11 @@ def ui_index():
     return render_template('index.html', privacy=policy)
 
 
-@ui_app.route('/index.html')
 @logger.operation
 def ui_index_alias():
     return redirect('/')
 
 
-@ui_app.route('/health')
 @logger.operation
 def health():
     return jsonify({'status': 'ok'})
@@ -124,7 +115,6 @@ def _retrieve_top(query: str, k: int = 6):
 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-@ui_app.route('/chat', methods=['POST'])
 @limit_requests('chat')
 @logger.operation
 def chat():
@@ -214,7 +204,6 @@ def chat():
 
 
 #+_+_+_+_+_+_+_+_+_++_+_+_+__+_+_+_+_+_+++_+_+_+_+_+_+_+_+_++_++_+__+_+_+_+_+_+_+__+_+_+_+_+_+_++
-@ui_app.route('/feedback', methods=['POST'])
 @logger.operation
 def feedback():
     data = json_object(FEEDBACK_FIELDS, required=('message_id', 'feedback'))
@@ -271,13 +260,22 @@ def feedback():
 
 
 
-@logger.operation
 def user_run():
-    logger.logDrop(f'Starting the user service on port {UI_PORT}')
+    from main import create_serving_apps
+
+    ui_app, _ = create_serving_apps()
     serve_development(ui_app, UI_PORT)
 
 
 
+
+
+def register_ui_routes(app):
+    app.add_url_rule('/', view_func=ui_index)
+    app.add_url_rule('/index.html', view_func=ui_index_alias)
+    app.add_url_rule('/health', view_func=health)
+    app.add_url_rule('/chat', view_func=chat, methods=['POST'])
+    app.add_url_rule('/feedback', view_func=feedback, methods=['POST'])
 
 
 if __name__ == '__main__':

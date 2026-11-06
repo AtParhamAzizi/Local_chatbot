@@ -2,35 +2,16 @@ from settings import (
     ADMIN_PORT, UI_PORT, ConfigurationError, bind_host, is_development, validate_settings,
 )
 from serving import serve_production
+from application import create_apps
 
 
-def create_apps():
-    """Initialize both services and shared models inside the serving process."""
+def create_serving_apps():
+    """Explicitly initialize both services inside the serving process."""
     validate_settings()
+    from bootstrap import initialize_runtime
 
-    from interface import get_embedder
-    from admin import admin_app
-    from user import ui_app
-    from database import (
-        init_db, init_admin_users_table, init_logger_table, logger,
-        init_documents_chunk_table, init_documents_table, init_history_table,
-    )
-    from generator import get_generator
-    from retention import start_retention_worker
-    import controller_api
-
-    init_logger_table()
-    logger.logDrop('Starting local chatbot services')
-    init_db()
-    init_admin_users_table()
-    init_documents_table()
-    init_documents_chunk_table()
-    init_history_table()
-    get_embedder()
-    get_generator()
-    start_retention_worker(ui_app, admin_app)
-
-    logger.logDrop('Database and local models initialized')
+    ui_app, admin_app = create_apps()
+    initialize_runtime(ui_app, admin_app)
 
     host = bind_host()
     address = f'[{host}]' if ':' in host else host
@@ -42,13 +23,13 @@ def create_apps():
 def main():
     validate_settings()
     if not is_development():
-        serve_production(create_apps)
+        serve_production(create_serving_apps)
         return
 
     import threading
     from serving import serve_development
 
-    ui_app, admin_app = create_apps()
+    ui_app, admin_app = create_serving_apps()
     user_thread = threading.Thread(
         target=serve_development, args=(ui_app, UI_PORT), daemon=True
     )

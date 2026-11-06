@@ -53,6 +53,22 @@ services, downloads, production data or actual model loaders. These tests do
 not certify real model quality, MySQL compatibility or PDF extraction itself;
 those belong in separately provisioned integration suites.
 
+## Factory and startup boundaries (F018)
+
+`test_application_factories.py` checks clean-process imports without valid
+configuration or model/service imports; fresh app assembly with database, audit,
+model, thread and server work forbidden; stable endpoint names, per-app hooks
+and limiters; explicit controller-state loading; per-app idempotent controller
+registration; invalid-configuration failure; and worker-only production startup.
+`test_retention.py` checks the explicit serving bootstrap's table/state/model/
+retention order and that low-level development serving starts no cleanup worker.
+
+Fixtures import handlers from `user` / `admin` and construct apps explicitly via
+`application.create_ui_app()` / `create_admin_app()`. There are no module-global
+`user.ui_app` or `admin.admin_app` objects. Use `application.create_apps()` when
+controller hooks are needed too. Application construction itself performs no
+database/model initialization; route execution still needs the scoped adapters.
+
 ## Flask + disposable MySQL integration (F014)
 
 Install the small integration dependency profile in the same test environment:

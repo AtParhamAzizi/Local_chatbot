@@ -105,7 +105,7 @@ class ChatOwnershipTests(unittest.TestCase):
         ))
         cls.user = importlib.import_module('user')
         cls.sessions = importlib.import_module('chat_sessions')
-        cls.app = cls.user.ui_app
+        cls.app = importlib.import_module('application').create_ui_app()
 
     def setUp(self):
         self.resources = ExitStack()
