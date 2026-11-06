@@ -176,7 +176,9 @@ class AdminAuthorizationTests(unittest.TestCase):
             cls.database, 'get_conn', side_effect=AssertionError('Database access is forbidden in authorization tests'),
         ))
         cls.resources.enter_context(patch.object(cls.database.logger, '_write', return_value=True))
-        cls.admin = importlib.import_module('admin')
+        from core_support import clear_admin_routes
+        clear_admin_routes()
+        cls.admin = importlib.import_module('admin_routes.auth')
         cls.controller = importlib.import_module('controller_api')
         cls.app = importlib.import_module('application').create_admin_app()
         cls.controller.register(sys.modules['user'].ui_app, cls.app)
@@ -394,7 +396,7 @@ class AdminAuthorizationTests(unittest.TestCase):
         connection = MagicMock()
         cursor = connection.cursor.return_value.__enter__.return_value
         cursor.fetchone.return_value = {'id': 2, 'username': 'administrator'}
-        with patch.object(self.admin, 'get_conn', return_value=connection):
+        with patch.object(self.database, 'get_conn', return_value=connection):
             response = self.open('/admin/api/admin-users/2', 'DELETE', headers=self.csrf_headers())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(cursor.execute.call_args.args, ('DELETE FROM `admin-users` WHERE id = %s', (2,)))
@@ -405,7 +407,7 @@ class AdminAuthorizationTests(unittest.TestCase):
         self.user = account(administrator=True)
         connection = MagicMock()
         connection.cursor.return_value.__enter__.return_value.fetchall.return_value = []
-        with patch.object(self.admin, 'get_conn', return_value=connection):
+        with patch.object(self.database, 'get_conn', return_value=connection):
             response = self.open('/admin/api/admin-users')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json, {'users': [], 'current_user_id': 1})
@@ -449,7 +451,7 @@ class AdminAuthorizationTests(unittest.TestCase):
             'user_message': 'question', 'bot_response': 'answer', 'feedback': None,
             'feedback_at': None, 'created_at': None,
         }]
-        with patch.object(self.admin, 'get_conn', return_value=connection):
+        with patch.object(self.database, 'get_conn', return_value=connection):
             response = self.open(path)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json['messages'][0]['id'], 1)

@@ -12,7 +12,7 @@ import pymysql
 from flask import jsonify, request
 from pymysql.err import OperationalError
 
-from core_support import module_double
+from core_support import clear_admin_routes, module_double
 from run_tests import offline_guards
 from test_chat_ownership import MemoryHistory
 
@@ -72,7 +72,8 @@ class BrowserApps:
                 self.resources.enter_context(patch.object(pymysql, name, self.forbidden))
             self.resources.enter_context(patch.object(pymysql.connections, 'Connection', self.forbidden))
             self.accounts = importlib.import_module('admin_users')
-            self.admin = importlib.import_module('admin')
+            clear_admin_routes()
+            self.admin = importlib.import_module('admin_routes.auth')
             self.user = importlib.import_module('user')
             application = importlib.import_module('application')
             self.ui_app = application.create_ui_app()

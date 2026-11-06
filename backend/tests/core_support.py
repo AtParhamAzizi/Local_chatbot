@@ -20,6 +20,12 @@ def module_double(name, **attributes):
     return module
 
 
+def clear_admin_routes():
+    for name in tuple(sys.modules):
+        if name == 'admin_routes' or name.startswith('admin_routes.'):
+            sys.modules.pop(name, None)
+
+
 class OfflineCoreFixture:
     def setUp(self):
         self.resources = ExitStack()
@@ -49,6 +55,7 @@ class OfflineCoreFixture:
             'fitz': module_double('fitz', open=self.forbidden_model),
         }
         self.resources.enter_context(patch.dict(sys.modules, doubles))
+        clear_admin_routes()
         for name in ('admin', 'user', 'searchForAnswer', 'admin_users'):
             sys.modules.pop(name, None)
         self.database = importlib.import_module('database')

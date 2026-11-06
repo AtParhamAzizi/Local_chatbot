@@ -4,6 +4,8 @@ import importlib
 import io
 import json
 import unittest
+
+import numpy as np
 from unittest.mock import MagicMock, Mock, patch
 
 from werkzeug.datastructures import MultiDict
@@ -27,7 +29,10 @@ class RequestValidationTests(AbuseEndpointFixture, unittest.TestCase):
         self.headers = self.authenticated_headers()
         self.no_work = Mock(side_effect=AssertionError('Invalid requests must not perform work'))
         for module, names in (
-            (self.admin, ('get_conn', 'authenticate', 'create_user', 'update_user', 'set_active_model')),
+            (self.database, ('get_conn',)),
+            (self.admin, ('authenticate',)),
+            (self.admin_accounts, ('create_user', 'update_user')),
+            (self.lifecycle, ('select_model',)),
             (self.user, ('get_conn', '_retrieve_top')),
         ):
             for name in names:
@@ -57,7 +62,7 @@ class RequestValidationTests(AbuseEndpointFixture, unittest.TestCase):
         return self.admin_open(path, 'POST', data=data, headers=self.headers)
 
     def pdf(self, document):
-        self.resources.enter_context(patch.object(self.admin.fitz, 'open', return_value=document))
+        self.resources.enter_context(patch.object(self.ingestion, 'open_pdf', return_value=document))
         return self.upload(b'%PDF-test', 'document.pdf', path='/admin/api/pdf/upload')
 
     def test_chat_rejects_wrong_objects_fields_and_types_before_retrieval(self):
@@ -257,12 +262,12 @@ class RequestValidationTests(AbuseEndpointFixture, unittest.TestCase):
     def test_pdf_chunk_quota_precedes_database_and_models(self):
         document = Mock(page_count=1)
         document.load_page.return_value.get_text.return_value = 'readable text'
-        with patch.object(self.admin, 'split_text', return_value=['chunk'] * 257):
+        with patch.object(self.ingestion, 'split_text', return_value=['chunk'] * 257):
             self.assert_error(self.pdf(document), 413)
         document.close.assert_called_once()
 
     def test_unreadable_and_empty_pdfs_return_client_errors(self):
-        with patch.object(self.admin.fitz, 'open', side_effect=ValueError('bad PDF')):
+        with patch.object(self.ingestion, 'open_pdf', side_effect=ValueError('bad PDF')):
             self.assert_error(self.upload(b'not a PDF', 'bad.pdf', path='/admin/api/pdf/upload'))
         for count, extracted in ((0, ''), (1, '   '), (1, ValueError('encrypted PDF'))):
             with self.subTest(count=count, extracted=repr(extracted)):
@@ -279,9 +284,9 @@ class RequestValidationTests(AbuseEndpointFixture, unittest.TestCase):
         cursor = connection.cursor.return_value.__enter__.return_value
         cursor.fetchone.return_value = None
         cursor.lastrowid = 7
-        vectors = self.admin.np.array([[0.1, 0.2]], dtype=self.admin.np.float32)
-        with patch.object(self.admin, 'get_conn', return_value=connection), \
-                patch.object(self.admin, 'embed_texts', return_value=vectors) as embed:
+        vectors = np.array([[0.1, 0.2]], dtype=np.float32)
+        with patch.object(self.database, 'get_conn', return_value=connection), \
+                patch.object(self.ingestion, 'embed', return_value=vectors) as embed:
             response = self.upload(json.dumps([{'question': '  question  ', 'answer': 'answer'}] * 2).encode())
         self.assertEqual(response.status_code, 200, response.json)
         self.assertEqual(response.json['inserted'], 1)
@@ -295,11 +300,11 @@ class RequestValidationTests(AbuseEndpointFixture, unittest.TestCase):
         cursor = connection.cursor.return_value.__enter__.return_value
         cursor.fetchone.return_value = None
         cursor.lastrowid = 8
-        vectors = self.admin.np.array([[0.1, 0.2]], dtype=self.admin.np.float32)
+        vectors = np.array([[0.1, 0.2]], dtype=np.float32)
         document = Mock(page_count=1)
         document.load_page.return_value.get_text.return_value = 'A short PDF paragraph.'
-        with patch.object(self.admin, 'get_conn', return_value=connection), \
-                patch.object(self.admin, 'embed_texts', return_value=vectors) as embed:
+        with patch.object(self.database, 'get_conn', return_value=connection), \
+                patch.object(self.ingestion, 'embed', return_value=vectors) as embed:
             response = self.pdf(document)
         self.assertEqual(response.status_code, 200, response.json)
         self.assertEqual(response.json['document_id'], 8)
@@ -322,7 +327,7 @@ class RequestValidationTests(AbuseEndpointFixture, unittest.TestCase):
         cursor = connection.cursor.return_value.__enter__.return_value
         cursor.fetchone.return_value = {'c': 0}
         cursor.fetchall.return_value = []
-        with patch.object(self.admin, 'get_conn', return_value=connection):
+        with patch.object(self.database, 'get_conn', return_value=connection):
             response = self.admin_open('/admin/api/documents?page=10000&per_page=100')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(cursor.execute.call_args.args[1], (100, 999900))

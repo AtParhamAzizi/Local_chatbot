@@ -452,6 +452,37 @@ the Gunicorn worker, never its master. Keep using `python backend/main.py` for
 serving; passing assembly-only factories directly to a WSGI server bypasses the
 required initialization. The low-level serving helpers no longer start retention.
 
+### Backend service boundaries
+
+`admin.py` only composes focused modules in `admin_routes/`: authentication/CSRF,
+accounts, pages/assets, Q&A knowledge, PDFs, model selection, chat history and logs.
+Each module has its own `register_routes(app)` and can be imported/registered in
+isolation. The normal app factory installs all groups plus the common guards.
+Do not serve an isolated group without those guards. Paths, HTTP methods, Flask
+endpoint names, permission policies and client response formats stay unchanged.
+
+`services.ingestion.IngestionService` accepts bounded upload bytes through
+`ingest_qa(raw, replace=False)` and `ingest_pdf(raw, filename, replace=False)`.
+It owns value validation, extraction/chunking, embedding and persistence; it
+returns ordinary dictionaries and raises `IngestionError` for controlled
+ingestion failures. Existing value-validation exceptions retain their status.
+Multipart parsing, authorization, admission control and JSON responses stay in
+the HTTP modules. Database autocommit/replacement/failure-state behavior is
+unchanged; this is not a transaction-policy migration.
+
+`services.retrieval.RetrievalService.retrieve(query, limit=6)` owns embedding,
+QA/PDF search and threshold/ranking. `services.lifecycle.ModelLifecycleService`
+owns model selection, warmup, load/unload, monitoring and per-model asynchronous
+actions. The controller keeps HTTP authorization and persisted feature toggles.
+Services use injectable adapters and run without a Flask application/request
+context. Defaults import external adapters lazily, not during service imports.
+
+For tests, pass `ingestion_service=` / `model_lifecycle=` to `create_admin_app()`
+or `retrieval_service=` to `create_ui_app()`. They are available under the same
+names in `app.extensions`. Ingestion/retrieval instances are per-app; the default
+model lifecycle and actual models remain process-shared, including startup.
+Replace service adapters rather than patching the old `admin` module's globals.
+
 ## Project layout
 
 ```text
@@ -462,7 +493,9 @@ backend/
   serving.py          Local Flask serving and threaded production Gunicorn runtime
   settings.py         Validated environment, loopback binding, and credentials
   user.py             User-facing chat API
-  admin.py            Administrator APIs and dashboard
+  admin.py            Administrator route composition and standalone launcher
+  admin_routes/       Focused administrator HTTP modules, preserving all route names
+  services/           Injectable ingestion, retrieval and shared model lifecycle
   model_registry.py   Persisted model selection and local model paths
   database.py         MySQL schema and connection helpers
   interface.py        Embedding model loading and configuration

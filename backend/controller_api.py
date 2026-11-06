@@ -5,76 +5,14 @@ Only the process-shared model and controller singletons are read or reset.
 """
 
 import json
-import threading
 
-from flask import Response, g, jsonify, request
+from flask import Response, current_app, g, jsonify, request
 
-import generator
-import interface
-import voice
 from admin_policy import CONTROLLER_ACTION_OPERATIONS, permits
-from controller import _free_memory, _gpu_info, _set_state, _state
+from controller import _set_state, _state
+from services.lifecycle import MODEL_ACTIONS
 from database import logger
 from request_validation import json_object, text
-
-_busy = {}
-_errors = {}
-_busy_lock = threading.Lock()
-
-
-def _voice_state():
-    if voice.IMPORT_ERROR is not None:
-        return 'unavailable'
-    future = voice._model_future
-    if future is None:
-        return 'unloaded'
-    if not future.done():
-        return 'loading'
-    return 'error' if future.exception() else 'loaded'
-
-
-def _generator_load():
-    generator.get_generator()
-
-
-def _generator_unload():
-    with generator._gen_lock:
-        generator._gen_model = None
-        generator._gen_tokenizer = None
-        generator._gen_device = None
-    _free_memory()
-
-
-def _embedder_load():
-    interface.get_embedder()
-
-
-def _embedder_unload():
-    with interface._lock:
-        interface._model = None
-        interface._tokenizer = None
-        interface._dim = None
-    _free_memory()
-
-
-def _voice_load():
-    voice._start_model_loading()
-
-
-def _voice_unload():
-    with voice._model_lock:
-        voice._model_future = None
-    _free_memory()
-
-
-MODEL_ACTIONS = {
-    'generator_load': _generator_load,
-    'generator_unload': _generator_unload,
-    'embedder_load': _embedder_load,
-    'embedder_unload': _embedder_unload,
-    'voice_load': _voice_load,
-    'voice_unload': _voice_unload,
-}
 
 TOGGLES = {
     'voice_enable': ('voice_enabled', True),
@@ -84,52 +22,12 @@ TOGGLES = {
 }
 
 
-def _run_model_action(action):
-    target = action.split('_')[0]
-    try:
-        MODEL_ACTIONS[action]()
-        _errors.pop(target, None)
-        logger.logDrop(f'Controller action completed: {action}')
-    except Exception as error:
-        _errors[target] = 'model_action_failed'
-        logger.logDrop(f'Controller action {action} failed: {type(error).__name__}', logger.FAILED)
-    finally:
-        with _busy_lock:
-            _busy.pop(target, None)
-
-
 def _start_model_action(action):
-    target = action.split('_')[0]
-    with _busy_lock:
-        if target in _busy:
-            return False
-        _busy[target] = action
-    threading.Thread(target=_run_model_action, args=(action,), daemon=True).start()
-    return True
+    return current_app.extensions['model_lifecycle'].start_action(action)
 
 
 def get_status():
-    with _busy_lock:
-        busy = dict(_busy)
-    return {
-        'features': dict(_state),
-        'models': {
-            'generator': {
-                'loaded': generator._gen_model is not None,
-                'device': generator._gen_device,
-                'model_id': generator.MODEL_ID,
-            },
-            'embedder': {
-                'loaded': interface._model is not None,
-                'model_id': interface.MODEL_ID,
-                'dim': interface._dim,
-            },
-            'voice': {'state': _voice_state(), 'model': voice.MODEL_NAME},
-        },
-        'busy': busy,
-        'errors': dict(_errors),
-        'gpu': _gpu_info(),
-    }
+    return {'features': dict(_state), **current_app.extensions['model_lifecycle'].status()}
 
 
 def _public_features():
@@ -232,7 +130,7 @@ def register_admin(admin_app):
 
     @admin_app.get('/controller')
     def controller_page():
-        from interface import ADMIN_DIR
+        from admin_routes.paths import ADMIN_DIR
         from flask import send_from_directory
         return send_from_directory(ADMIN_DIR, 'controller.html')
 

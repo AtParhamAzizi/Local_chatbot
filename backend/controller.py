@@ -1,13 +1,6 @@
-"""Runtime controller for the admin panel.
+"""Persisted feature toggles and memory/GPU helpers for the runtime controller.
 
-Adds a small control page (backend/admin/controller.*) that can:
-  * enable/disable the voice chat button on the user frontend
-  * enable/disable chat requests
-  * load/unload the generator and embedding models
-  * load/unload the Whisper speech model
-
-It only reads and reassigns module-level singletons in generator.py,
-interface.py and voice.py; those modules are not modified.
+HTTP hooks live in controller_api; model operations live in services.lifecycle.
 """
 
 import gc

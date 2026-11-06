@@ -62,15 +62,15 @@ class SafeErrorsHeadersTests(AbuseEndpointFixture, unittest.TestCase):
         headers = self.authenticated_headers()
         with patch.object(self.user, '_retrieve_top', side_effect=RuntimeError(INTERNALS)):
             self.assert_public(self.ui_client.post('/chat', json={'message': 'hello'}), 500, 'internal_error')
-        with patch.object(self.admin, 'get_conn', side_effect=RuntimeError(INTERNALS)):
+        with patch.object(self.database, 'get_conn', side_effect=RuntimeError(INTERNALS)):
             self.assert_public(self.admin_open('/admin/api/documents'), 500, 'internal_error')
-        with patch.object(self.admin, 'set_active_model', side_effect=FileNotFoundError(INTERNALS)):
+        with patch.object(self.lifecycle, 'select_model', side_effect=FileNotFoundError(INTERNALS)):
             self.assert_public(self.admin_open('/admin/api/models', 'POST', headers=headers,
                                               json={'model_id': 'test'}), 409, 'conflict')
         for error, status, code in [(ValueError(INTERNALS), 400, 'invalid_request'),
                                     (IntegrityError(1062, INTERNALS), 409, 'conflict'),
                                     (IntegrityError(1048, INTERNALS), 500, 'internal_error')]:
-            with self.subTest(error=error), patch.object(self.admin, 'create_user', side_effect=error):
+            with self.subTest(error=error), patch.object(self.admin_accounts, 'create_user', side_effect=error):
                 response = self.admin_open('/admin/api/admin-users', 'POST', headers=headers,
                                            json={'username': 'operator2', 'password': 'test-password'})
                 self.assert_public(response, status, code)

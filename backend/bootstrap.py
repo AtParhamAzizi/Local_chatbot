@@ -20,11 +20,9 @@ def initialize_database():
 
 
 def initialize_models():
-    from interface import get_embedder
-    from generator import get_generator
+    from services.lifecycle import model_lifecycle
 
-    get_embedder()
-    get_generator()
+    model_lifecycle.warmup()
 
 
 def initialize_runtime(ui_app, admin_app):

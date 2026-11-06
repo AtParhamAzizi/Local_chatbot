@@ -84,7 +84,7 @@ class PersianNormalizationTests(OfflineCoreFixture, unittest.TestCase):
 class ChunkingTests(OfflineCoreFixture, unittest.TestCase):
     def setUp(self):
         super().setUp()
-        self.split_text = importlib.import_module('admin').split_text
+        self.split_text = importlib.import_module('services.ingestion').split_text
 
     def test_empty_and_short_text(self):
         for value in ('', '  \t\n', '\u00ad'):
@@ -193,15 +193,15 @@ class ScoringTests(OfflineCoreFixture, unittest.TestCase):
                 connection.close.assert_called_once_with()
 
     def test_retrieval_uses_embedding_double_threshold_merge_and_top_k(self):
-        user = importlib.import_module('user')
+        retrieval = importlib.import_module('services.retrieval')
         embedder = Mock(return_value=[[1.0, 0.0]])
         qa = [{'id': 1, 'score': 0.35}, {'id': 2, 'score': 0.349}, {'id': 3, 'score': 0.9}]
         pdf = [{'id': 4, 'score': 0.7}, {'id': 5, 'score': 0.1}]
-        with patch.object(user, 'embed_texts', embedder), \
-                patch.object(user, '_search_qa', return_value=qa) as search_qa, \
-                patch.object(user, '_search_pdf', return_value=pdf) as search_pdf:
-            self.assertEqual([hit['id'] for hit in user._retrieve_top('question', k=2)], [3, 4])
-            self.assertEqual([hit['id'] for hit in user._retrieve_top('question', k=6)], [3, 4, 1])
+        search_qa = Mock(return_value=qa)
+        search_pdf = Mock(return_value=pdf)
+        service = retrieval.RetrievalService(embed=embedder, search_qa=search_qa, search_pdf=search_pdf)
+        self.assertEqual([hit['id'] for hit in service.retrieve('question', limit=2)], [3, 4])
+        self.assertEqual([hit['id'] for hit in service.retrieve('question', limit=6)], [3, 4, 1])
         self.assertEqual(embedder.call_args.args, (['question'],))
         np.testing.assert_array_equal(search_qa.call_args.args[0], [1, 0])
         self.assertEqual(search_qa.call_args.args[0].dtype, np.float32)

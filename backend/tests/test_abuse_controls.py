@@ -159,17 +159,22 @@ class AbuseEndpointFixture:
         cls.resources.enter_context(patch.dict(sys.modules, doubles))
         for name in ('admin', 'user', 'voice'):
             sys.modules.pop(name, None)
-        database = importlib.import_module('database')
+        from core_support import clear_admin_routes
+        clear_admin_routes()
+        database = cls.database = importlib.import_module('database')
         cls.resources.enter_context(patch.object(database.logger, '_write', return_value=True))
         cls.resources.enter_context(patch.object(
             database, 'get_conn', side_effect=AssertionError('Real database access is forbidden'),
         ))
-        cls.admin = importlib.import_module('admin')
+        cls.admin = importlib.import_module('admin_routes.auth')
+        cls.admin_accounts = importlib.import_module('admin_routes.accounts')
         cls.user = importlib.import_module('user')
         cls.voice = importlib.import_module('voice')
         application = importlib.import_module('application')
         cls.admin_app = application.create_admin_app()
         cls.ui_app = application.create_ui_app()
+        cls.ingestion = cls.admin_app.extensions['ingestion_service']
+        cls.lifecycle = cls.admin_app.extensions['model_lifecycle']
 
     def setUp(self):
         self.resources = ExitStack()

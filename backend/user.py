@@ -2,28 +2,14 @@ from abuse_controls import limit_requests
 from chat_sessions import chat_owner_hash
 from request_validation import CHAT_FIELDS, FEEDBACK_FIELDS, json_object
 from database import get_conn, get_client_ip, logger
-from settings import retention_settings, safe_error_message
+from settings import UI_PORT, retention_settings, safe_error_message
 from serving import serve_development
+from services.adapters import generate_reply
 import os
-import numpy as np
-from flask import request, jsonify, redirect, render_template
-from generator import generate_reply
-from database import get_conn
-
-from interface import embed_texts, BASE_DIR, UI_PORT, MIN_SCORE
-from generator import generate_reply
-from interface import (
-    embed_texts,
-    BASE_DIR,
-    UI_PORT,
-    MIN_SCORE,
-)
+from flask import current_app, request, jsonify, redirect, render_template
 
 
-FRONTEND_DIR = os.path.join(os.path.dirname(BASE_DIR), 'frontend')
-
-
-
+FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend')
 
 
 @logger.operation
@@ -45,74 +31,9 @@ def health():
 
 
 
-# def _retrieve_top(query: str, k: int = 5):
-#     """Return [(score, row), ...] sorted by cosine similarity (desc)."""
-#     qvec = embed_texts([query])[0]
-
-#     conn = get_conn()
-#     try:
-#         with conn.cursor() as cur:
-#             cur.execute(
-#                 "SELECT id, question, answer, embedding, embedding_dim "
-#                 "  FROM qa_documents "
-#                 " WHERE embedding IS NOT NULL"
-#             )
-#             rows = cur.fetchall()
-#     finally:
-#         conn.close()
-
-#     scored = []
-#     for r in rows:
-#         vec = np.frombuffer(r['embedding'], dtype=np.float32)
-#         if r['embedding_dim'] and vec.shape[0] != int(r['embedding_dim']):
-#             continue
-#         if vec.shape[0] != qvec.shape[0]:
-#             continue
-#         score = float(np.dot(qvec, vec))     # both L2-normalized → cosine
-#         scored.append((score, r))
-
-#     scored.sort(key=lambda x: x[0], reverse=True)
-#     return scored[:k]
-
-
-#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-from searchForAnswer import _search_pdf, _search_qa, build_context
-
-# def _retrieve_top(query: str, k: int = 6):
-
-#     qvec = embed_texts([query])[0]
-#     qvec = np.asarray(qvec, dtype=np.float32)
-
-#     qa_results = _search_qa(qvec, k=5)
-#     pdf_results = _search_pdf(qvec, k=5)
-
-#     combined = qa_results + pdf_results
-
-#     combined = [
-#         r for r in combined
-#         if r["score"] >= 0.35
-#     ]
-
-#     combined.sort(
-#         key=lambda x: x["score"],
-#         reverse=True
-#     )
-
-    
-#     return combined[:k]
-
 @logger.operation
 def _retrieve_top(query: str, k: int = 6):
-    qvec = np.asarray(embed_texts([query])[0], dtype=np.float32)
-
-    qa_results  = _search_qa(qvec,  k=5)
-    pdf_results = _search_pdf(qvec, k=8, query=query)
-
-    combined = [r for r in (qa_results + pdf_results) if r["score"] >= MIN_SCORE]
-    combined.sort(key=lambda x: x["score"], reverse=True)
-
-    return combined[:k]
-#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    return current_app.extensions['retrieval_service'].retrieve(query, limit=k)
 
 
 @limit_requests('chat')

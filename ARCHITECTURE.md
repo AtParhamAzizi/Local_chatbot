@@ -39,8 +39,10 @@ backend/
   admin_csrf.py       Session-bound CSRF token generation/validation, including pre-login forms
   admin_policy.py     Exact endpoint/method/asset/action operation policies; unknown operations denied
   admin-csrf.js       Shared same-origin adminFetch helper for authenticated mutations
-  user.py             User Flask app: /, /health, /chat, /feedback; _retrieve_top orchestration
-  admin.py            Admin Flask app: dashboard/static routes + all /admin/api/* (~1700 lines)
+  user.py             User HTTP handlers: /, /health, /chat, /feedback; retrieval service adapter
+  admin.py            Small admin route composer and standalone launcher
+  admin_routes/       Independent auth, accounts, pages, knowledge, PDF, models, history and logs HTTP modules
+  services/           Request-independent ingestion, retrieval and model lifecycle services; lazy external adapters
   controller.py       Runtime controller state (controller_state.json), memory/GPU helpers
   controller_api.py   Controller routes + hooks registered explicitly on supplied apps
   database.py         DB_CONFIG, get_conn, table creators, `logger` class, get_client_ip, hashing helpers
@@ -90,8 +92,9 @@ still requires the application's installed dependencies and valid settings;
 model adapters may be doubled in tests. Requests can perform normal database/model
 work, so tests must supply adapters before exercising those routes.
 
-`user` and `admin` expose handlers and `register_ui_routes(app)` /
-`register_admin_routes(app)`, not module-global Flask apps. Endpoint names and
+`user` exposes handlers and `register_ui_routes(app)`; `admin` composes the focused
+`admin_routes` modules through `register_admin_routes(app)`. Neither exports a
+module-global Flask app. Endpoint names and
 authorization policies are unchanged. Importing `controller_api` does not attach
 hooks, and importing `controller` no longer loads persisted state (including its
 database-backed error logging). State and models remain process-shared by design;
@@ -108,7 +111,7 @@ The runtime initialization order is:
 4. `init_documents_chunk_table()` -> `pdf_chunks`
 5. `init_history_table()` -> `chat_history`
 6. `controller._load_state()` loads persisted feature toggles after database setup
-7. `bootstrap.initialize_models()` calls `get_embedder()` (interface.py, CPU), then `get_generator()` (generator.py, CUDA if available)
+7. `bootstrap.initialize_models()` calls the shared lifecycle service's `warmup()`: `get_embedder()` (interface.py, CPU), then `get_generator()` (generator.py, CUDA if available)
 8. `start_retention_worker(ui_app, admin_app)` starts one shared privacy-cleanup daemon after table/model initialization; its first sweep runs immediately, then hourly by default. No cleanup starts on import.
 9. Return both apps to the selected runtime. Development starts user serving in a daemon thread and admin serving on the main thread. Production serves both through the worker's shared thread pool. Both profiles default to `APP_HOST=127.0.0.1`; LAN exposure requires explicitly setting an interface address or wildcard. Debugger and reloader are disabled.
 
@@ -140,7 +143,7 @@ Env: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`. The active config is
 
 0. `controller_gate` (before_request) returns 503 when chat is disabled in the controller. The chat admission decorator rejects excess per-IP traffic with 429 and retry guidance before parsing the message or running retrieval/generation.
 1. Read JSON `{message}` and `get_client_ip()` (uses only middleware-validated `request.remote_addr`). An empty message returns 400. `chat_sessions.chat_owner_hash(create=True)` establishes or reuses a signed anonymous chat session; the server derives the public `user_id` from its ownership hash. Any supplied `user_id` is ignored.
-2. `_retrieve_top(query, k=6)` (an exception here returns 500):
+2. `_retrieve_top(query, k=6)` delegates to `RetrievalService.retrieve(query, limit=6)` (an exception here returns 500):
    - `embed_texts([query])` gives qvec (float32).
    - `_search_qa(qvec, k=5)` and `_search_pdf(qvec, k=8, query=query)` from searchForAnswer.py.
    - Keep `score >= MIN_SCORE` (0.35), sort descending, take the top k.
@@ -180,19 +183,22 @@ Scoring:
 - A model is available when both of its paths contain `config.json`. `get_active_model_id()` tries the saved id or `GEN_MODEL_ID` if available, then the first available model, then the requested or default id.
 - The selection is persisted atomically in `backend/model_selection.json` (`_read_saved_id`, `_write_saved_id`).
 - Public functions: `get_active_model_id()`, `get_model_definition(id)`, `get_model_catalog()`, `model_available(id)`, `set_active_model(id)` (raises `FileNotFoundError` if unavailable).
-- Admin flow: POST `/admin/api/models` -> `admin_set_model()` -> `set_active_model` + `set_embedding_model` + `set_generator_model`. Returns 409 when model files are missing and 400 for an unknown id. Models reload lazily on the next request.
+- Admin flow: POST `/admin/api/models` -> `admin_routes.models.admin_set_model()` -> `ModelLifecycleService.select_model()` -> `set_active_model` + `set_embedding_model` + `set_generator_model`. Returns 409 when model files are missing and 400 for an unknown id. Models reload lazily on the next request.
 
-### 6.5 JSON Q&A ingestion (`admin.py: admin_upload()`, POST `/admin/api/upload`)
+### 6.5 JSON Q&A ingestion (`admin_routes/knowledge.py`, `services/ingestion.py`)
 
-The upload is a multipart `file` (`.json`, UTF-8, max 20 MiB) containing 1-256 objects with exactly `{question, answer}`: nonblank strings of at most 4096 and 16000 characters respectively. Every row is validated before any embedding or persistence; one invalid row rejects the entire import with 400 rather than partially accepting it. Duplicate questions within valid files are dropped. All questions are embedded in one `embed_texts` call; only the question is embedded, not the answer. Rows whose `question_hash` already exists are skipped, or updated (answer + embedding) when the form field `replace` is true. Response: `{received, inserted, updated, skipped, embedded, duration_sec, errors}` (`errors` is empty on success).
+POST `/admin/api/upload` accepts a multipart `file` (`.json`, UTF-8, max 20 MiB) containing 1-256 objects with exactly `{question, answer}`: nonblank strings of at most 4096 and 16000 characters respectively. The route bounds/parses multipart input, then calls `IngestionService.ingest_qa(raw, replace=...)`. Every row is validated before any embedding or persistence; one invalid row rejects the entire import with 400 rather than partially accepting it. Duplicate questions within valid files are dropped. All questions are embedded in one `embed_texts` call; only the question is embedded, not the answer. Rows whose `question_hash` already exists are skipped, or updated (answer + embedding) when the form field `replace` is true. Response: `{received, inserted, updated, skipped, embedded, duration_sec, errors}` (`errors` is empty on success).
 Related: `admin_documents()` (`page`, `per_page` <= 100, `q` search), `admin_delete(doc_id)`, `admin_stats()` (`total_documents`, `embedded_documents`, `dim`).
 
-### 6.6 PDF ingestion (`admin.py: admin_pdf_upload()`, POST `/admin/api/pdf/upload`)
+### 6.6 PDF ingestion (`admin_routes/pdf.py`, `services/ingestion.py`)
+
+POST `/admin/api/pdf/upload` bounds/parses multipart input, then calls
+`IngestionService.ingest_pdf(raw, filename, replace=...)`:
 
 1. The upload is a multipart `file` (`.pdf`, max 50 MiB, non-empty, 1-200 pages). Page counts above the limit return 413 before extraction.
 2. Text is extracted per page with PyMuPDF (`get_text("text", sort=True)`), capped at 500000 total characters before trimming. Unreadable PDFs or PDFs with no extractable text (e.g. scans) return 400. Documents close even when extraction fails or hits a limit.
 3. `split_text(text, chunk_size, overlap)` runs per page with `PDF_CHUNK_SIZE=900` and `PDF_CHUNK_OVERLAP=160`. It removes soft hyphens and hyphenated line breaks, collapses whitespace, and prefers paragraph, line and sentence breaks. Chunks never span pages (`page_start == page_end`).
-4. At most 256 chunks are accepted. Text/chunk overages return 413 before model work or document changes. After validation, dedup uses `sha256_bytes`: a duplicate returns 409 unless `replace` is true. All chunks are embedded in one `embed_texts` call. `PDF_EMBED_BATCH_SIZE=16` is defined but unused.
+4. At most 256 chunks are accepted. Text/chunk overages return 413 before model work or document changes. After validation, dedup uses `sha256_bytes`: a duplicate returns 409 unless `replace` is true. All chunks are embedded in one `embed_texts` call.
 5. The code inserts `pdf_documents` (`processing`) and `pdf_chunks`, then marks the document `completed` (or `failed` with `error_message`).
 
 Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_id)` (chunks cascade), `admin_pdf_stats()`.
@@ -213,7 +219,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 ### 6.9 Runtime controller (`controller.py`, `controller_api.py`)
 
 - State: `_state = {voice_enabled, chat_enabled}` (both default true), persisted atomically in `backend/controller_state.json` (`_load_state`, `_save_state`, `_set_state`). Helpers: `_free_memory()` (gc + `torch.cuda.empty_cache`) and `_gpu_info()`.
-- `controller_api.register(ui_app, admin_app)` explicitly calls `register_ui` and `register_admin`, each idempotent per supplied app (`app.extensions['controller']`). It only reads and resets singletons in `generator`, `interface` and `voice`; importing it registers nothing.
+- `controller_api.register(ui_app, admin_app)` explicitly calls `register_ui` and `register_admin`, each idempotent per supplied app (`app.extensions['controller']`). HTTP actions/status delegate through `ModelLifecycleService`; importing it registers nothing and touches no models.
 - Hooks on the user app:
   - `controller_gate` (before_request): `/voice*` returns 403 when voice is off, and `/chat` returns 503 when chat is off.
   - `controller_inject` (after_request on `/` HTML): injects `window.__CTL_FEATURES__` and `<script src="/controller/features.js">`, and disables caching.
@@ -221,6 +227,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 - Admin routes: GET `/controller` (serves `admin/controller.html`), GET `/admin/api/controller/status` (`features`, `models` {generator, embedder, voice}, `busy`, `errors`, `gpu`), POST `/admin/api/controller/action`.
 - Actions: `voice_enable|voice_disable|chat_enable|chat_disable` apply immediately. `generator_load|generator_unload|embedder_load|embedder_unload|voice_load|voice_unload` run in a daemon thread and return 202. They return 409 when the same model is busy; unknown/unregistered actions receive 403. Each action requires its own registered `controller.<action>` policy before state mutation or background dispatch, in addition to the route's `controller.dispatch` policy.
 - An unloaded generator or embedder reloads automatically on the next chat message.
+- `services.lifecycle.ModelLifecycleService` owns model selection, warmup, load/unload, voice/model status, per-model busy/error state and background action dispatch. The default instance is shared by both apps and the bootstrap. Adapter singleton resets retain their existing locks; HTTP authorization and feature-toggle persistence stay outside this service.
 
 ### 6.10 Logging (`database.py: class logger`)
 
@@ -317,7 +324,7 @@ Run: `python backend\main.py` (run from anywhere; imports are flat, relative to 
 - DB pattern: `conn = get_conn()`, `with conn.cursor()`, `conn.close()` in `finally`. Autocommit is on; existing code still calls `conn.commit()` on writes.
 - Modules import each other by flat names (`from database import ...`), so `backend/` must be the script directory or on `sys.path`.
 - `database.py` is imported by almost every module (the logger lives there), so keep it dependency-light to avoid circular imports.
-- Import graph: factories import application modules only when called; `generator` -> `searchForAnswer`, `model_registry`; `interface` -> `model_registry`; `user` -> `interface`, `generator`, `searchForAnswer`; `admin` -> `generator`, `interface`, `model_registry`, `database`; `controller_api` -> `controller`, `generator`, `interface`, `voice` (not the apps).
+- Import graph: factories import route modules and service classes only when called; `admin` composes `admin_routes` (no route-to-route imports except shared asset paths); HTTP routes call services, never the reverse. `services.adapters` imports database/model/PDF adapters only when used; the lifecycle service resolves its adapters only on explicit operations. `generator` -> `searchForAnswer`, `model_registry`; `interface` -> `model_registry`; `controller_api` -> `controller`, lifecycle service (not the apps or model modules).
 - Feature changes that touch the user page or model lifecycle should go through `controller_api.py` hooks, which follows the existing "don't modify the core modules" pattern.
 - Security and production caveats: both apps default to loopback with debug disabled and require explicit development selection to use Flask's server. Production uses threaded Gunicorn on Linux/WSL and requires explicit browser-origin lists. Unapproved/opaque origins are denied before handlers on both apps; admin remains same-origin only. See README for CORS, proxy trust, credential, and network restrictions.
 - `backend/tests/test_core_units.py` covers hashing, current Persian lexical normalization, chunking, scoring/retrieval, permissions and parsing with scoped model/database doubles. Install only `backend/tests/requirements.txt`, then run `python -B backend/tests/run_tests.py --repeat 2`; this discovers all default regressions while forbidding real network/database work, model dependency imports and model-directory reads. See `backend/tests/TESTING.md` for clean-environment setup and focused discovery. `test_admin_authorization.py` retains the complete operation-policy and Flask authorization matrix. Standard `python -B -m unittest discover -s backend/tests -v` also works. `backend/test.py` remains a separate manual retrieval check, not a regression test.

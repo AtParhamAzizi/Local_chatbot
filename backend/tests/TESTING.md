@@ -63,11 +63,34 @@ registration; invalid-configuration failure; and worker-only production startup.
 `test_retention.py` checks the explicit serving bootstrap's table/state/model/
 retention order and that low-level development serving starts no cleanup worker.
 
-Fixtures import handlers from `user` / `admin` and construct apps explicitly via
+Fixtures import handlers from `user` / `admin_routes` and construct apps explicitly via
 `application.create_ui_app()` / `create_admin_app()`. There are no module-global
 `user.ui_app` or `admin.admin_app` objects. Use `application.create_apps()` when
 controller hooks are needed too. Application construction itself performs no
 database/model initialization; route execution still needs the scoped adapters.
+
+## Focused modules and services (F019)
+
+`test_service_boundaries.py` imports/registers each administrator responsibility
+without importing its siblings and compares the complete app to the frozen
+pre-split paths/methods/endpoint names in `admin_route_contract.py`. It also tests
+HTTP-to-service dispatch through injected replacements, including unchanged
+chat/model/upload response shapes and controlled ingestion failures.
+
+Direct service tests run without Flask contexts or valid deployment settings:
+JSON whole-batch validation, dedup/replacement/skip counts, PDF quotas/cleanup,
+duplicate handling, embed-before-replace ordering, page metadata/float32 storage,
+connection cleanup and safe persisted failure state; lifecycle warmup/selection
+order, rejected selections, unload/reset, status snapshots, per-model exclusion,
+asynchronous failure/retry and thread-start failures. `test_core_units.py` now
+tests chunking and retrieval services directly, retaining real NumPy scoring.
+
+Use factory service overrides or patch the service's injected adapters for route
+tests, not `admin.py` globals. Auth and account doubles target their respective
+`admin_routes` modules. `core_support.clear_admin_routes()` clears cached route
+modules inside scoped fixtures so imports cannot capture a previous fixture's
+database/logger/auth dependencies. The original authorization, validation,
+privacy, MySQL and browser suites remain the client-compatibility regressions.
 
 ## Flask + disposable MySQL integration (F014)
 

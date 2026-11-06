@@ -74,7 +74,9 @@ class FlaskMySQLTests(unittest.TestCase):
                            cls.database.init_documents_chunk_table, cls.database.init_history_table):
             initialize()
         cls.accounts = importlib.import_module('admin_users')
-        cls.admin = importlib.import_module('admin')
+        from core_support import clear_admin_routes
+        clear_admin_routes()
+        cls.admin = importlib.import_module('admin_routes.auth')
         cls.user = importlib.import_module('user')
         application = importlib.import_module('application')
         cls.admin_app = application.create_admin_app()
