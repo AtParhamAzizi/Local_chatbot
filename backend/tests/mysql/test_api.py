@@ -69,10 +69,8 @@ class FlaskMySQLTests(unittest.TestCase):
             sys.modules.pop(name, None)
         cls.database = importlib.import_module('database')
         cls.database.DB_CONFIG = cls.target.config()
-        for initialize in (cls.database.init_logger_table, cls.database.init_db,
-                           cls.database.init_admin_users_table, cls.database.init_documents_table,
-                           cls.database.init_documents_chunk_table, cls.database.init_history_table):
-            initialize()
+        migrations = importlib.import_module('schema_migrations')
+        migrations.upgrade()
         cls.accounts = importlib.import_module('admin_users')
         from core_support import clear_admin_routes
         clear_admin_routes()

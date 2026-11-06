@@ -57,13 +57,17 @@ use and increase it if model loading exhausts memory).
    files into the image. These directories must already exist. The application
    loads these text models offline and does not download missing weights.
 
-3. Build and start both services from the repository root:
+3. Build, explicitly migrate the fresh database, then start from the repository root:
 
    ```sh
-   docker compose up --build -d
+   docker compose build chatbot
+   docker compose run --rm chatbot python backend/schema_migrations.py upgrade
+   docker compose up -d chatbot
    docker compose logs -f chatbot
    ```
 
+   For an existing database, stop the chatbot and follow the backup/upgrade
+   procedure in `backend/migrations/README.md` instead of the fresh upgrade command.
    Initial dependency installation and model loading can take several minutes.
    Compose waits for the application database account to connect successfully
    before starting the chatbot. Open `http://localhost:5000` for chat and
@@ -166,7 +170,16 @@ commands, including administrator setup, logs, and shutdown.
 
    Inject `DB_PASS` and `ADMIN_SESSION_SECRET` securely rather than saving them in source code or shell history. Generate the session secret with `python -c "import secrets; print(secrets.token_urlsafe(48))"` in a private terminal. Do not paste its output into logs. Local development without a session secret uses a per-process random key, so restarting invalidates existing admin sessions.
 
-   The application creates its tables automatically at startup.
+   Explicitly initialize an empty database before startup:
+
+   ```powershell
+   python -B backend/schema_migrations.py upgrade
+   python -B backend/schema_migrations.py status
+   ```
+
+   Existing databases require a tested backup passed with `upgrade --backup PATH`.
+   See `backend/migrations/README.md` for backup, restore and interruption recovery.
+   Startup only checks the recorded schema version; it never creates/alters tables.
 
    Before the first admin login, run local interactive setup using the same database configuration:
 
@@ -421,12 +434,13 @@ Clearing/losing the cookie, its expiry, or rotating `ADMIN_SESSION_SECRET`
 prevents feedback on the old session's messages; those messages cannot be
 reclaimed by supplying their public user ID. Treat the cookie as a credential.
 
-Normal startup automatically adds nullable `chat_history.owner_hash` on existing
-installations using the documented schema-scoped `ALTER` grant. Existing history
+Explicit migration 4 adds nullable `chat_history.owner_hash` on existing
+installations using a schema-scoped migration account. Existing history
 and feedback are preserved. Older rows cannot safely be assigned an owner from
 their formerly client-chosen IDs, so they remain unowned and no longer accept
 anonymous feedback; authorized administrators retain inspection/deletion access.
-Restart through `backend/main.py` to apply the migration before serving requests.
+Back up and run `python backend/schema_migrations.py upgrade --backup PATH`
+before restarting through `backend/main.py`; see `backend/migrations/README.md`.
 
 ## Application factories and initialization
 
@@ -443,10 +457,11 @@ Configure the environment before constructing apps; shared database/model
 configuration and model/controller state remain process-scoped, not tenant-scoped.
 
 For management work, `from bootstrap import initialize_database` imports safely;
-calling `initialize_database()` explicitly creates/upgrades tables without
-importing model or application modules. `initialize_models()` is separate.
+calling `initialize_database()` checks the recorded schema without creating or
+altering tables or importing model/application modules. Use the explicit
+`schema_migrations.py upgrade` command for DDL. `initialize_models()` is separate.
 Normal launchers use `main.create_serving_apps()`, which assembles both apps,
-initializes tables, reads controller state, loads embedding/generation models,
+checks the schema version, reads controller state, loads embedding/generation models,
 and finally starts the shared retention worker. Production does this inside
 the Gunicorn worker, never its master. Keep using `python backend/main.py` for
 serving; passing assembly-only factories directly to a WSGI server bypasses the
@@ -489,7 +504,9 @@ Replace service adapters rather than patching the old `admin` module's globals.
 backend/
   main.py             Initializes shared services and selects the runtime profile
   application.py      Fresh Flask app factories with no implicit service startup
-  bootstrap.py        Explicit database, model and background-worker initialization
+  bootstrap.py        Read-only schema check, model and background-worker initialization
+  schema_migrations.py Explicit versioned database upgrade/status CLI
+  migrations/         Ordered SQL, backup requirements and recovery guide
   serving.py          Local Flask serving and threaded production Gunicorn runtime
   settings.py         Validated environment, loopback binding, and credentials
   user.py             User-facing chat API
@@ -519,7 +536,7 @@ logger.logDrop('Operation failed', logger.FAILED)
 
 Severity codes are **1 = information**, **2 = warning**, and **3 = failed**. The existing four-argument `logger.logDrop(level, log_from, message, warninglevel)` calls remain supported, but file and function names are inferred automatically. `@logger.operation` records completed operations, exceptions, and HTTP outcomes (4xx as warnings and 5xx as failures) without logging request bodies or model inputs. Coverage includes startup, database initialization, chat and feedback, retrieval, embeddings, generation, model changes, JSON/PDF tools, and administrator APIs.
 
-At startup, `init_logger_table()` upgrades existing `CHAR`/`VARCHAR` message columns to `TEXT` without removing existing logs. Database logging failures fall back to the console and do not interrupt application requests. View and filter logs on the admin **System Logs** page.
+Explicit migration 3 widens existing `CHAR`/`VARCHAR` message columns to `TEXT` without removing existing logs. Startup never alters logging tables. Database logging failures fall back to the console and do not interrupt application requests. View and filter logs on the admin **System Logs** page.
 
 ## Notes
 
@@ -530,7 +547,7 @@ At startup, `init_logger_table()` upgrades existing `CHAR`/`VARCHAR` message col
 
 ## Admin authentication
 
-The admin service runs on port 8000 and opens a login page before serving `backend/dashboard.html`. Startup creates the MySQL table named `admin-users` without inserting accounts. Run `python backend/setup_admin.py` locally to create `administrator` with your own password on a clean installation. Setup requires an interactive terminal and refuses to run if any account already exists, including disabled accounts. It cannot reset or overwrite upgrade accounts. If interrupted, rerun it safely; creation is transactional and concurrent setup commands are serialized. Existing installations retain their credentials and permissions; if still using the old shared password, change it in **Admin user control**. This menu also lets administrators create users and assign menu permissions. See `backend/admin-users/README.md` for setup and resumption details.
+The admin service runs on port 8000 and opens a login page before serving `backend/dashboard.html`. Explicit migrations create `admin-users` without inserting accounts; startup and setup only verify the schema version. Run `python backend/setup_admin.py` locally after migrating to create `administrator` with your own password on a clean installation. Setup requires an interactive terminal and refuses to run if any account already exists, including disabled accounts. It cannot reset or overwrite upgrade accounts. If interrupted, rerun it safely; creation is transactional and concurrent setup commands are serialized. Existing installations retain their credentials and permissions; if still using the old shared password, change it in **Admin user control**. This menu also lets administrators create users and assign menu permissions. See `backend/admin-users/README.md` for setup and resumption details.
 
 ### Session lifecycle and cookies
 
@@ -541,10 +558,11 @@ The admin service runs on port 8000 and opens a login page before serving `backe
 - All cookies are host-only, `HttpOnly`, `SameSite=Lax`, and scoped to `/`. Explicit local development uses `local_chatbot_admin_dev` without `Secure` for `http://localhost:8000`. Production uses `__Host-local_chatbot_admin` with `Secure` and requires HTTPS. There is no production switch to permit insecure cookies. Admin responses use `Cache-Control: no-store`.
 - Open admin pages through the served dashboard on the same origin, not as `file:` pages. Credentialed `Origin: null` CORS is no longer enabled. The chat inspector now uses the dashboard's origin, including HTTPS, rather than a hard-coded localhost API.
 
-Upgrading automatically adds `session_version` to existing accounts and creates
+Explicit migration 2 adds `session_version` to existing accounts and creates
 `admin_sessions` without changing passwords or permissions. Legacy session
 cookies are not accepted; users must sign in again after upgrading. The existing
-schema-scoped migration grants cover these changes.
+schema-scoped migration grants cover these changes; run the recorded migration
+command before startup, not with the ordinary serving account.
 
 ### Explicit operation authorization
 
@@ -878,11 +896,18 @@ Use a dedicated MySQL account with only the permissions needed by this applicati
 ```sql
 CREATE DATABASE chatbot_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER 'chatbot_app'@'localhost' IDENTIFIED BY '<strong-random-password>';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES
+GRANT SELECT, INSERT, UPDATE, DELETE
   ON chatbot_db.* TO 'chatbot_app'@'localhost';
 ```
 
-The schema-scoped `CREATE`, `ALTER`, `INDEX`, and `REFERENCES` grants support automatic table initialization and the logger column upgrade. No global, account-management, `FILE`, or grant-option permissions are needed. For a remote database, replace `localhost` with the specific application host, not `%`.
+Use a separate schema-scoped migration account with `SELECT`, `INSERT`, `UPDATE`,
+`CREATE`, `ALTER`, `INDEX` and `REFERENCES` for explicit upgrades. The serving
+account needs only ordinary DML, including `SELECT` on the migration ledger;
+startup no longer changes schemas. No global, account-management, `FILE`, or
+grant-option permissions are needed by the application or migration runner.
+Backup tools may require additional object-specific permissions; see
+`backend/migrations/README.md`. For a remote database, replace `localhost` with
+the specific application host, not `%`.
 
 Rotate the formerly embedded database password and session signing key on existing deployments; removing them from source does not revoke credentials. Changing the session key invalidates existing admin sessions. Keep passwords out of version control, command-line arguments, and logs.
 

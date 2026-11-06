@@ -5,7 +5,7 @@ import warnings
 from getpass import GetPassWarning, getpass
 
 from admin_users import DEFAULT_USERNAME, admin_users_exist, setup_administrator
-from database import init_admin_users_table
+from schema_migrations import MigrationError, require_current_schema
 
 
 def main():
@@ -13,7 +13,7 @@ def main():
         if not sys.stdin.isatty():
             print('Run setup from an interactive terminal; passwords are never accepted as arguments.', file=sys.stderr)
             return 1
-        init_admin_users_table()
+        require_current_schema()
         if admin_users_exist():
             print('Accounts already exist. Nothing changed; sign in with your existing credentials.')
             return 0
@@ -39,7 +39,7 @@ def main():
     except GetPassWarning:
         print('Cannot hide password input. Run setup in a terminal that supports hidden input.', file=sys.stderr)
         return 1
-    except ValueError as error:
+    except (ValueError, MigrationError) as error:
         print(str(error), file=sys.stderr)
         return 1
     except Exception as error:

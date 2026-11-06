@@ -2,21 +2,13 @@
 
 
 def initialize_database():
+    """Verify the pre-migrated schema without DDL, audit writes or model imports."""
     from settings import validate_settings
     validate_settings()
 
-    from database import (
-        init_db, init_admin_users_table, init_logger_table, logger,
-        init_documents_chunk_table, init_documents_table, init_history_table,
-    )
+    from schema_migrations import require_current_schema
 
-    init_logger_table()
-    logger.logDrop('Starting local chatbot services')
-    init_db()
-    init_admin_users_table()
-    init_documents_table()
-    init_documents_chunk_table()
-    init_history_table()
+    return require_current_schema()
 
 
 def initialize_models():
@@ -36,4 +28,4 @@ def initialize_runtime(ui_app, admin_app):
     _load_state()
     initialize_models()
     start_retention_worker(ui_app, admin_app)
-    logger.logDrop('Database and local models initialized')
+    logger.logDrop('Database schema verified and local models initialized')

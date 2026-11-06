@@ -26,7 +26,7 @@ Recorded F017 installation uses `scripts/dependencies.py install/verify --profil
 backend/
   main.py             Entry point: explicit serving initialization and runtime selection
   application.py      Side-effect-free factory imports; fresh apps and explicit route registration
-  bootstrap.py        Explicit database, shared model, controller-state and retention startup
+  bootstrap.py        Read-only schema check, shared model, controller-state and retention startup
   serving.py          Development server guard and production Gunicorn socket-port dispatcher
   settings.py         APP_ENV, validated APP_HOST (loopback default), credentials, shared ports
   security.py         Explicit browser-origin guards/CORS, peer-validated forwarding, safe errors
@@ -45,7 +45,9 @@ backend/
   services/           Request-independent ingestion, retrieval and model lifecycle services; lazy external adapters
   controller.py       Runtime controller state (controller_state.json), memory/GPU helpers
   controller_api.py   Controller routes + hooks registered explicitly on supplied apps
-  database.py         DB_CONFIG, get_conn, table creators, `logger` class, get_client_ip, hashing helpers
+  database.py         DB_CONFIG, get_conn, `logger` class, get_client_ip, hashing helpers (no schema DDL)
+  schema_migrations.py Explicit, locked/versioned migration CLI and read-only startup schema guard
+  migrations/         Immutable ordered SQL migrations and backup/recovery instructions
   interface.py        Embedding model (load/embed) + shared constants (ports, limits, MIN_SCORE, ADMIN_DIR)
   generator.py        Generation LLM (load/generate), SYSTEM_PROMPT, sampling params
   searchForAnswer.py  Vector search over qa_documents / pdf_chunks + build_context
@@ -104,27 +106,23 @@ Only `main.create_serving_apps()` assembles the apps and explicitly invokes
 `bootstrap.initialize_runtime(ui_app, admin_app)` before returning them to a server.
 The runtime initialization order is:
 
-1. `init_logger_table()` -> `adminlogger` (also migrates an old CHAR/VARCHAR `message` column to TEXT)
-2. `init_db()` -> `qa_documents`
-   `init_admin_users_table()` -> `admin-users` (migrates `session_version`) + `admin_sessions`; no automatic account creation
-3. `init_documents_table()` -> `pdf_documents`
-4. `init_documents_chunk_table()` -> `pdf_chunks`
-5. `init_history_table()` -> `chat_history`
-6. `controller._load_state()` loads persisted feature toggles after database setup
-7. `bootstrap.initialize_models()` calls the shared lifecycle service's `warmup()`: `get_embedder()` (interface.py, CPU), then `get_generator()` (generator.py, CUDA if available)
-8. `start_retention_worker(ui_app, admin_app)` starts one shared privacy-cleanup daemon after table/model initialization; its first sweep runs immediately, then hourly by default. No cleanup starts on import.
-9. Return both apps to the selected runtime. Development starts user serving in a daemon thread and admin serving on the main thread. Production serves both through the worker's shared thread pool. Both profiles default to `APP_HOST=127.0.0.1`; LAN exposure requires explicitly setting an interface address or wildcard. Debugger and reloader are disabled.
+1. `bootstrap.initialize_database()` calls `schema_migrations.require_current_schema()` using read-only metadata/ledger queries. Pending, incomplete, unknown or checksum-mismatched migrations stop startup before any model/worker/server work. No schema creation, ALTER or audit writes occur in this check.
+2. `controller._load_state()` loads persisted feature toggles after the schema check.
+3. `bootstrap.initialize_models()` calls the shared lifecycle service's `warmup()`: `get_embedder()` (interface.py, CPU), then `get_generator()` (generator.py, CUDA if available).
+4. `start_retention_worker(ui_app, admin_app)` starts one shared privacy-cleanup daemon after schema/model validation; its first sweep runs immediately, then hourly by default. No cleanup starts on import.
+5. Return both apps to the selected runtime. Development starts user serving in a daemon thread and admin serving on the main thread. Production serves both through the worker's shared thread pool. Both profiles default to `APP_HOST=127.0.0.1`; LAN exposure requires explicitly setting an interface address or wildcard. Debugger and reloader are disabled.
 
 The Whisper model is not loaded at startup. It loads lazily on the first `/voice/health` call or the controller `voice_load` action.
 
-Management commands can import `bootstrap.initialize_database()` and invoke it
-explicitly without importing models or applications. `initialize_models()` is a
+Management commands can import `bootstrap.initialize_database()` and invoke its
+read-only schema guard without importing models or applications. Schema changes
+require the explicit migration CLI below. `initialize_models()` is a
 separate explicit operation. Never pass the assembly-only `create_apps` directly
 to a production server; the supported launcher passes `create_serving_apps` to
 Gunicorn so initialization stays in the worker. `serve_development()` only serves
 an already-prepared app; it does not implicitly start retention or initialize services.
 
-## 5. Database (MySQL, utf8mb4, created by `database.py`)
+## 5. Database (MySQL, utf8mb4, explicitly migrated)
 
 | Table | Key columns | Notes |
 | --- | --- | --- |
@@ -135,8 +133,17 @@ an already-prepared app; it does not implicitly start retention or initialize se
 | `adminlogger` | id, `_level` (source file), `_from` (function), message TEXT, `warninglevel` (1 info, 2 warning, 3 failed), created_at | Written by `logger` |
 | `admin-users` | id, username UNIQUE, password_hash, is_active, is_admin, permissions JSON, session_version, created_at, updated_at | Security changes increment session_version atomically |
 | `admin_sessions` | token_hash PRIMARY KEY, user_id FK, session_version, expires_at, last_seen_at | Opaque admin logins; Unix-second deadlines; user deletion cascades |
+| `schema_migrations` | version PRIMARY KEY, name, checksum, status, started_at, applied_at, backup_path, backup_sha256 | Ordered DDL ledger; never modified by startup or request handlers |
 
 Env: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`. The active config is `database.DB_CONFIG` (defaults: localhost, 3306, root, a hard-coded dev password, `chatbot_db`; `autocommit=True`). Cursors are `DictCursor`, so rows are accessed by column name. `interface.py` also defines an unused `DB_CONFIG` with different defaults. Use `database.get_conn()`, not that one.
+### Explicit migrations (F020)
+
+Read `backend/migrations/README.md` before deployment. Run `python -B backend/schema_migrations.py status` for the recorded schema version (unversioned = 0, current = 4), pending/incomplete versions and latest supported version. Empty pre-created databases use `upgrade`; existing databases require stopped writers, a restore-tested pre-upgrade dump and `upgrade --backup PATH`. File existence/nonzero size and SHA-256 are checked/recorded, not backup validity; restore-testing remains an operator requirement. Startup and `setup_admin.py` only require the current ledger and never repair a schema opportunistically.
+
+Migrations create the original six tables (1), add account session versions and `admin_sessions` (2), widen legacy log messages (3), and add nullable anonymous ownership (4). Documented pre-ledger databases, including those already carrying these changes, are adopted using explicit migration-only table/column guards without rewriting records. Legacy ownership remains NULL; existing ownership, credentials, permissions, feedback and float32 embedding bytes stay intact. Unsupported legacy column layouts fail before DDL. This is not a repair tool for arbitrary manual schema/type/constraint changes.
+
+One database-scoped named lock excludes competing migration commands. Each version records running/applied/failed state, timestamps, checksum and backup identity; checksums/order/future versions fail closed. MySQL DDL commits implicitly, so interrupted work is not presented as transactionally rolled back. After inspecting/fixing failures, the documented `upgrade --resume --backup PATH` retries idempotent incomplete steps; ordinary upgrade refuses them. There is no unsafe downgrade command: restore a clean replacement database and matching old release if forward completion cannot be verified. Ordinary serving needs no CREATE/ALTER grants. Imports of the migration module are side-effect-free, including under missing deployment configuration.
+
 ## 6. Pipelines
 
 ### 6.1 Chat / RAG (`user.py: chat()`, POST `/chat`)
@@ -320,7 +327,7 @@ Run: `python backend\main.py` (run from anywhere; imports are flat, relative to 
 
 ## 10. Conventions and gotchas
 
-- Decorate new functions and routes with `@logger.operation`, and log through `logger.logDrop`.
+- Decorate new application functions and routes with `@logger.operation`, and log through `logger.logDrop`. Migration/status/schema-guard code deliberately bypasses DB audit writes, including on connection failure.
 - DB pattern: `conn = get_conn()`, `with conn.cursor()`, `conn.close()` in `finally`. Autocommit is on; existing code still calls `conn.commit()` on writes.
 - Modules import each other by flat names (`from database import ...`), so `backend/` must be the script directory or on `sys.path`.
 - `database.py` is imported by almost every module (the logger lives there), so keep it dependency-light to avoid circular imports.
@@ -334,7 +341,7 @@ Run: `python backend\main.py` (run from anywhere; imports are flat, relative to 
 
 ## Admin user authentication
 
-`backend/admin_users.py` owns PBKDF2 password hashing, login verification, user serialization, and user-management persistence. `backend/admin.py` applies session, CSRF, and explicit `admin_policy.py` operation checks to dashboard pages, APIs, and controller routes, and exposes `/login`, `POST /logout`, `/admin/api/session`, and `/admin/api/admin-users`. Current feature grants remain compatible, but only a true `is_admin` role grants account-management access; usernames confer no authority. The session endpoint supplies permitted navigation pages from the server policy, not a separate client role map. Account deletion forbids self-deletion by ID, not deletion of a special username. `database.init_admin_users_table()` creates the backtick-quoted MySQL table `admin-users`, migrates existing accounts to include `session_version`, and creates `admin_sessions`; it never seeds accounts. `backend/setup_admin.py` provides local interactive first-account setup. `backend/admin-users/login.html` is the login view; `backend/admin/admin-user-control.html` is the administrator-only management view.
+`backend/admin_users.py` owns PBKDF2 password hashing, login verification, user serialization, and user-management persistence. `backend/admin.py` applies session, CSRF, and explicit `admin_policy.py` operation checks to dashboard pages, APIs, and controller routes, and exposes `/login`, `POST /logout`, `/admin/api/session`, and `/admin/api/admin-users`. Current feature grants remain compatible, but only a true `is_admin` role grants account-management access; usernames confer no authority. The session endpoint supplies permitted navigation pages from the server policy, not a separate client role map. Account deletion forbids self-deletion by ID, not deletion of a special username. Explicit versioned migrations create the backtick-quoted MySQL table `admin-users`, add `session_version`, and create `admin_sessions`; they never seed accounts. Startup and local setup only verify the recorded schema version. `backend/setup_admin.py` provides local interactive first-account setup. `backend/admin-users/login.html` is the login view; `backend/admin/admin-user-control.html` is the administrator-only management view.
 
 `backend/admin_sessions.py` issues random opaque IDs (only SHA-256 hashes are stored in MySQL), checks the fixed expiry and idle deadline, and deletes sessions on logout. After login, signed cookies contain only the ID and Flask's permanent flag; current user data lives in `g.admin_user`, not the cookie. Defaults are 8 hours absolute (`ADMIN_SESSION_LIFETIME_SECONDS`, 60-86400) and 30 minutes idle (`ADMIN_SESSION_IDLE_SECONDS`, 60-absolute lifetime). Requests update activity but never renew cookies or absolute expiry. `update_user()` atomically increments `session_version` with any password, permission, active-status, or administrator-status update; every older session fails even if a change is later reverted. User deletion cascades to sessions. Old pre-upgrade cookies are rejected. Direct SQL security changes must increment `session_version` atomically too.
 
@@ -358,7 +365,7 @@ Document query schemas reject (rather than clamp) `page` outside 1-10000 or `per
 
 `chat_sessions.py` establishes a random 256-bit chat identity when the served user page loads, or on the first valid chat POST for native clients. A dedicated signed cookie holds the opaque identity; its signing key is HMAC-derived from `ADMIN_SESSION_SECRET` with a separate chat-only domain. Chat cookies cannot be substituted for administrator cookies or vice versa. Cookies are host-only, HttpOnly, Path `/`, SameSite=Lax, expire after a fixed 24 hours, and do not refresh on reads. Development uses `local_chatbot_chat_dev`; production uses Secure `__Host-local_chatbot_chat` over HTTPS. No credentialed cross-origin CORS is enabled; serve the browser UI from the user service's origin, and retain cookies in native API clients.
 
-Each new message stores only a domain-separated SHA-256 `owner_hash`, never the raw identity. The public grouping label is `chat_` plus the hash's first 32 hex characters; neither that label nor the hash is accepted as proof from request fields. The current signed cookie determines every feedback query's owner. Ownership survives page reloads and client IP changes, not cookie loss/expiry or signing-secret rotation. `init_history_table()` adds the nullable ASCII `owner_hash` column on upgrades without rewriting history; legacy client-chosen `user_id` values cannot safely establish ownership, so old rows remain unowned and cannot receive anonymous feedback. Authorized administrators may still inspect/delete those rows. New public conversation operations must scope queries by the verified owner hash; only explicitly authorized administrative operations may cross owner boundaries.
+Each new message stores only a domain-separated SHA-256 `owner_hash`, never the raw identity. The public grouping label is `chat_` plus the hash's first 32 hex characters; neither that label nor the hash is accepted as proof from request fields. The current signed cookie determines every feedback query's owner. Ownership survives page reloads and client IP changes, not cookie loss/expiry or signing-secret rotation. Explicit migration 4 adds the nullable ASCII `owner_hash` column without rewriting history; legacy client-chosen `user_id` values cannot safely establish ownership, so old rows remain unowned and cannot receive anonymous feedback. Authorized administrators may still inspect/delete those rows. New public conversation operations must scope queries by the verified owner hash; only explicitly authorized administrative operations may cross owner boundaries.
 
 ## Public errors and browser headers (F011)
 
@@ -374,7 +381,7 @@ The rest of CSP is sent only as `Content-Security-Policy-Report-Only`. The candi
 
 `settings.RetentionPolicy` / `retention_settings()` validate finite environment-controlled lifetimes: `RETENTION_CHAT_DAYS=30`, `RETENTION_IP_DAYS=0`, `RETENTION_FEEDBACK_DAYS=30`, `RETENTION_LOG_DAYS=14` (each 0-3650). Chat/replies support authorized quality/support review, feedback supports answer evaluation, optional IPs support troubleshooting (not ownership), and logs support security/operations. Zero disables new storage for that category and purges old data, never means forever. Whole-chat deletion also erases grouping/owner/IP/feedback; IP/feedback ages are anchored to message creation and cannot outlive their chat row. Existing schema is sufficient: erased IPs use the non-null empty-string sentinel, and feedback/timestamp are cleared together. Application logs no longer copy message IDs, rating values, or arbitrary error bodies.
 
-`retention.run_retention()` obtains a database-scoped named lock, sets its connection to UTC, takes one DB-clock cutoff, and hard-deletes expired `chat_history` / `adminlogger` rows and clears expired IP/feedback fields. Null legacy timestamps expire; zero-day categories purge even future-dated rows. Fixed SQL allowlists and ordered LIMIT batches avoid reading personal data into Python. Each batch commits independently; failures roll back the current batch and retain only committed counts. Defaults: 1000 rows/batch, 100 batches/category, 3600 seconds between sweeps (`RETENTION_BATCH_SIZE`, `RETENTION_MAX_BATCHES`, `RETENTION_INTERVAL_SECONDS`). A full final batch conservatively reports `partial` for monitoring/retry. One shared daemon starts explicitly in `bootstrap.initialize_runtime()` after database/model initialization. Factory/import paths and the serving helpers never start cleanup; standalone launchers also use the explicit runtime bootstrap.
+`retention.run_retention()` obtains a database-scoped named lock, sets its connection to UTC, takes one DB-clock cutoff, and hard-deletes expired `chat_history` / `adminlogger` rows and clears expired IP/feedback fields. Null legacy timestamps expire; zero-day categories purge even future-dated rows. Fixed SQL allowlists and ordered LIMIT batches avoid reading personal data into Python. Each batch commits independently; failures roll back the current batch and retain only committed counts. Defaults: 1000 rows/batch, 100 batches/category, 3600 seconds between sweeps (`RETENTION_BATCH_SIZE`, `RETENTION_MAX_BATCHES`, `RETENTION_INTERVAL_SECONDS`). A full final batch conservatively reports `partial` for monitoring/retry. One shared daemon starts explicitly in `bootstrap.initialize_runtime()` after schema/model validation. Factory/import paths and the serving helpers never start cleanup; standalone launchers also use the explicit runtime bootstrap.
 
 `RETENTION_DELETE_ENABLED=0` pauses automatic/manual retention-job mutations, not collection or existing authorized admin erasure routes; it is not record-level legal holds. `python -B backend/retention.py --dry-run` (also the CLI default) previews independent aggregate counts without DB writes; `--apply` honors that pause. No models load. Each invocation emits a `privacy_retention` completion record with timestamp/status/counts/flags/fixed failure code only, never text/IPs/identifiers/SQL/exception messages. Applied-job records also use the normal expiring DB logger when enabled/available; Python log output remains available otherwise. No indefinitely retained special archive is created. Monitor failed/partial/locked sweeps; expiry can lag until successful cleanup. Defaults apply to existing rows on next startup; preview first or explicitly pause before upgrade.
 
@@ -386,7 +393,7 @@ The rest of CSP is sent only as `Content-Security-Policy-Report-Only`. The candi
 
 `python -B backend/tests/run_mysql_tests.py --repeat 2` provisions a fresh MySQL 8.4 Docker container using only `backend/tests/mysql/compose.yaml` and an explicit empty Compose env file. Install `backend/tests/mysql/requirements.txt` (the offline dependencies plus PyMuPDF and PyMySQL's RSA authentication extra). Each invocation uses a random project/schema/password and random loopback-only host port; the non-root test account is scoped to that schema. Inherited deployment `DB_*`/`COMPOSE_*`/`F014_*` settings are ignored. PyMySQL factories and sockets reject every unprovisioned target, including attempts swallowed by Flask's error handlers. The data directory is tmpfs, never a developer volume. Before destructive per-test cleanup, fixtures verify both the provisioned config and `SELECT DATABASE()`. A `finally` removes only that run's project even on failure; no external-database override exists.
 
-`backend/tests/mysql/test_api.py` uses the real table initializers and Flask clients against real MySQL for login/session revocation, forbidden/CSRF actions, JSON/PDF ingestion and dedup/replacement/cascades, knowledge-backed chat persistence/ownership, feedback, and zero retention. Embeddings/generation and speech are doubled, but parsing, PyMuPDF extraction, retrieval, authentication, authorization, logging and SQL are real. Temporary MySQL triggers inject rejected writes; tests check status/public codes, actual stored effects (including failed-PDF state under current autocommit), and recovery. Connection failures are separately injected at connection boundaries. This directory is excluded from default unittest discovery; offline `test_mysql_isolation.py` validates the safety machinery without Docker or network. Missing prerequisites fail explicitly rather than skipping. See `backend/tests/TESTING.md` for setup, coverage and interrupted-run cleanup.
+`backend/tests/mysql/test_api.py` uses the explicit migration runner and Flask clients against real MySQL for login/session revocation, forbidden/CSRF actions, JSON/PDF ingestion and dedup/replacement/cascades, knowledge-backed chat persistence/ownership, feedback, and zero retention. Embeddings/generation and speech are doubled, but parsing, PyMuPDF extraction, retrieval, authentication, authorization, logging and SQL are real. Temporary MySQL triggers inject rejected writes; tests check status/public codes, actual stored effects (including failed-PDF state under current autocommit), and recovery. Connection failures are separately injected at connection boundaries. This directory is excluded from default unittest discovery; offline `test_mysql_isolation.py` validates the safety machinery without Docker or network. Missing prerequisites fail explicitly rather than skipping. See `backend/tests/TESTING.md` for setup, coverage and interrupted-run cleanup.
 
 ## Browser regression tests (F015)
 

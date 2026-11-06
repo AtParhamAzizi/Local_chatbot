@@ -1,0 +1,1 @@
+ALTER TABLE adminlogger MODIFY COLUMN message TEXT NOT NULL;

@@ -284,12 +284,12 @@ class RetentionTests(unittest.TestCase):
         database.logger.logDrop.assert_not_called()
         self.assertIn('completed', captured.output[0])
 
-    def test_serving_initializes_tables_and_models_before_starting_shared_worker(self):
+    def test_serving_checks_schema_and_loads_models_before_starting_shared_worker(self):
         calls = Mock()
         modules = {}
         for name, functions in {
-            'database': ('init_logger_table', 'init_db', 'init_admin_users_table', 'init_documents_table',
-                         'init_documents_chunk_table', 'init_history_table'),
+            'database': (),
+            'schema_migrations': ('require_current_schema',),
             'interface': ('get_embedder',), 'generator': ('get_generator',),
             'controller': ('_load_state',),
         }.items():
@@ -311,8 +311,7 @@ class RetentionTests(unittest.TestCase):
                 apps = main.create_serving_apps()
         self.assertEqual(apps, expected_apps)
         self.assertEqual([call[0] for call in calls.mock_calls], [
-            'init_logger_table', 'init_db', 'init_admin_users_table', 'init_documents_table',
-            'init_documents_chunk_table', 'init_history_table', '_load_state', 'get_embedder', 'get_generator',
+            'require_current_schema', '_load_state', 'get_embedder', 'get_generator',
             'start_retention_worker',
         ])
 

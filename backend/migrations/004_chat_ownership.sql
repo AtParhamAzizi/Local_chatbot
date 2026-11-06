@@ -1,0 +1,1 @@
+ALTER TABLE chat_history ADD COLUMN owner_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL;

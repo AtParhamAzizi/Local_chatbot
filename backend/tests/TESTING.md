@@ -122,7 +122,7 @@ mode** and accepts no database URL or deployment credentials. In particular:
 - All PyMySQL connection factories require the exact provisioned configuration;
   socket/DNS access is limited to that loopback port. Blocked attempts are recorded
   and fail the run even if an application error handler catches the exception.
-- Only the real application's table initializers create the schema. Fixtures
+- The real migration runner explicitly creates the application schema. Fixtures
   verify `SELECT DATABASE()` and the provisioned configuration before clearing
   a fixed table allowlist. Each test clears committed data before and after its
   run; a transaction rollback alone cannot isolate autocommitted route writes.
@@ -167,6 +167,18 @@ Only embedding/generation and speech adapters are deterministic doubles; model
 loaders/imports and model-directory reads remain forbidden. These tests do not
 evaluate real model quality, voice, browser behavior, or guarantee atomic
 multi-row imports (the application currently uses autocommit).
+
+`mysql/test_schema.py` independently rebuilds only that provisioned database
+using the released baseline and populated legacy fixtures. It checks upgrade
+preservation of every original column/row (including Unicode, embedding BLOBs,
+account hashes/permissions, PDF relationships, history/feedback and logs), schema
+version/backup records, nullable legacy ownership, fresh initialization, adoption
+of already-upgraded unversioned schemas and existing sessions, no-op repeated
+upgrades, backup enforcement, real advisory-lock exclusion, and explicit recovery
+after a failure following implicitly committed DDL. Tests compare records before
+any application retention worker starts. Offline `test_schema_migrations.py`
+covers protocol/failure boundaries without Docker. Operational backup and restore
+requirements are in `backend/migrations/README.md`.
 
 The integration directory intentionally has no `__init__.py`, so default
 `unittest` discovery and `run_tests.py` do not enter it or provision Docker.

@@ -307,8 +307,8 @@ class ChatOwnershipTests(unittest.TestCase):
             connection = MagicMock()
             cursor = connection.cursor.return_value.__enter__.return_value
             cursor.fetchone.return_value = existing
-            with patch.object(self.database, 'get_conn', return_value=connection):
-                self.database.init_history_table()
+            migrations_module = importlib.import_module('schema_migrations')
+            migrations_module.MIGRATIONS[3].apply(cursor)
             queries = [call.args[0] for call in cursor.execute.call_args_list]
             migrations = [query for query in queries if query.startswith('ALTER')]
             self.assertEqual(len(migrations), int(existing is None))
@@ -316,17 +316,15 @@ class ChatOwnershipTests(unittest.TestCase):
                 self.assertIn('owner_hash', migrations[0])
                 self.assertIn('NULL DEFAULT NULL', migrations[0])
             self.assertFalse(any(query.lstrip().startswith(('UPDATE', 'DELETE')) for query in queries))
-            connection.commit.assert_called_once()
-            connection.close.assert_called_once()
 
-    def test_failed_migration_closes_connection_and_does_not_start_with_unsafe_schema(self):
+    def test_schema_check_closes_connection_and_rejects_unversioned_schema(self):
         connection = MagicMock()
         cursor = connection.cursor.return_value.__enter__.return_value
         cursor.fetchone.return_value = None
-        cursor.execute.side_effect = [None, None, RuntimeError('migration failed')]
-        with patch.object(self.database, 'get_conn', return_value=connection):
-            with self.assertRaises(RuntimeError):
-                self.database.init_history_table()
+        cursor.fetchall.return_value = [{'name': 'chat_history'}]
+        migrations_module = importlib.import_module('schema_migrations')
+        with self.assertRaises(migrations_module.MigrationError):
+            migrations_module.require_current_schema(connect=lambda: connection)
         connection.close.assert_called_once()
         connection.commit.assert_not_called()
 

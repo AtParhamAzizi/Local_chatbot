@@ -40,6 +40,7 @@ socket.create_connection = forbidden
 threading.Thread.start = forbidden
 from application import create_apps, create_admin_app, create_ui_app
 from bootstrap import initialize_database, initialize_models, initialize_runtime
+from schema_migrations import schema_status, upgrade
 from services.ingestion import IngestionService, split_text
 from services.retrieval import RetrievalService
 from services.lifecycle import ModelLifecycleService

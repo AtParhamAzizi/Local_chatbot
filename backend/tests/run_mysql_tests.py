@@ -41,7 +41,7 @@ def main():
                     resources.enter_context(patch.object(io, 'open', guarded_open(io.open)))
                     for iteration in range(options.repeat):
                         print(f'MySQL integration suite {iteration + 1}/{options.repeat}', flush=True)
-                        suite = unittest.defaultTestLoader.discover(str(MYSQL_DIR), pattern='test_api.py')
+                        suite = unittest.defaultTestLoader.discover(str(MYSQL_DIR), pattern='test_*.py')
                         if not suite.countTestCases():
                             raise RuntimeError('No MySQL integration tests discovered')
                         result = unittest.TextTestRunner(verbosity=2).run(suite)

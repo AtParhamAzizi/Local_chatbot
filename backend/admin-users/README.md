@@ -1,12 +1,17 @@
 # Admin users
 
-The application creates the MySQL table named `admin-users` at startup but never
-seeds an account or password. From the repository root, with the same database
-environment variables used by the application, run:
+Explicit migrations create the MySQL table named `admin-users` but never seed
+an account or password. Startup and setup only check the recorded schema version.
+From the repository root, with the database environment used by the application,
+initialize a fresh, empty database before running setup:
 
 ```powershell
+python -B backend/schema_migrations.py upgrade
 python backend/setup_admin.py
 ```
+
+For existing databases, first follow `backend/migrations/README.md`: upgrades
+require a tested backup and an explicit migration command, never startup DDL.
 
 Use an interactive terminal on the server. Setup creates `administrator` with a
 password you choose and confirm (at least 12 characters); input is hidden, and
