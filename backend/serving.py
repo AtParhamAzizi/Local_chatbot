@@ -3,6 +3,7 @@
 import os
 
 from settings import ADMIN_PORT, UI_PORT, bind_host, is_development, validate_settings
+from schema_migrations import MigrationError
 from werkzeug.serving import WSGIRequestHandler
 
 
@@ -80,6 +81,8 @@ def serve_production(create_apps):
         def load(self):
             try:
                 return PortDispatcher(*create_apps())
+            except MigrationError as error:
+                raise RuntimeError(f'Service initialization failed: {error}') from None
             except Exception as error:
                 raise RuntimeError(
                     f"Service initialization failed ({type(error).__name__}). "

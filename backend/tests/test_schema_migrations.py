@@ -208,6 +208,28 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(self.migrations.main(['upgrade', '--backup', str(self.backup), '--resume']), 1)
         self.assertNotIn('private password', errors.getvalue())
 
+    def test_cli_explains_missing_production_settings_before_database_access(self):
+        with patch.dict('os.environ', {}, clear=True), \
+                patch.object(self.migrations, 'schema_status') as status, \
+                patch.object(self.migrations, 'upgrade') as upgrade, \
+                redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(self.migrations.main(['upgrade', '--backup', str(self.backup)]), 1)
+        self.assertIn('Migration configuration error: UI_ALLOWED_ORIGINS', errors.getvalue())
+        self.assertIn('APP_ENV=development in this terminal', errors.getvalue())
+        self.assertIn('VS Code launch settings', errors.getvalue())
+        status.assert_not_called()
+        upgrade.assert_not_called()
+
+    def test_cli_explains_invalid_development_settings_without_echoing_values(self):
+        with patch.dict('os.environ', {'APP_ENV': 'development', 'DB_PORT': 'private password'}, clear=True), \
+                patch.object(self.migrations, 'schema_status') as status, \
+                redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(self.migrations.main(['status']), 1)
+        self.assertIn('Migration configuration error: DB_PORT must be an integer', errors.getvalue())
+        self.assertNotIn('private password', errors.getvalue())
+        self.assertNotIn('set APP_ENV=development', errors.getvalue())
+        status.assert_not_called()
+
 
 class MigrationDDLTests(unittest.TestCase):
     def setUp(self):

@@ -5,6 +5,13 @@ they never create or alter tables. Importing `schema_migrations` does no databas
 model, application, server or configuration work. Run these commands from the
 repository root with the deployment's validated environment and dependencies:
 
+VS Code's `launch.json` environment applies only to the launched debugger process,
+not standalone terminal commands. For **local development only**, first run
+`$env:APP_ENV = 'development'` in the same PowerShell terminal to match the local
+debugger profile. Production commands must retain the real deployment settings;
+the migration CLI never silently falls back to development. Configuration failures
+report setting names without their values, before any database access.
+
 ```powershell
 python -B backend/schema_migrations.py status
 python -B backend/schema_migrations.py upgrade

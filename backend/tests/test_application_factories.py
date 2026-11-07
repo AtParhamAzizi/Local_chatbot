@@ -1,18 +1,22 @@
 """Factory imports and assembly must not initialize external services."""
 
 import importlib
+import io
 import json
 import os
+import runpy
 import subprocess
 import sys
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from flask import Flask
 
-from core_support import BACKEND_DIR, OfflineCoreFixture
+from core_support import BACKEND_DIR, OfflineCoreFixture, module_double
 
 
 class FactoryImportTests(unittest.TestCase):
@@ -181,6 +185,55 @@ class StartupBoundaryTests(unittest.TestCase):
                 self.main.create_serving_apps()
         retention.start_retention_worker.assert_not_called()
         run.assert_not_called()
+
+    def test_cli_explains_pending_migrations_without_starting_servers(self):
+        migrations = importlib.import_module('schema_migrations')
+        bootstrap = importlib.import_module('bootstrap')
+        reason = ('Database schema version 0; required 4. Run python backend/schema_migrations.py '
+                  'upgrade before serving (existing databases require --backup PATH).')
+        with patch('settings.validate_settings'), patch('settings.is_development', return_value=True), \
+                patch('application.create_apps', return_value=(Mock(), Mock())), \
+                patch.object(bootstrap, 'initialize_runtime', side_effect=migrations.MigrationError(reason)), \
+                patch('threading.Thread.start') as start, patch.object(Flask, 'run') as run, \
+                redirect_stdout(io.StringIO()) as output:
+            with self.assertRaises(SystemExit) as failure:
+                runpy.run_path(str(BACKEND_DIR / 'main.py'), run_name='__main__')
+        self.assertEqual(failure.exception.code, 1)
+        self.assertIn(f'Startup migration error: {reason}', output.getvalue())
+        start.assert_not_called()
+        run.assert_not_called()
+
+    def test_cli_keeps_arbitrary_startup_exception_details_private(self):
+        with patch('settings.validate_settings', side_effect=RuntimeError('private database password')), \
+                redirect_stdout(io.StringIO()) as output:
+            with self.assertRaises(SystemExit) as failure:
+                runpy.run_path(str(BACKEND_DIR / 'main.py'), run_name='__main__')
+        self.assertEqual(failure.exception.code, 1)
+        self.assertIn('Startup failed (RuntimeError)', output.getvalue())
+        self.assertNotIn('private database password', output.getvalue())
+
+    def test_production_worker_preserves_migration_guidance_but_not_arbitrary_errors(self):
+        serving = importlib.import_module('serving')
+        migrations = importlib.import_module('schema_migrations')
+
+        class WorkerApplication:
+            def run(self):
+                return self.load()
+
+        gunicorn_base = module_double('gunicorn.app.base', BaseApplication=WorkerApplication)
+        for error, expected in (
+            (migrations.MigrationError('Run schema_migrations.py upgrade --backup PATH'), '--backup PATH'),
+            (RuntimeError('private database password'), 'Check database and model configuration.'),
+        ):
+            with self.subTest(error=type(error).__name__), \
+                    patch.dict(sys.modules, {'gunicorn.app.base': gunicorn_base}), \
+                    patch.object(serving, 'os', SimpleNamespace(name='posix')), \
+                    patch.object(serving, 'validate_settings'), \
+                    patch.object(serving, 'bind_host', return_value='127.0.0.1'):
+                with self.assertRaises(RuntimeError) as failure:
+                    serving.serve_production(Mock(side_effect=error))
+            self.assertIn(expected, str(failure.exception))
+            self.assertNotIn('private database password', str(failure.exception))
 
 
 if __name__ == '__main__':

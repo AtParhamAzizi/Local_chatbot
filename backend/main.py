@@ -3,6 +3,7 @@
 )
 from serving import serve_production
 from application import create_apps
+from schema_migrations import MigrationError
 
 
 def create_serving_apps():
@@ -46,6 +47,9 @@ if __name__ == '__main__':
         print(f'Startup configuration error: {error}')
         if not is_development():
             print('For local development, explicitly set APP_ENV=development before starting.')
+        raise SystemExit(1) from None
+    except MigrationError as error:
+        print(f'Startup migration error: {error}')
         raise SystemExit(1) from None
     except Exception as error:
         print(f'Startup failed ({type(error).__name__}). Check service configuration.')

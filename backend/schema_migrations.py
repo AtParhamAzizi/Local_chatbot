@@ -138,7 +138,8 @@ def require_current_schema(*, connect=None):
     if report['pending'] or report['incomplete']:
         raise MigrationError(
             f"Database schema version {report['schema_version']}; required {LATEST_VERSION}. "
-            f'Run python backend/schema_migrations.py upgrade before serving. See {RECOVERY_GUIDE}.'
+            'Run python backend/schema_migrations.py upgrade before serving '
+            f'(existing databases require --backup PATH). See {RECOVERY_GUIDE}.'
         )
     return report
 
@@ -231,12 +232,23 @@ def main(arguments=None):
     apply.add_argument('--backup', type=Path, help='Existing, restore-tested pre-upgrade dump (required for existing databases)')
     apply.add_argument('--resume', action='store_true', help='Retry interrupted idempotent steps after following the recovery guide')
     options = parser.parse_args(arguments)
+    from settings import ConfigurationError, is_development, validate_settings
+
     try:
-        from settings import validate_settings
         validate_settings()
         report = schema_status() if options.command == 'status' else upgrade(backup=options.backup, resume=options.resume)
         print(json.dumps(report, sort_keys=True))
         return 0
+    except ConfigurationError as error:
+        print(f'Migration configuration error: {error}', file=sys.stderr)
+        if not is_development():
+            print(
+                'For local development only, set APP_ENV=development in this terminal. '
+                'VS Code launch settings do not apply to standalone commands; '
+                'production requires the deployment settings.',
+                file=sys.stderr,
+            )
+        return 1
     except MigrationError as error:
         print(str(error), file=sys.stderr)
         return 1

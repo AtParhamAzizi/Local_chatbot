@@ -300,6 +300,7 @@ class RetentionTests(unittest.TestCase):
                 calls.attach_mock(operation, function)
             modules[name] = module
         modules['database'].logger = Mock()
+        modules['schema_migrations'].MigrationError = RuntimeError
         expected_apps = (Flask('startup_user'), Flask('startup_admin'))
         with patch.dict(sys.modules, modules), patch.dict('os.environ', {'APP_ENV': 'test'}, clear=True), \
                 patch.object(self.retention, 'start_retention_worker') as start, \

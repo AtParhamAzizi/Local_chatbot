@@ -106,7 +106,7 @@ Only `main.create_serving_apps()` assembles the apps and explicitly invokes
 `bootstrap.initialize_runtime(ui_app, admin_app)` before returning them to a server.
 The runtime initialization order is:
 
-1. `bootstrap.initialize_database()` calls `schema_migrations.require_current_schema()` using read-only metadata/ledger queries. Pending, incomplete, unknown or checksum-mismatched migrations stop startup before any model/worker/server work. No schema creation, ALTER or audit writes occur in this check.
+1. `bootstrap.initialize_database()` calls `schema_migrations.require_current_schema()` using read-only metadata/ledger queries. Pending, incomplete, unknown or checksum-mismatched migrations stop startup before any model/worker/server work. No schema creation, ALTER or audit writes occur in this check. Local startup and the production worker preserve the trusted `MigrationError` guidance (including the backup requirement); arbitrary exception details remain suppressed.
 2. `controller._load_state()` loads persisted feature toggles after the schema check.
 3. `bootstrap.initialize_models()` calls the shared lifecycle service's `warmup()`: `get_embedder()` (interface.py, CPU), then `get_generator()` (generator.py, CUDA if available).
 4. `start_retention_worker(ui_app, admin_app)` starts one shared privacy-cleanup daemon after schema/model validation; its first sweep runs immediately, then hourly by default. No cleanup starts on import.
