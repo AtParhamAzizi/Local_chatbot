@@ -28,7 +28,7 @@ backend/
   application.py      Side-effect-free factory imports; fresh apps and explicit route registration
   bootstrap.py        Read-only schema check, shared model, controller-state and retention startup
   serving.py          Development server guard and production Gunicorn socket-port dispatcher
-  settings.py         APP_ENV, validated APP_HOST (loopback default), credentials, shared ports
+  settings.py         Typed environment registry, early validation, safe diagnostics and shared ports
   security.py         Explicit browser-origin guards/CORS, peer-validated forwarding, safe errors
   public_errors.py    Allowlisted public failure codes/messages shared by HTTP and voice
   retention.py        Bounded privacy cleanup, shared scheduled worker, and dry-run/apply CLI
@@ -48,7 +48,7 @@ backend/
   database.py         DB_CONFIG, get_conn, `logger` class, get_client_ip, hashing helpers (no schema DDL)
   schema_migrations.py Explicit, locked/versioned migration CLI and read-only startup schema guard
   migrations/         Immutable ordered SQL migrations and backup/recovery instructions
-  interface.py        Embedding model (load/embed) + shared constants (ports, limits, MIN_SCORE, ADMIN_DIR)
+  interface.py        Embedding model (load/embed) + retrieval constants; shared ports/upload limit aliases
   generator.py        Generation LLM (load/generate), SYSTEM_PROMPT, sampling params
   searchForAnswer.py  Vector search over qa_documents / pdf_chunks + build_context
   model_registry.py   Model catalog + persisted active-model selection
@@ -75,7 +75,7 @@ scripts/dependencies.py  Fresh-environment installer, dependency smoke verifier 
 
 `main()` validates settings before importing the database/model/application modules.
 Explicit `APP_ENV=development` (also `dev`, `local`, `test`) selects development;
-all other values select production. Production launches Gunicorn with one `gthread`
+`production` is the default; unknown environment names fail validation. Production launches Gunicorn with one `gthread`
 worker, eight threads, no preload/reload, and a 300-second timeout. `create_serving_apps()`
 runs inside the worker after fork, so the master never loads models/CUDA. Its
 `PortDispatcher` routes by the listening `SERVER_PORT`, retaining the original
@@ -135,7 +135,7 @@ an already-prepared app; it does not implicitly start retention or initialize se
 | `admin_sessions` | token_hash PRIMARY KEY, user_id FK, session_version, expires_at, last_seen_at | Opaque admin logins; Unix-second deadlines; user deletion cascades |
 | `schema_migrations` | version PRIMARY KEY, name, checksum, status, started_at, applied_at, backup_path, backup_sha256 | Ordered DDL ledger; never modified by startup or request handlers |
 
-Env: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`. The active config is `database.DB_CONFIG` (defaults: localhost, 3306, root, a hard-coded dev password, `chatbot_db`; `autocommit=True`). Cursors are `DictCursor`, so rows are accessed by column name. `interface.py` also defines an unused `DB_CONFIG` with different defaults. Use `database.get_conn()`, not that one.
+Env: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`. All defaults and validation live in `settings.SETTING_REGISTRY`; `database.DB_CONFIG` adds the MySQL adapter's charset, `DictCursor` and `autocommit=True`. Development defaults are localhost, 3306, root, an empty password and `chatbot_db`; production requires explicit restricted-account credentials. `interface.py` has no separate database configuration. Use `database.get_conn()`; rows are accessed by column name.
 ### Explicit migrations (F020)
 
 Read `backend/migrations/README.md` before deployment. Run `python -B backend/schema_migrations.py status` for the recorded schema version (unversioned = 0, current = 4), pending/incomplete versions and latest supported version. Empty pre-created databases use `upgrade`; existing databases require stopped writers, a restore-tested pre-upgrade dump and `upgrade --backup PATH`. File existence/nonzero size and SHA-256 are checked/recorded, not backup validity; restore-testing remains an operator requirement. Startup and `setup_admin.py` only require the current ledger and never repair a schema opportunistically.
@@ -179,14 +179,13 @@ Scoring:
 - Loading: `AutoModel`, float32, CPU, tokenizer `padding_side='left'`. Pooling takes the last token, then L2-normalizes. Inputs are truncated at `MAX_SEQ_LEN=512`.
 - Default model: `Qwen3-Embedding-0.6B` in `backend/model/Qwen3-Embedding-0.6B/`.
 - Constants: `ADMIN_PORT=8000`, `UI_PORT=5000`, `MAX_UPLOAD_BYTES=20MB`, `ALLOWED_EXT={'.json'}`, `MIN_SCORE=0.35`, `MAX_SEQ_LEN=512`, `ADMIN_DIR=backend/admin`.
-- Search skips stored embeddings with a different dimension. Re-ingest data after changing the embedding model. The Gemma entry uses a different embedding folder.
+- Search skips stored embeddings with a different dimension. Re-ingest data after changing the embedding model.
 
 ### 6.4 Model selection (`model_registry.py`)
 
 - `DEFAULT_MODEL_ID='qwen3.5-2b'`. `MODEL_DEFINITIONS` maps each id to `{label, embedding_path, generator_path}`:
   - `qwen3.5-2b`: embedding `QWEN_EMBEDDING_PATH` (default `model/Qwen3-Embedding-0.6B`); generator `QWEN35_GENERATOR_PATH`, else `GEN_MODEL`, else `modelgen/qwen3.5-2B`.
   - `qwen3-4b`: same embedding; generator `QWEN_GENERATOR_PATH`, else `GEN_MODEL`, else `modelgen/`.
-  - `gemma-4-e2b-it`: embedding `GEMMA_EMBEDDING_PATH` (default `model/gemma-4-E2B-it`); generator `GEMMA_GENERATOR_PATH` (default `modelgen/gemma-4-E2B-it`).
 - A model is available when both of its paths contain `config.json`. `get_active_model_id()` tries the saved id or `GEN_MODEL_ID` if available, then the first available model, then the requested or default id.
 - The selection is persisted atomically in `backend/model_selection.json` (`_read_saved_id`, `_write_saved_id`).
 - Public functions: `get_active_model_id()`, `get_model_definition(id)`, `get_model_catalog()`, `model_available(id)`, `set_active_model(id)` (raises `FileNotFoundError` if unavailable).
@@ -309,18 +308,52 @@ All admin mutations (every method except GET/HEAD/OPTIONS) require CSRF proof af
 
 ## 9. Configuration and run
 
+`settings.SETTING_REGISTRY` (F021) is the authoritative definition of every supported
+application environment variable: type, default, numeric bounds/choices, aliases,
+service scope and diagnostic visibility. Consumers use `setting_value()` or the
+immutable result of `load_settings()`; they do not parse environment variables or
+repeat defaults. Existing security/retention helpers remain compatible. The main
+launcher and both factories validate the complete application scope before route,
+database or model imports. Imports of settings/factories remain side-effect-free.
+
+`python -B backend/settings.py` validates the current deployment environment;
+`--diagnostics` prints only explicitly public effective settings as JSON. Neither
+command imports services, connects to the database, loads models or binds sockets.
+Passwords, session keys, database identity/host, free-form model locations and
+interpreter/prompt paths are omitted entirely. There is no public diagnostics route.
+Use `--scope stt` or `--scope tts` to validate standalone demos without deployment
+credentials; the demos and the private speech worker share the same definitions.
+
+`APP_ENV` takes precedence over legacy `ENVIRONMENT`, then `FLASK_ENV`. Missing
+values use declared defaults; explicit blank values fail except optional secrets
+in development and the empty proxy list. Invalid errors name the setting and
+accepted type/range without echoing its value. Production lists missing required
+settings together. Session idle lifetime cannot exceed absolute lifetime; proxy
+hops require networks; explicit CPU generation cannot request 4-bit quantization.
+Relative generator/embedding paths resolve against `backend/`, TTS prompt paths
+against `backend/TTS/`, and `TTS_PYTHON` against the repository root. Paths are
+syntactically checked; only the interpreter must already exist at validation.
+Model availability and hardware/dependency compatibility remain model-loader work.
+Change environment values before startup and restart after changes; saved model
+selection and controller toggles remain separate runtime state.
+
 | Var | Purpose | Default |
 | --- | --- | --- |
 | `DB_HOST/PORT/USER/PASS/NAME` | MySQL | localhost / 3306 / root / dev pw / chatbot_db |
 | `GEN_DEVICE` | auto, cuda, cpu | auto |
 | `GEN_QUANTIZATION` | auto, 4bit, none | auto |
-| `GEN_MODEL_ID` | initial model id when nothing is saved | none |
-| `GEN_MODEL`, `QWEN35_GENERATOR_PATH`, `QWEN_GENERATOR_PATH`, `GEMMA_GENERATOR_PATH` | generator folders | see 6.4 |
-| `QWEN_EMBEDDING_PATH`, `GEMMA_EMBEDDING_PATH` | embedding folders | see 6.4 |
+| `GEN_MODEL_ID` | initial model id when nothing is saved; qwen3.5-2b or qwen3-4b | qwen3.5-2b |
+| `GEN_MODEL`, `QWEN35_GENERATOR_PATH`, `QWEN_GENERATOR_PATH` | generator folders | see 6.4 |
+| `QWEN_EMBEDDING_PATH` | embedding folder | see 6.4 |
 | `STT_*` | Whisper settings | see 6.8 |
 | `UI_ALLOWED_ORIGINS`, `ADMIN_ALLOWED_ORIGINS` | Exact comma-separated HTTP(S) browser origins; no wildcards, `null`, or URL paths | required in production; localhost/127.0.0.1/[::1] on each service's port in development |
 | `TRUSTED_PROXY_HOPS` | Exact trusted forwarding-chain length, 0-10 | 0 (ignore forwarding headers) |
 | `TRUSTED_PROXY_CIDRS` | Trusted socket/intermediary proxy IPs or IPv4/IPv6 CIDRs | empty; required when hop count is nonzero |
+
+`backend/tests/test_settings.py` exercises invalid input for every registry entry,
+numeric endpoints, choices/booleans, alias and path precedence, production and
+cross-setting requirements, private diagnostics and standalone scopes. Factory
+tests ensure invalid model/speech settings stop startup before service imports.
 
 Run: `python backend\main.py` (run from anywhere; imports are flat, relative to `backend/`), or `.\run_gpu.cmd` (requires `.venv`, asserts CUDA, sets `GEN_DEVICE=cuda`). User UI at `http://localhost:5000`, admin dashboard at `http://localhost:8000`.
 `admin.py` and `user.py` each have a `__main__` block for serving one app in explicit development mode. Both first call `create_serving_apps()` to initialize the shared services and register all hooks, then use `serve_development()`, which refuses production. Use `backend/main.py` for shared serving and production. See README runtime profiles for HTTPS/WebSocket proxy requirements.

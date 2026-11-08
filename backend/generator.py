@@ -3,6 +3,7 @@ import threading
 from importlib.util import find_spec
 from database import logger
 from model_registry import get_active_model_id, get_model_definition
+from settings import setting_value
 import torch
 from transformers import (
     AutoConfig,
@@ -58,9 +59,7 @@ def _sync_model_selection():
 
 
 def _generator_device():
-    requested = os.getenv('GEN_DEVICE', 'auto').strip().lower()
-    if requested not in ('auto', 'cpu', 'cuda'):
-        raise ValueError('GEN_DEVICE must be auto, cpu, or cuda')
+    requested = setting_value('GEN_DEVICE')
     if requested == 'cpu':
         return 'cpu', torch.float32
     if torch.cuda.is_available():
@@ -85,9 +84,7 @@ def _generator_device():
 
 
 def _generator_quantization(device, dtype):
-    requested = os.getenv('GEN_QUANTIZATION', 'auto').strip().lower()
-    if requested not in ('auto', '4bit', 'none'):
-        raise ValueError('GEN_QUANTIZATION must be auto, 4bit, or none')
+    requested = setting_value('GEN_QUANTIZATION')
     if device != 'cuda':
         if requested == '4bit':
             raise RuntimeError('GEN_QUANTIZATION=4bit requires CUDA')

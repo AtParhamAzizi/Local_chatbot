@@ -2,39 +2,23 @@ import json
 import os
 import tempfile
 from database import logger
+from settings import MODEL_IDS, setting_value
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SELECTION_FILE = os.path.join(BASE_DIR, 'model_selection.json')
-DEFAULT_MODEL_ID = 'qwen3.5-2b'
-QWEN_EMBEDDING_PATH = os.getenv(
-    'QWEN_EMBEDDING_PATH',
-    os.path.join(BASE_DIR, 'model', 'Qwen3-Embedding-0.6B'),
-)
+DEFAULT_MODEL_ID = MODEL_IDS[0]
+QWEN_EMBEDDING_PATH = setting_value('QWEN_EMBEDDING_PATH')
 
 MODEL_DEFINITIONS = {
     DEFAULT_MODEL_ID: {
         'label': 'Qwen3.5-2B',
         'embedding_path': QWEN_EMBEDDING_PATH,
-        'generator_path': os.getenv(
-            'QWEN35_GENERATOR_PATH',
-            os.getenv('GEN_MODEL', os.path.join(BASE_DIR, 'modelgen', 'qwen3.5-2B')),
-        ),
+        'generator_path': setting_value('QWEN35_GENERATOR_PATH'),
     },
-    'qwen3-4b': {
+    MODEL_IDS[1]: {
         'label': 'Qwen3-4B',
         'embedding_path': QWEN_EMBEDDING_PATH,
-        'generator_path': os.getenv('QWEN_GENERATOR_PATH', os.getenv('GEN_MODEL', os.path.join(BASE_DIR, 'modelgen'))),
+        'generator_path': setting_value('QWEN_GENERATOR_PATH'),
     },
-    # 'gemma-4-e2b-it': {
-    #     'label': 'Gemma 4 E2B IT',
-    #     'embedding_path': os.getenv(
-    #         'GEMMA_EMBEDDING_PATH',
-    #         os.path.join(BASE_DIR, 'model', 'gemma-4-E2B-it'),
-    #     ),
-    #     'generator_path': os.getenv(
-    #         'GEMMA_GENERATOR_PATH',
-    #         os.path.join(BASE_DIR, 'modelgen', 'gemma-4-E2B-it'),
-    #     ),
-    # },
 }
 
 
@@ -76,7 +60,7 @@ def model_available(model_id):
 
 
 def get_active_model_id():
-    requested = _read_saved_id() or os.getenv('GEN_MODEL_ID')
+    requested = _read_saved_id() or setting_value('GEN_MODEL_ID')
     if requested in MODEL_DEFINITIONS and model_available(requested):
         return requested
 

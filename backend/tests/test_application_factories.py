@@ -136,13 +136,18 @@ class ApplicationAssemblyTests(OfflineCoreFixture, unittest.TestCase):
         self.assertIn('controller_features', another_ui.view_functions)
 
     def test_invalid_configuration_fails_before_route_imports_or_initialization(self):
-        with patch.dict(os.environ, {'DB_PORT': 'invalid'}), \
-                patch.object(self.database.logger, '_write') as audit:
-            with self.assertRaises(importlib.import_module('settings').ConfigurationError):
-                self.application.create_apps()
-        audit.assert_not_called()
-        self.assertNotIn('user', sys.modules)
-        self.assertNotIn('admin', sys.modules)
+        for name, value in (
+            ('DB_PORT', 'invalid'), ('GEN_DEVICE', 'invalid'), ('GEN_MODEL_ID', 'invalid'),
+            ('STT_CPU_THREADS', '0'), ('STT_VOICE_THRESHOLD', 'nan'), ('STT_LANGUAGE', 'xx'),
+            ('TTS_CPU_THREADS', '-1'), ('TTS_PYTHON', 'missing-python-executable'),
+        ):
+            with self.subTest(name=name), patch.dict(os.environ, {name: value}), \
+                    patch.object(self.database.logger, '_write') as audit:
+                with self.assertRaises(importlib.import_module('settings').ConfigurationError):
+                    self.application.create_apps()
+            audit.assert_not_called()
+            self.assertNotIn('user', sys.modules)
+            self.assertNotIn('admin', sys.modules)
 
     def test_controller_state_is_loaded_only_explicitly(self):
         controller = importlib.import_module('controller')

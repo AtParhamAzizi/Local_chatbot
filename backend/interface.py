@@ -7,8 +7,8 @@ from database import logger
 
 import numpy as np
 import torch
-import pymysql
-from settings import ADMIN_PORT, UI_PORT, database_config
+from settings import ADMIN_PORT, UI_PORT
+from request_validation import MAX_JSON_UPLOAD_BYTES as MAX_UPLOAD_BYTES
 from transformers import AutoTokenizer, AutoModel
 from model_registry import get_active_model_id, get_model_definition
 
@@ -19,14 +19,6 @@ MODEL_ID   = get_active_model_id()
 MODEL_PATH = get_model_definition(MODEL_ID)['embedding_path']
 ADMIN_DIR  = os.path.join(BASE_DIR, 'admin')     # admin panel assets
 
-DB_CONFIG = {
-    **database_config(),
-    'charset':  'utf8mb4',
-    'cursorclass': pymysql.cursors.DictCursor,
-    'autocommit': True,
-}
-
-MAX_UPLOAD_BYTES = 20 * 1024 * 1024        # 20 MB
 ALLOWED_EXT      = {'.json'}
 
 MIN_SCORE = 0.35                            # cosine-similarity cutoff

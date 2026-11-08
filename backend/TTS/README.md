@@ -47,6 +47,14 @@ $env:TTS_CPU_THREADS = "1"
 
 The Persian voice prompt should be a short WAV/MP3/FLAC recording (at most five seconds). If omitted, the bundled example prompt is used.
 
+All settings are defined and validated in `backend/settings.py`, shared with the
+chatbot and standalone STT demo. Relative prompt paths resolve against this TTS
+directory. `TTS_CPU_THREADS` must be an integer from 1 to 256; `ENGLISH_MODEL_FILE`
+must be an ONNX filename without directories. `PERSIAN_G2P_REPO` selects the G2P
+model identifier or path. Standalone `HOST`/`PORT` default to `127.0.0.1`/`5000`.
+Validate without loading models with `python -B backend/settings.py --scope tts`;
+add `--diagnostics` for effective non-secret values (model/prompt paths omitted).
+
 ## Project layout
 
 ```text

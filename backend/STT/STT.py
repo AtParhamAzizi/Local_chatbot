@@ -1,11 +1,18 @@
 import json
 import logging
-import os
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlsplit
+
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from settings import load_settings
+
+settings = load_settings(scope="stt")
 
 from faster_whisper import WhisperModel
 from faster_whisper.audio import decode_audio
@@ -17,13 +24,11 @@ from streaming import AudioStream, MAX_PACKET_BYTES, SAMPLE_RATE
 
 
 BASE_DIR = Path(__file__).resolve().parent
-MODEL_NAME = os.environ.get("STT_MODEL", "base")
-DEVICE = os.environ.get("STT_DEVICE", "cpu")
-COMPUTE_TYPE = os.environ.get(
-    "STT_COMPUTE_TYPE", "float16" if DEVICE == "cuda" else "int8"
-)
-LANGUAGE = os.environ.get("STT_LANGUAGE", "fa")
-VOICE_THRESHOLD = float(os.environ.get("STT_VOICE_THRESHOLD", "0.008"))
+MODEL_NAME = settings["STT_MODEL"]
+DEVICE = settings["STT_DEVICE"]
+COMPUTE_TYPE = settings["STT_COMPUTE_TYPE"]
+LANGUAGE = settings["STT_LANGUAGE"]
+VOICE_THRESHOLD = settings["STT_VOICE_THRESHOLD"]
 
 app = Flask(__name__, static_folder=None)
 app.config.update(
@@ -43,10 +48,10 @@ def load_model():
         MODEL_NAME,
         device=DEVICE,
         compute_type=COMPUTE_TYPE,
-        cpu_threads=int(os.environ.get("STT_CPU_THREADS", min(4, os.cpu_count() or 1))),
+        cpu_threads=settings["STT_CPU_THREADS"],
         num_workers=1,
         download_root=str(BASE_DIR / ".models"),
-        local_files_only=os.environ.get("STT_LOCAL_FILES_ONLY") == "1",
+        local_files_only=settings["STT_LOCAL_FILES_ONLY"],
     )
 
 
@@ -226,8 +231,8 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     start_model_loading()
     app.run(
-        host=os.environ.get("STT_HOST", "127.0.0.1"),
-        port=int(os.environ.get("STT_PORT", "5000")),
+        host=settings["STT_HOST"],
+        port=settings["STT_PORT"],
         threaded=True,
         debug=False,
     )

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import os
 import re
 import sys
 import threading
@@ -9,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from settings import load_settings
 
 if __package__:
     from .text_router import URL_RE, split_text
@@ -24,7 +24,6 @@ class SpeechEngine:
     """Loads both speech models once and reuses them for every request."""
 
     SAMPLE_RATE = 24_000
-    G2P_REPO = os.getenv("PERSIAN_G2P_REPO", "mehdi-hf/Homo-GE2PE-Persian-HF")
     URL_WORD_REPLACEMENTS = (
         ("https://", "https colon slash slash "),
         ("http://", "http colon slash slash "),
@@ -41,6 +40,7 @@ class SpeechEngine:
 
     def __init__(self, base_dir: Path):
         self.base_dir = Path(base_dir).resolve()
+        self.settings = load_settings(scope="tts", tts_base=self.base_dir)
         self.persian_dir = self.base_dir / "Persian_model"
         self.english_dir = self.base_dir / "English_model"
         self.runtime_dir = self.base_dir / ".runtime"
@@ -69,7 +69,7 @@ class SpeechEngine:
         except ImportError as error:
             raise ModelLoadError("Install the English dependencies with `pip install -r requirements.txt`.") from error
 
-        model_name = os.getenv("ENGLISH_MODEL_FILE", "model_quantized.onnx")
+        model_name = self.settings["ENGLISH_MODEL_FILE"]
         model_path = self.english_dir / "onnx" / model_name
         if not model_path.exists():
             raise ModelLoadError(f"English model file was not found: {model_path}")
@@ -106,7 +106,7 @@ class SpeechEngine:
                 "Install Persian dependencies with `pip install -r requirements.txt`."
             ) from error
 
-        torch.set_num_threads(int(os.getenv("TTS_CPU_THREADS", "1")))
+        torch.set_num_threads(self.settings["TTS_CPU_THREADS"])
         config_path = self._local_persian_config()
         self.persian = TTSModel.load_model(config=config_path, quantize=True)
         self.persian.eval()
@@ -119,14 +119,11 @@ class SpeechEngine:
         spec.loader.exec_module(normalization)
         self.normalize_persian = normalization.normalize_for_model
 
-        voice_prompt = os.getenv(
-            "PERSIAN_VOICE_PROMPT",
-            str(self.base_dir / "voices" / "prompt_hello.wav"),
-        )
+        voice_prompt = self.settings["PERSIAN_VOICE_PROMPT"]
         self.persian_voice_state = self.persian.get_state_for_audio_prompt(voice_prompt)
 
-        self.g2p_tokenizer = AutoTokenizer.from_pretrained(self.G2P_REPO)
-        self.g2p_model = T5ForConditionalGeneration.from_pretrained(self.G2P_REPO).to("cpu").eval()
+        self.g2p_tokenizer = AutoTokenizer.from_pretrained(self.settings["PERSIAN_G2P_REPO"])
+        self.g2p_model = T5ForConditionalGeneration.from_pretrained(self.settings["PERSIAN_G2P_REPO"]).to("cpu").eval()
 
     def _local_persian_config(self) -> Path:
         source = self.persian_dir / "model.yaml"
@@ -154,7 +151,7 @@ class SpeechEngine:
         return {
             "ready": self.english is not None and self.persian is not None and self.g2p_model is not None,
             "device": "cpu",
-            "english_model": os.getenv("ENGLISH_MODEL_FILE", "model_quantized.onnx"),
+            "english_model": self.settings["ENGLISH_MODEL_FILE"],
             "english_voice_count": len(self.english.get_voices()) if self.english is not None else 0,
             "persian_model": "Persian_model/model.safetensors",
         }

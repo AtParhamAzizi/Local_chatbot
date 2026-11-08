@@ -55,6 +55,14 @@ those belong in separately provisioned integration suites.
 
 ## Factory and startup boundaries (F018)
 
+`test_settings.py` checks invalid input for every F021 registry setting, all numeric
+range endpoints, choice/boolean parsing, alias/path precedence, production and
+cross-setting requirements, immutable definitions, standalone speech scopes, and
+secret-free diagnostic output/errors. Run it with `--pattern test_settings.py`.
+Factory tests also reject invalid generator/STT/TTS settings before route imports
+or database/model work. The registry and its diagnostic CLI use only the standard
+library; neither should import services or start any external work.
+
 `test_application_factories.py` checks clean-process imports without valid
 configuration or model/service imports; fresh app assembly with database, audit,
 model, thread and server work forbidden; stable endpoint names, per-app hooks

@@ -60,6 +60,14 @@ be in CTranslate2 format, with its tokenizer files, not the existing Flax format
 
 ## Streaming behavior
 
+Settings are defined once in `backend/settings.py`, shared with integrated voice.
+`STT_CPU_THREADS` must be an integer from 1 to 256, `STT_VOICE_THRESHOLD` a finite
+number from 0 to 1, and `STT_LOCAL_FILES_ONLY` accepts `0`, `1`, `false`, or `true`.
+Device, precision and language values must match the registry's supported choices.
+From the repository root, `python -B backend/settings.py --scope stt` validates
+without loading Whisper or requiring database credentials; add `--diagnostics`
+for effective non-secret values.
+
 - An AudioWorklet mixes microphone channels to mono, resamples the actual device
   rate to 16 kHz, and sends 100 ms little-endian PCM16 packets over `/stream`.
   This avoids fragmented WebM containers and external FFmpeg processes.

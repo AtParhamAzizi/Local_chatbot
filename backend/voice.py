@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -19,6 +18,7 @@ from flask import jsonify, request, send_from_directory
 
 from abuse_controls import check_request_limit, limit_requests, rate_limited_response, retry_message
 from public_errors import public_error
+from settings import setting_value
 
 from STT.streaming import AudioStream, MAX_PACKET_BYTES, SAMPLE_RATE
 
@@ -37,13 +37,11 @@ else:
 
 BASE_DIR = Path(__file__).resolve().parent
 STT_DIR = BASE_DIR / "STT"
-MODEL_NAME = os.environ.get("STT_MODEL", "base")
-DEVICE = os.environ.get("STT_DEVICE", "cpu")
-COMPUTE_TYPE = os.environ.get(
-    "STT_COMPUTE_TYPE", "float16" if DEVICE == "cuda" else "int8"
-)
-LANGUAGE = os.environ.get("STT_LANGUAGE", "fa")
-VOICE_THRESHOLD = float(os.environ.get("STT_VOICE_THRESHOLD", "0.008"))
+MODEL_NAME = setting_value("STT_MODEL")
+DEVICE = setting_value("STT_DEVICE")
+COMPUTE_TYPE = setting_value("STT_COMPUTE_TYPE")
+LANGUAGE = setting_value("STT_LANGUAGE")
+VOICE_THRESHOLD = setting_value("STT_VOICE_THRESHOLD")
 MAX_SESSION_SECONDS = 120
 MAX_SESSION_AUDIO_BYTES = MAX_SESSION_SECONDS * SAMPLE_RATE * 2
 
@@ -66,10 +64,10 @@ def _load_model():
         MODEL_NAME,
         device=DEVICE,
         compute_type=COMPUTE_TYPE,
-        cpu_threads=int(os.environ.get("STT_CPU_THREADS", min(4, os.cpu_count() or 1))),
+        cpu_threads=setting_value("STT_CPU_THREADS"),
         num_workers=1,
         download_root=str(STT_DIR / ".models"),
-        local_files_only=os.environ.get("STT_LOCAL_FILES_ONLY") == "1",
+        local_files_only=setting_value("STT_LOCAL_FILES_ONLY"),
     )
 
 

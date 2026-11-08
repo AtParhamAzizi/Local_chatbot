@@ -157,7 +157,7 @@ commands, including administrator setup, logs, and shutdown.
    | `APP_HOST` | `127.0.0.1` for both services; LAN binding requires an explicit IP address such as `0.0.0.0` |
    | `DB_HOST` | `localhost` |
    | `DB_PORT` | `3306`; integer from 1 to 65535 |
-   | `DB_USER` | Required outside development; local default `chatbot_app` |
+   | `DB_USER` | Required outside development; local default `root` (configure a restricted account explicitly) |
    | `DB_PASS` | Required outside development; no password fallback |
    | `DB_NAME` | Required outside development; local default `chatbot_db` |
    | `ADMIN_SESSION_SECRET` | Required outside development; at least 32 random characters |
@@ -198,7 +198,7 @@ commands, including administrator setup, logs, and shutdown.
 
    Both directories must contain the corresponding Hugging Face model files, including `config.json`. Paths are resolved relative to `backend/`, regardless of the working directory. Override the embedding location with `QWEN_EMBEDDING_PATH` and the default generator location with `QWEN35_GENERATOR_PATH` or `GEN_MODEL`.
 
-   On the first run, the application selects Qwen3-Embedding-0.6B with Qwen3.5-2B. To change models later, open the admin **Model Selection** page (`http://localhost:8000/adminmodel.html`). The selection is saved in `backend/model_selection.json` and reused on restart, taking precedence over `GEN_MODEL_ID`. Qwen3-4B remains available when its generator files are placed directly in `backend/modelgen/` or configured with `QWEN_GENERATOR_PATH`; it shares the Qwen embedding model. Gemma paths can be configured with `GEMMA_EMBEDDING_PATH` and `GEMMA_GENERATOR_PATH`.
+   On the first run, the application selects Qwen3-Embedding-0.6B with Qwen3.5-2B. To change models later, open the admin **Model Selection** page (`http://localhost:8000/adminmodel.html`). The selection is saved in `backend/model_selection.json` and reused on restart, taking precedence over `GEN_MODEL_ID`. Qwen3-4B remains available when its generator files are placed directly in `backend/modelgen/` or configured with `QWEN_GENERATOR_PATH`; it shares the Qwen embedding model. The supported model IDs are `qwen3.5-2b` and `qwen3-4b`; Gemma is not an active catalog entry.
 
 5. The Flask user app serves its assets directly from `frontend/`. No copying is required; changes to the chat interface and feedback controls are served from that directory.
 
@@ -489,6 +489,65 @@ and finally starts the shared retention worker. Production does this inside
 the Gunicorn worker, never its master. Keep using `python backend/main.py` for
 serving; passing assembly-only factories directly to a WSGI server bypasses the
 required initialization. The low-level serving helpers no longer start retention.
+
+### Validated configuration (F021)
+
+`backend/settings.py:SETTING_REGISTRY` defines every supported application setting
+once, including its type, default, bounds/choices, legacy aliases and diagnostic
+visibility. The database, generator, model catalog, integrated voice and both
+standalone speech demos use that registry. The shared JSON-upload limit is defined
+in `request_validation.py`; `interface.MAX_UPLOAD_BYTES` is a compatibility alias.
+
+Check configuration before starting services, using the same interpreter and
+environment as the application:
+
+```text
+python -B backend/settings.py
+python -B backend/settings.py --diagnostics
+python -B backend/settings.py --scope stt
+python -B backend/settings.py --scope tts --diagnostics
+```
+
+These commands need only Python's standard library. They never import services,
+connect to MySQL, load/download models or start servers. Diagnostics emit JSON
+containing only explicitly public effective values; passwords, session secrets,
+database identity/host, free-form model locations and filesystem paths are omitted.
+There is no public configuration endpoint. In Python, `load_settings()` returns an
+immutable configuration containing private values for internal use;
+`effective_settings()` returns the safe diagnostic view.
+
+The application validates all its settings before importing routes or initializing
+database/models, including settings used only during lazy speech loading. Unknown
+environment names, malformed numbers, non-finite thresholds, unsupported choices,
+and invalid ranges fail with the setting name and correction guidance, never the
+supplied value. Production reports missing required names together. `APP_ENV`
+overrides legacy `ENVIRONMENT`, then `FLASK_ENV`; absent selectors mean production.
+Only `production`, `development`, `dev`, `local`, and `test` are accepted. Explicit
+blank settings fail except optional development secrets and an empty proxy list;
+unset a variable to use its default. Development has no hard-coded DB password.
+
+In addition to the deployment/session/retention tables, the registry validates:
+
+| Settings | Type / accepted values |
+| --- | --- |
+| `GEN_DEVICE`, `GEN_QUANTIZATION`, `GEN_MODEL_ID` | Declared choices; explicit `cpu` with `4bit` is rejected |
+| `GEN_MODEL`, `QWEN35_GENERATOR_PATH`, `QWEN_GENERATOR_PATH`, `QWEN_EMBEDDING_PATH` | Nonblank paths; relative to `backend/`; dedicated generator paths override `GEN_MODEL` |
+| `STT_MODEL` | Nonblank model identifier or CTranslate2 directory |
+| `STT_DEVICE`, `STT_COMPUTE_TYPE`, `STT_LANGUAGE` | Declared device/precision choices and Whisper language codes (`auto` detects language) |
+| `STT_VOICE_THRESHOLD` | Finite number, 0-1; default 0.008 |
+| `STT_CPU_THREADS`, `TTS_CPU_THREADS` | Integers, 1-256; defaults up to 4 and 1 respectively |
+| `STT_LOCAL_FILES_ONLY`, `RETENTION_DELETE_ENABLED` | `0`, `1`, `false`, or `true`, case-insensitive |
+| `TTS_PYTHON` | Existing interpreter file; relative to the repository root; default `.venv-tts` interpreter when installed, otherwise current Python |
+| `ENGLISH_MODEL_FILE`, `ENGLISH_VOICE` | ONNX filename without directories; voice identifier using letters/digits/underscores/hyphens |
+| `PERSIAN_G2P_REPO`, `PERSIAN_VOICE_PROMPT` | Nonblank G2P identifier/path; prompt path relative to `backend/TTS/` |
+| `STT_HOST`, `HOST` (standalone STT/TTS) | `localhost` or IPv4/IPv6 address; loopback by default |
+| `STT_PORT`, `PORT` (standalone STT/TTS) | Integer, 1-65535; default 5000 |
+
+Only the selected standalone scope is checked for a speech demo; database and
+browser-origin deployment credentials are unnecessary there. No model files are
+required for configuration checks. Model availability and hardware/dependency
+compatibility are still checked by their loaders. Restart after environment
+changes; saved model selection and controller toggles remain runtime state.
 
 ### Backend service boundaries
 

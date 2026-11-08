@@ -8,7 +8,6 @@ import logging
 import os
 from pathlib import Path
 import subprocess
-import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
@@ -17,6 +16,7 @@ from flask import current_app, jsonify, send_file
 from abuse_controls import limit_requests, rate_limited_response
 from public_errors import public_error
 from request_validation import json_object, text
+from settings import setting_value
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,10 +50,7 @@ class SpeechService:
         return result
 
     def _load(self):
-        executable = os.getenv('TTS_PYTHON')
-        if not executable:
-            isolated = ROOT / '.venv-tts' / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
-            executable = str(isolated) if isolated.is_file() else sys.executable
+        executable = setting_value('TTS_PYTHON')
         self.process = subprocess.Popen(
             [executable, '-B', '-u', str(ROOT / 'backend/TTS/chat_worker.py')],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,

@@ -214,7 +214,10 @@ class MigrationTests(unittest.TestCase):
                 patch.object(self.migrations, 'upgrade') as upgrade, \
                 redirect_stderr(io.StringIO()) as errors:
             self.assertEqual(self.migrations.main(['upgrade', '--backup', str(self.backup)]), 1)
-        self.assertIn('Migration configuration error: UI_ALLOWED_ORIGINS', errors.getvalue())
+        self.assertIn('Migration configuration error: Missing required settings:', errors.getvalue())
+        for name in ('DB_USER', 'DB_PASS', 'DB_NAME', 'ADMIN_SESSION_SECRET',
+                     'UI_ALLOWED_ORIGINS', 'ADMIN_ALLOWED_ORIGINS'):
+            self.assertIn(name, errors.getvalue())
         self.assertIn('APP_ENV=development in this terminal', errors.getvalue())
         self.assertIn('VS Code launch settings', errors.getvalue())
         status.assert_not_called()

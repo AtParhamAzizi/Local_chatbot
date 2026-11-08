@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import io
 import math
-import os
+import sys
 import threading
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
+
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from settings import load_settings
 
 if __package__:
     from .tts_engine import ModelLoadError, SpeechEngine
@@ -18,6 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 
 def create_app(engine_factory=SpeechEngine):
+    settings = load_settings(scope="tts")
     app = Flask(__name__, template_folder="templates", static_folder="static")
     engine = None
     startup_error = None
@@ -53,7 +59,7 @@ def create_app(engine_factory=SpeechEngine):
         if not isinstance(payload, dict):
             return jsonify({"error": "Please send a JSON object."}), 400
         text = payload.get("text")
-        voice = payload.get("voice", os.getenv("ENGLISH_VOICE", "af_heart"))
+        voice = payload.get("voice", settings["ENGLISH_VOICE"])
         speed = payload.get("speed", 1.0)
         if not isinstance(text, str) or not text.strip():
             return jsonify({"error": "Please enter some text."}), 400
@@ -98,4 +104,5 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    app.run(host=os.getenv("HOST", "127.0.0.1"), port=int(os.getenv("PORT", "5000")), debug=False)
+    settings = load_settings(scope="tts")
+    app.run(host=settings["HOST"], port=settings["PORT"], debug=False)
