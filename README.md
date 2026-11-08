@@ -424,10 +424,16 @@ uses the normal `/chat` path. These checks need the configured DB and models.
 
 ## API
 
+See the [v1 API contract and compatibility policy](docs/api/README.md) and
+[OpenAPI schemas](docs/api/openapi.json) for all supported payloads, error codes,
+pagination, authentication and CSRF requirements. Existing routes remain v1 and
+responses advertise `API-Version: 1`. Breaking changes require a parallel major
+version and at least 180 days of published deprecation notice.
+
 The user service exposes:
 
 - `GET /health` — service health check.
-- `POST /chat` — retrieves knowledge and generates a response. Send JSON with `message`; the server establishes the anonymous session and ignores any supplied `user_id`. Every successful response includes a saved chat-history `message_id`, including fallback replies. Keep the response's chat cookie for feedback and subsequent messages.
+- `POST /chat` — retrieves knowledge and generates a response. Send JSON with `message`; the server establishes the anonymous session and ignores any supplied `user_id`. Retained responses include a saved chat-history `message_id`, including fallback replies; stateless mode returns `message_id: null` and `feedback_enabled: false`. Keep the response's chat cookie for feedback and subsequent messages.
 - `POST /feedback` — send `{"message_id": 123, "feedback": "like"}` (or `"dislike"`) using the ID returned by `/chat` and the same chat cookie. Only the originating session can rate the message; submitting another rating updates its previous feedback. Invalid requests return 400, missing/invalid/expired session proof returns 401, unknown or non-owned messages return the same 404, and database failures return 503 so the UI can offer a retry.
 
 Administrator endpoints are available under `/admin/api/` on port 8000 for knowledge-base management, PDFs, logs, and chat history.

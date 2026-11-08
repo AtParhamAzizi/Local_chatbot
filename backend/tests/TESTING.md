@@ -100,6 +100,31 @@ modules inside scoped fixtures so imports cannot capture a previous fixture's
 database/logger/auth dependencies. The original authorization, validation,
 privacy, MySQL and browser suites remain the client-compatibility regressions.
 
+## API contracts (F022)
+
+`docs/api/openapi.json` defines the v1 payload schemas and route requirements;
+`docs/api/README.md` defines versioning, compatibility, authentication, errors,
+pagination and the optional voice protocol. Run their offline checks with:
+
+```powershell
+.venv-tests\Scripts\python -B backend/tests/run_tests.py --pattern test_api_contracts.py -v
+```
+
+`test_api_contracts.py` exercises every documented HTTP success status through
+real Flask handlers and guards, using doubles only for database/model/speech
+adapters. It checks populated/empty collections, legacy wrappers and routes,
+dates, request rejection, permissions, CSRF, errors, redirects, binary speech,
+version headers and WebSocket frame shapes. It also compares the API inventory
+to registered routes and the existing frozen legacy administrator inventory.
+Contract checks run in default offline CI discovery without new dependencies.
+
+`api_contract_support.py` asserts only the JSON Schema subset used by this
+document, rejects unsupported keywords and external references, and includes
+negative controls for missing/extra fields, wrong types and invalid variants.
+It does not replace a general OpenAPI validator. Update schemas, compatibility
+notes and representative route cases together when intentionally changing the
+contract; new success statuses must have exercised cases before the suite passes.
+
 ## Flask + disposable MySQL integration (F014)
 
 Install the small integration dependency profile in the same test environment:

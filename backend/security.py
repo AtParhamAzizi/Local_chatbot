@@ -7,6 +7,7 @@ from werkzeug.exceptions import HTTPException
 
 from database import logger
 from abuse_controls import configure_abuse_controls
+from api_contract import API_MAJOR_VERSION
 from public_errors import public_error
 from request_validation import InvalidRequest, configure_request_limits
 from settings import (
@@ -106,6 +107,7 @@ def configure_security(app, *, service):
 
     @app.after_request
     def browser_origin_headers(response):
+        response.headers['API-Version'] = API_MAJOR_VERSION
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'SAMEORIGIN' if service == 'admin' else 'DENY'
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
@@ -123,7 +125,7 @@ def configure_security(app, *, service):
             origin = g.get('browser_origin')
             if origin is not None:
                 response.headers['Access-Control-Allow-Origin'] = origin
-                response.headers['Access-Control-Expose-Headers'] = 'Retry-After'
+                response.headers['Access-Control-Expose-Headers'] = 'Retry-After, API-Version'
                 if request.method == 'OPTIONS':
                     response.headers['Access-Control-Allow-Methods'] = 'GET, HEAD, POST, OPTIONS'
                     response.headers['Access-Control-Allow-Headers'] = 'Content-Type'

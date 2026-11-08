@@ -300,7 +300,7 @@ class AbuseEndpointTests(AbuseEndpointFixture, unittest.TestCase):
                 'X-Forwarded-For': '192.0.2.8', 'Origin': 'http://localhost:5000',
             })
             self.assertEqual(self.assert_limited(response), 60)
-            self.assertEqual(response.headers['Access-Control-Expose-Headers'], 'Retry-After')
+            self.assertEqual(response.headers['Access-Control-Expose-Headers'], 'Retry-After, API-Version')
             self.assertEqual(retrieve.call_count, 20)
             self.assertEqual(self.ui_client.get('/health').status_code, 200)
             self.now += 60

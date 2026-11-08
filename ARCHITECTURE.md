@@ -244,6 +244,16 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 
 ## 7. HTTP API
 
+The v1 integration contract is defined in [`docs/api/openapi.json`](docs/api/openapi.json)
+and the [API compatibility guide](docs/api/README.md) (F022). They describe request
+and response schemas, public errors, permissions, CSRF, pagination and WebSocket
+frames. Existing unversioned routes remain v1; both services advertise
+`API-Version: 1` on responses. Additive changes advance the contract's minor
+version; breaking changes require a parallel major version and at least 180 days
+of published deprecation notice before removing the previous major. No v1 route
+is currently deprecated. Offline `test_api_contracts.py` exercises real handlers
+against these schemas and checks route, permission and legacy compatibility.
+
 ### User app (port 5000, explicit `UI_ALLOWED_ORIGINS` CORS)
 | Method | Path | Handler |
 | --- | --- | --- |
@@ -253,6 +263,8 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 | POST | `/chat` | `chat` |
 | POST | `/feedback` | `feedback` |
 | GET | `/voice/health`, `/voice/audio-worklet.js` | `voice_health`, `voice_worklet` |
+| GET | `/tts/health` | `tts_health` |
+| POST | `/tts/synthesize` | `tts_synthesize` (WAV response) |
 | WS | `/voice-stream` | `voice_stream` |
 | GET | `/controller/features`, `/controller/features.js` | `controller_features`, `controller_features_js` |
 
