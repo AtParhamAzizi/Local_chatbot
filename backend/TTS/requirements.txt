@@ -3,7 +3,8 @@ numpy>=1.26
 scipy>=1.12
 onnxruntime>=1.18
 kokoro-onnx==0.6.1
-torch>=2.4
+torch>=2.5
+soundfile>=0.12
 transformers>=4.48
 sentencepiece>=0.2
 safetensors>=0.4

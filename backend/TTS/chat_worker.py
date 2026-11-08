@@ -12,11 +12,6 @@ def main():
     protocol = sys.stdout
     # Model libraries may print progress; stdout belongs to the JSON protocol.
     sys.stdout = sys.stderr
-    # The phoneme model is text-only. Unrelated globally installed media
-    # extensions can target a different Torch build; this worker uses WAV/
-    # soundfile directly and does not need these optional Transformers backends.
-    for package in ('torchvision', 'torchaudio', 'torchcodec', 'librosa'):
-        sys.modules[package] = None
     try:
         from tts_engine import SpeechEngine
         from scipy.io import wavfile

@@ -29,5 +29,5 @@ AUTORUN
 backend/TTS/English_model/
 backend/TTS/Persian_model/
 backend/TTS/_inspect/
+backend/TTS/.runtime/
 backend/.runtime/
-backend/TTS/tts/backend/pocket-tts-farsi-v2

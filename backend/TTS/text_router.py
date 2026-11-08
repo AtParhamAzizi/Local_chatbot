@@ -4,13 +4,13 @@ import re
 from dataclasses import dataclass
 
 
-URL_RE = re.compile(r"https?://[^\s،؛!?؟]+", re.IGNORECASE)
+URL_RE = re.compile(r"https?://[^\s،؛؟<>\"“”]+", re.IGNORECASE)
 TOKEN_RE = re.compile(
-    r"https?://[^\s،؛!?؟]+|[\u0600-\u06ff]+|[A-Za-z]+(?:['’-][A-Za-z]+)*|\d+|[^\w\s]|\s+",
+    URL_RE.pattern
+    + r"|[\u0600-\u06ff\u200c]+|[^\W\d_\u0600-\u06ff]+(?:['’-][^\W\d_\u0600-\u06ff]+)*|\d+|_+|[^\w\s]|\s+",
     re.IGNORECASE,
 )
 PERSIAN_RE = re.compile(r"[\u0600-\u06ff]")
-LATIN_RE = re.compile(r"[A-Za-z]")
 
 
 @dataclass(frozen=True)
@@ -19,16 +19,14 @@ class TextSegment:
     text: str
 
 
-def _word_language(token: str, previous: str | None) -> str:
+def _word_language(token: str, previous: str | None) -> str | None:
     if URL_RE.fullmatch(token):
         return "english"
-    if PERSIAN_RE.search(token):
+    if any(character.isalnum() and PERSIAN_RE.fullmatch(character) for character in token):
         return "persian"
-    if LATIN_RE.search(token):
+    if any(character.isalpha() for character in token):
         return "english"
-    if token.isdigit():
-        return previous or "english"
-    return previous or "english"
+    return previous
 
 
 def split_text(text: str) -> list[TextSegment]:
@@ -40,7 +38,7 @@ def split_text(text: str) -> list[TextSegment]:
     def flush() -> None:
         nonlocal current_parts, current_language
         value = "".join(current_parts).strip()
-        if value:
+        if any(character.isalnum() for character in value):
             segments.append(TextSegment(current_language or "english", value))
         current_parts = []
 
@@ -53,7 +51,7 @@ def split_text(text: str) -> list[TextSegment]:
         language = _word_language(token, current_language)
         if current_language is None:
             current_language = language
-        elif language != current_language and (PERSIAN_RE.search(token) or LATIN_RE.search(token) or URL_RE.fullmatch(token)):
+        elif language != current_language:
             flush()
             current_language = language
         current_parts.append(token)
