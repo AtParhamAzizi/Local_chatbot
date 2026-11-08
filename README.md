@@ -2,14 +2,21 @@
 
 A local, Persian-language retrieval-augmented generation (RAG) chatbot with a user chat interface and an administrator dashboard. It stores question-and-answer records, PDF knowledge-base chunks, chat history, feedback, and application logs in MySQL.
 
-## Latest UI Update
+Start with [contributor setup](CONTRIBUTING.md) for code or documentation work;
+it needs no database or model downloads. For a running application, choose
+[Docker setup](#docker-setup-windows-macos-and-linux) or [native setup](#setup).
+See [operations](docs/operations.md), [troubleshooting](docs/troubleshooting.md),
+[architecture](ARCHITECTURE.md), [API contracts](docs/api/README.md), and
+[architecture decisions](docs/decisions/README.md) for the corresponding guides.
+
+## User interfaces
 
 The project now includes a refreshed **Liquid Glass** visual experience:
 
 - Translucent glass panels with blur, gradients, soft borders, and luminous accents across the user chat and administrator pages.
 - A clickable dark/light theme toggle on the frontend, dashboard, chat inspector, PDF/JSON tools, and system logs.
 - Theme selection persists across reloads and stays synchronized between admin pages.
-- The admin dashboard includes a Model Selection page for switching between Qwen3.5-2B (the default), Qwen3-4B, and Gemma 4 E2B IT when their local model files are available.
+- The authenticated Model Selection page supports `qwen3.5-2b` (the default) and `qwen3-4b` when their local model files are available. Gemma folders and loader compatibility do not make Gemma an active catalog entry.
 - Responsive layouts have been refined for desktop and mobile screens.
 
 ## Features
@@ -24,7 +31,7 @@ The project now includes a refreshed **Liquid Glass** visual experience:
 ## Requirements
 
 - CPython 3.13 x64 on Windows or CPython 3.12 x86-64 on Linux for the recorded dependency locks; other targets are not in the tested lock matrix.
-- A running MySQL server (8.0+ recommended).
+- A running MySQL server; the integration suite and local Compose use MySQL 8.4.
 - Enough disk space and RAM/VRAM for both local Qwen models. Generation uses CUDA automatically when PyTorch detects a compatible GPU, with an explicit warning before falling back to CPU. The embedding model stays on CPU to reserve VRAM for generation.
 
 ## Docker setup (Windows, macOS, and Linux)
@@ -102,7 +109,11 @@ back up/restore the database separately if you want to retain existing data.
 
 ### Optional NVIDIA GPU container
 
-On a compatible NVIDIA host with GPU access configured for Docker, use:
+On a compatible NVIDIA host with GPU access configured for Docker:
+
+Complete the configuration, model directories and explicit migration steps
+above first, using both `-f compose.yaml -f compose.gpu.yaml` on each Compose
+command when choosing the GPU image. Once the schema is current:
 
 ```sh
 docker compose -f compose.yaml -f compose.gpu.yaml up --build -d
@@ -129,6 +140,17 @@ commands, including administrator setup, logs, and shutdown.
    .\.venv\Scripts\Activate.ps1
    ```
 
+   On Linux, use the recorded CPython 3.12 interpreter:
+
+   ```sh
+   python3.12 -m venv .venv
+   . .venv/bin/activate
+   ```
+
+   The following `python` commands assume that environment is active. If
+   PowerShell blocks activation, invoke `.\.venv\Scripts\python.exe` explicitly
+   instead. Run commands from the repository root.
+
 2. Install Python dependencies.
 
    ```powershell
@@ -149,7 +171,11 @@ commands, including administrator setup, logs, and shutdown.
 
    See `requirements/README.md` for the Windows/Linux lock matrix, offline wheelhouses, upgrade/rollback process, other-platform limits and recorded validation. The legacy bounded `requirements*.txt` files are resolver inputs, not release locks. x86-64 Docker builds use these same hash-pinned profiles; ARM64 CPU builds retain a separately documented constrained route.
 
-3. Create the MySQL database and a restricted account as described in **Deployment security**. Configure the connection and session signing secret through the process environment or your deployment secret manager; `.env` files are not loaded automatically.
+3. Have a database administrator create the database, serving account and
+   separate migration account using the SQL in [Deployment security](#deployment-security).
+   For a fresh local installation, configure the environment **before** running
+   any configuration, migration or account-setup command. `.env` is consumed by
+   Compose, but is not loaded by native Python or `run_gpu.cmd`.
 
    | Variable | Default / requirement |
    | --- | --- |
@@ -168,7 +194,37 @@ commands, including administrator setup, logs, and shutdown.
    | `TRUSTED_PROXY_HOPS` | `0`; exact trusted chain length for `X-Forwarded-For` and `X-Forwarded-Proto` (0-10); nonzero requires `TRUSTED_PROXY_CIDRS` |
    | `TRUSTED_PROXY_CIDRS` | Empty; comma-separated trusted reverse-proxy IP addresses or IPv4/IPv6 CIDRs |
 
-   Inject `DB_PASS` and `ADMIN_SESSION_SECRET` securely rather than saving them in source code or shell history. Generate the session secret with `python -c "import secrets; print(secrets.token_urlsafe(48))"` in a private terminal. Do not paste its output into logs. Local development without a session secret uses a per-process random key, so restarting invalidates existing admin sessions.
+   PowerShell, initially using the migration account:
+
+   ```powershell
+   $env:APP_ENV = 'development'
+   $env:DB_HOST = '127.0.0.1'
+   $env:DB_PORT = '3306'
+   $env:DB_NAME = 'chatbot_db'
+   $env:DB_USER = 'chatbot_migrator'
+   $env:DB_PASS = [System.Net.NetworkCredential]::new('', (Read-Host 'Migration database password' -AsSecureString)).Password
+   $env:ADMIN_SESSION_SECRET = python -c "import secrets; print(secrets.token_urlsafe(48))"
+   python -B backend/settings.py
+   ```
+
+   Bash on Linux:
+
+   ```sh
+   export APP_ENV=development DB_HOST=127.0.0.1 DB_PORT=3306
+   export DB_NAME=chatbot_db DB_USER=chatbot_migrator
+   read -r -s -p 'Migration database password: ' DB_PASS
+   printf '\n'
+   export DB_PASS
+   export ADMIN_SESSION_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+   python -B backend/settings.py
+   ```
+
+   Stop and resolve any nonzero exit before continuing. These examples generate
+   a development signing key for this shell session. Keep a stable key in your
+   private launch environment if cookies must survive restarts; generating a new
+   key invalidates both admin and anonymous chat cookies. If omitted in
+   development, the application generates a per-process key. Production needs
+   a stable secret injected by the deployment's secret mechanism.
 
    Explicitly initialize an empty database before startup:
 
@@ -181,10 +237,29 @@ commands, including administrator setup, logs, and shutdown.
    See `backend/migrations/README.md` for backup, restore and interruption recovery.
    Startup only checks the recorded schema version; it never creates/alters tables.
 
-   Before the first admin login, run local interactive setup using the same database configuration:
+   Confirm `status` reports `schema_version: 4`, `latest_version: 4`, and empty
+   `pending`/`incomplete` lists. A zero exit from `status` alone does not mean the
+   schema is current. Then switch back to the serving account, keeping the same
+   host, port, database and application profile. In PowerShell:
 
    ```powershell
-   python backend/setup_admin.py
+   $env:DB_USER = 'chatbot_app'
+   $env:DB_PASS = [System.Net.NetworkCredential]::new('', (Read-Host 'Serving database password' -AsSecureString)).Password
+   ```
+
+   In Bash:
+
+   ```sh
+   export DB_USER=chatbot_app
+   read -r -s -p 'Serving database password: ' DB_PASS
+   printf '\n'
+   export DB_PASS
+   ```
+
+   Before the first admin login, run interactive setup from that terminal:
+
+   ```powershell
+   python -B backend/setup_admin.py
    ```
 
    Choose and confirm a unique administrator password (at least 12 characters). There is no default password, and startup never seeds an account. You may safely rerun setup after interruption: uncommitted creation rolls back, and existing accounts are never modified. On upgrades, skip this step and use your existing credentials.
@@ -196,9 +271,29 @@ commands, including administrator setup, logs, and shutdown.
    backend/modelgen/qwen3.5-2B/          Qwen/Qwen3.5-2B
    ```
 
-   Both directories must contain the corresponding Hugging Face model files, including `config.json`. Paths are resolved relative to `backend/`, regardless of the working directory. Override the embedding location with `QWEN_EMBEDDING_PATH` and the default generator location with `QWEN35_GENERATOR_PATH` or `GEN_MODEL`.
+   Both directories must contain the corresponding Hugging Face model files,
+   including `config.json`, tokenizer assets and every weight shard. Paths are
+   resolved relative to `backend/`, regardless of the working directory.
+   `QWEN35_GENERATOR_PATH` overrides `GEN_MODEL` for Qwen3.5;
+   `QWEN_GENERATOR_PATH` overrides it for Qwen3-4B. Set only the needed overrides:
+   `GEN_MODEL` supplies a shared fallback for both generator entries.
+   `QWEN_EMBEDDING_PATH` selects the shared embedding directory.
 
-   On the first run, the application selects Qwen3-Embedding-0.6B with Qwen3.5-2B. To change models later, open the admin **Model Selection** page (`http://localhost:8000/adminmodel.html`). The selection is saved in `backend/model_selection.json` and reused on restart, taking precedence over `GEN_MODEL_ID`. Qwen3-4B remains available when its generator files are placed directly in `backend/modelgen/` or configured with `QWEN_GENERATOR_PATH`; it shares the Qwen embedding model. The supported model IDs are `qwen3.5-2b` and `qwen3-4b`; Gemma is not an active catalog entry.
+   With the default folders present, startup selects Qwen3.5-2B and the Qwen
+   embedder. Sign in to the dashboard and choose **Model Selection**, or open
+   `http://localhost:8000/admin/adminmodel.html` with a `models` grant or the
+   administrator role. The old `/adminmodel.html` path is not an alias.
+
+   Selection precedence is a recognized saved ID in `backend/model_selection.json`,
+   then `GEN_MODEL_ID` when there is no recognized saved ID. If that requested
+   entry is unavailable, the first available catalog entry wins (Qwen3.5 before
+   Qwen3-4B). If none is available, the requested/default ID is retained and
+   startup model loading fails. Catalog availability checks only `config.json`
+   in both directories; it does not verify complete weights or sufficient memory.
+   A successful selection persists the ID and clears the loaded text models;
+   the next use loads them. No re-embedding happens automatically. Re-ingest
+   knowledge when changing the embedding model, including an equal-dimension
+   replacement. Qwen3-4B defaults to `backend/modelgen/` and shares the embedder.
 
 5. The Flask user app serves its assets directly from `frontend/`. No copying is required; changes to the chat interface and feedback controls are served from that directory.
 
@@ -283,8 +378,8 @@ interpreter if that environment does not exist. Set `TTS_PYTHON` to select
 another prepared interpreter. `/tts/health` starts model loading;
 `POST /tts/synthesize` accepts `{"text": "..."}` (1–5,000 characters) and returns
 a noncached WAV. One synthesis runs at a time, with no unbounded job queue.
-The worker reuses its models across requests. First use may download the Persian
-G2P model and voice prompt; cache them before running without internet access.
+The worker reuses its models across requests. The Persian G2P loader may download
+on first use; prepare its cache and the local voice prompt before offline use.
 Run `python -B scripts/check_speech.py --offline` to verify real Persian/English
 audio from cached models without starting either web service or touching MySQL.
 
@@ -310,15 +405,19 @@ server. Native Windows is supported for local development only; production
 startup there exits with guidance rather than falling back to Flask. In WSL,
 create a separate Linux virtual environment rather than reusing Windows `.venv`.
 
-After completing database, administrator, model, and secret setup above, run
-from the repository root in a Linux/WSL shell:
+After completing database, administrator, model, dependency verification and
+secret setup above, run from the repository root in the activated Linux/WSL
+environment. Do not rerun `install` in an already populated environment:
 
 ```sh
-python -B scripts/dependencies.py install --profile cpu
-python -B scripts/dependencies.py verify --profile cpu
 export APP_ENV=production
 # Inject DB_USER, DB_PASS, DB_NAME, and ADMIN_SESSION_SECRET securely first.
-python backend/main.py
+# Replace these examples with the browser-facing HTTPS origins of your proxy.
+export UI_ALLOWED_ORIGINS=https://chat.example.com
+export ADMIN_ALLOWED_ORIGINS=https://admin.example.com
+# Configure TRUSTED_PROXY_HOPS/CIDRS for that proxy as described below.
+python -B backend/settings.py
+python -B backend/main.py
 ```
 
 Both existing ports remain available: user HTTP and `/voice-stream` WebSocket
@@ -403,7 +502,8 @@ leave the socket client address and scheme unchanged. The first public proxy
 must overwrite forwarding headers; subsequent trusted proxies must append to
 both forwarding chains, with the configured hop count matching the deployment.
 Attacker-prepended values outside that suffix are ignored. The validated client
-address becomes `request.remote_addr`, used by chat-history/audit identity.
+address becomes `request.remote_addr`, used by admission limits and optional
+chat IP metadata. Anonymous ownership comes from the chat cookie, never the IP.
 Forwarded scheme is accepted only with a validated address chain and a matching
 HTTP(S) scheme entry; it cannot independently bypass the admin HTTPS requirement.
 
@@ -432,11 +532,38 @@ version and at least 180 days of published deprecation notice.
 
 The user service exposes:
 
-- `GET /health` — service health check.
-- `POST /chat` — retrieves knowledge and generates a response. Send JSON with `message`; the server establishes the anonymous session and ignores any supplied `user_id`. Retained responses include a saved chat-history `message_id`, including fallback replies; stateless mode returns `message_id: null` and `feedback_enabled: false`. Keep the response's chat cookie for feedback and subsequent messages.
+- `GET /health` — fixed liveness response (`{"status":"ok"}`). Its audit decorator may attempt a database log write, but logging failure does not turn it into a failed readiness probe. It does not establish database, model or speech readiness.
+- `POST /chat` — retrieves knowledge and generates a response. Send JSON with `message`; the server establishes the anonymous session. An optional legacy `user_id` string (at most 64 characters) is accepted but ignored; wrong field types still fail validation. Retained responses include a saved chat-history `message_id`, including fallback replies; stateless mode returns `message_id: null` and `feedback_enabled: false`. Keep the response's chat cookie for feedback and subsequent messages.
 - `POST /feedback` — send `{"message_id": 123, "feedback": "like"}` (or `"dislike"`) using the ID returned by `/chat` and the same chat cookie. Only the originating session can rate the message; submitting another rating updates its previous feedback. Invalid requests return 400, missing/invalid/expired session proof returns 401, unknown or non-owned messages return the same 404, and database failures return 503 so the UI can offer a retry.
 
 Administrator endpoints are available under `/admin/api/` on port 8000 for knowledge-base management, PDFs, logs, and chat history.
+
+The complete route inventory is in the API contract. These access boundaries
+apply before the handlers:
+
+| Service and route group | Access and behavior |
+| --- | --- |
+| User `/`, `/health`, `/chat`, `/voice/*`, `/voice-stream`, `/tts/*`, `/controller/features`, `/controller/features.js` | No administrator login; origin validation and route-specific limits still apply. WebSocket requires an allowed `Origin`. Controller feature routes only expose public flags. |
+| User `/feedback` | Valid anonymous chat cookie and an owned message; disabled with 403 when chat or feedback retention is zero. |
+| Admin `/login`, `/login.css`, `/login.js`, `/login-theme.js` | Public login resources; login POST needs its pre-login cookie and CSRF token. Production HTTPS applies here too. |
+| Admin `/`, shared dashboard assets, `/admin/api/session`, POST `/logout` | Active administrator-service session; any active account can enter the shell. Logout requires CSRF and revokes that session. |
+| Admin Q&A, PDF, models, chats, logs, controller | Respective `json_upload`, `pdf_upload`, `models`, `chats`, `system_reports`, `controller` grants, or the administrator role. Page HTML/CSS/JS and APIs share these restrictions. |
+| Admin account management | `is_admin=true`; the `administrator` username, `user_control` or a wildcard grant alone is insufficient. |
+
+Admin APIs and logout return 401 when unauthenticated; protected HTML pages
+redirect to `/login`. Authenticated requests missing a registered permission or
+valid mutation CSRF proof receive 403. All admin mutations require CSRF,
+including login; there is no bearer-token/API-key alternative or GET logout.
+The [permission matrix](backend/admin-users/PERMISSIONS.md) lists exact paths
+and operations. Unregistered assets/actions have no role-based bypass.
+
+On the user service, `/index.html` redirects to `/`. `/voice/health` starts lazy
+Whisper loading; `/tts/health` independently starts the private TTS worker.
+Both report 503 while loading/unavailable. `POST /tts/synthesize` accepts only
+`{"text":"..."}` (1-5000 characters) and returns WAV, 429 when busy/rate-limited,
+or 503 when unavailable. These public speech routes do not create an admin
+session. The controller's voice switch gates `/voice*`; it does not gate `/tts/*`.
+The chat switch gates `/chat`, not feedback or TTS.
 
 ### Message ownership and upgrade behavior
 
@@ -622,7 +749,7 @@ logger.logDrop('Using a fallback response', logger.WARNING)
 logger.logDrop('Operation failed', logger.FAILED)
 ```
 
-Severity codes are **1 = information**, **2 = warning**, and **3 = failed**. The existing four-argument `logger.logDrop(level, log_from, message, warninglevel)` calls remain supported, but file and function names are inferred automatically. `@logger.operation` records completed operations, exceptions, and HTTP outcomes (4xx as warnings and 5xx as failures) without logging request bodies or model inputs. Coverage includes startup, database initialization, chat and feedback, retrieval, embeddings, generation, model changes, JSON/PDF tools, and administrator APIs.
+Severity codes are **1 = information**, **2 = warning**, and **3 = failed**. The existing four-argument `logger.logDrop(level, log_from, message, warninglevel)` calls remain supported, but file and function names are inferred automatically. `@logger.operation` records completed decorated operations, exceptions, and HTTP outcomes (4xx as warnings and 5xx as failures) without logging request bodies or model inputs. Coverage includes explicit runtime-start completion, chat/feedback, retrieval, embeddings, generation, model changes, JSON/PDF tools and selected administrator APIs. Migration/status/schema-guard operations deliberately bypass DB audit writes. Decorated health requests can attempt logging, but a log failure does not change the fixed liveness response.
 
 Explicit migration 3 widens existing `CHAR`/`VARCHAR` message columns to `TEXT` without removing existing logs. Startup never alters logging tables. Database logging failures fall back to the console and do not interrupt application requests. View and filter logs on the admin **System Logs** page.
 
@@ -706,6 +833,8 @@ Both services enforce per-client sliding-window limits before expensive handlers
 | JSON and PDF uploads, combined | 6 per 300 seconds | 1 |
 | Voice WebSocket handshakes | 6 per 60 seconds | 1 |
 | Voice-health polling | 60 per 60 seconds | 1 |
+| Local TTS synthesis | 30 per 60 seconds | 1 |
+| TTS-health polling | 60 per 60 seconds | 1 |
 
 Excess HTTP traffic receives **429** with a positive `Retry-After` delay in
 seconds, `Cache-Control: no-store`, and a retry message. APIs also return
@@ -797,8 +926,12 @@ resubmitting. Offline tests verify these rejections never invoke model work.
 
 Chatbot operators must publish their own contact details and choose lifetimes
 appropriate to their deployment. These defaults are data-minimization choices,
-not a legal-compliance guarantee. The served Persian UI explains the actual
-configured policy, including a warning when automatic deletion is paused.
+not a legal-compliance guarantee. The current `frontend/index.html` has the
+detailed privacy summary and retention text inside HTML comments, so it does
+**not** show visitors the configured lifetimes or paused-deletion warning.
+Publish that information through your deployment's visible notice before use;
+the visible voice notice only describes server-side audio processing. Restoring
+or changing the UI notice is a separate behavior change from this documentation.
 
 | Data | Purpose and access | Default and deletion |
 | --- | --- | --- |
@@ -896,8 +1029,8 @@ same log policy. Records still reach the Python log when DB logging is disabled
 or unavailable. They are not a separate indefinitely retained audit archive.
 
 Deletion is logical deletion from live application tables, not secure media
-erasure. Database backups, binary logs, replicas, proxy/container/service logs,
-browser/OS speech providers, and exported admin data need their own bounded
+erasure. Database backups, binary logs, replicas, proxy/container/service logs
+and exported admin data need their own bounded
 retention and erasure procedures. Rotate/expire backups and reapply cleanup
 before serving a restored database; old snapshots otherwise restore deleted
 data. Application sweeps cannot delete those external copies. Default development
@@ -908,12 +1041,15 @@ any upstream logging deliberately.
 Offline tests execute translated cleanup SQL against an in-memory database and
 cover boundary/null timestamps, zero-day policies, deletion pause, dry-run,
 bounded progress, overlapping locks, committed counts/rollback, safe records,
-startup wiring, collection defaults, and rendered notices. The optional browser
-smoke test also verifies the visible notice and speech opt-in/cancellation.
+startup wiring, collection defaults, and rendered policy strings. Current browser
+journeys cover local playback/cancellation. They do not establish completeness of
+the currently commented-out retention disclosure. The older fixed-port security
+smoke still expects that notice to be visible and browser-speech opt-in; update
+those stale assertions before using it to certify the current UI.
 
 ## Deployment security
 
-The default environment is `production`. Only explicit `APP_ENV=development` (or `dev`, `local`, `test`) enables development behavior; other values fail closed. Startup fails closed when any of these settings are missing: `DB_USER`, `DB_PASS`, `DB_NAME`, or `ADMIN_SESSION_SECRET`. Unexpected errors return generic messages. Audit logs redact configured database/session secrets, and exception logs record error types rather than raw exception text.
+The default environment is `production`. Only explicit `APP_ENV=development` (or `dev`, `local`, `test`) enables development behavior; other values fail closed. Production requires `DB_USER`, `DB_PASS`, `DB_NAME`, `ADMIN_SESSION_SECRET`, `UI_ALLOWED_ORIGINS` and `ADMIN_ALLOWED_ORIGINS`; missing/blank values fail startup, and `DB_USER=root` is rejected. Unexpected errors return generic messages. Audit logs redact configured database/session secrets, and exception logs record error types rather than raw exception text.
 
 ### Public errors and browser headers (F011)
 
@@ -970,22 +1106,29 @@ enforcement must wait for these to move to external scripts/listeners or suitabl
 nonces/hashes and for repeat testing on deployment origins/HTTPS and supported
 browsers. Do not copy the report-only policy wholesale into enforcement.
 
-Run the offline regressions with
-`python -B -m unittest discover -s backend/tests -v`. For the optional real-browser
-smoke test, provide Node.js, an installed Chrome (or `PLAYWRIGHT_CHANNEL=msedge`),
-and Playwright. Set `PLAYWRIGHT_MODULE` to an absolute installed `playwright` or
-`@playwright/test` module directory if it is outside the normal Node module path,
-then run `python -B backend/tests/browser_security_smoke.py`. Stop the running
-chatbot first: the smoke test binds loopback ports 5000 and 8000 and uses only
-test database/model/account doubles, not live accounts or model weights.
+That dated evaluation predates the current local-TTS and notice behavior; it is
+not a current end-to-end pass. Run `python -B backend/tests/run_tests.py` in the
+test environment for offline regressions, and use the current browser journeys
+under [Automated tests](#automated-tests) for UI validation. The older
+`browser_security_smoke.py`/`.cjs` utility binds fixed ports 5000/8000 and uses
+offline DB/model doubles plus optional voice dependencies. Its stale privacy
+and browser-speech assertions need updating before it can provide new acceptance
+evidence. Full CSP enforcement still needs a fresh deployment-origin evaluation.
 
-Use a dedicated MySQL account with only the permissions needed by this application. Run database creation and account setup as an administrator, then configure the application with the restricted account:
+Have a database administrator provision a database and separate serving/migration
+accounts. The following are SQL templates: replace both password placeholders
+privately and use the account host matching your deployment. The native setup
+examples use these names; application administrator logins are separate from
+MySQL accounts.
 
 ```sql
 CREATE DATABASE chatbot_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER 'chatbot_app'@'localhost' IDENTIFIED BY '<strong-random-password>';
 GRANT SELECT, INSERT, UPDATE, DELETE
   ON chatbot_db.* TO 'chatbot_app'@'localhost';
+CREATE USER 'chatbot_migrator'@'localhost' IDENTIFIED BY '<different-strong-random-password>';
+GRANT SELECT, INSERT, UPDATE, CREATE, ALTER, INDEX, REFERENCES
+  ON chatbot_db.* TO 'chatbot_migrator'@'localhost';
 ```
 
 Use a separate schema-scoped migration account with `SELECT`, `INSERT`, `UPDATE`,
@@ -995,7 +1138,11 @@ startup no longer changes schemas. No global, account-management, `FILE`, or
 grant-option permissions are needed by the application or migration runner.
 Backup tools may require additional object-specific permissions; see
 `backend/migrations/README.md`. For a remote database, replace `localhost` with
-the specific application host, not `%`.
+the specific application host, not `%`. After migration, use `chatbot_app` for
+`backend/setup_admin.py` and serving; setup needs DML, not MySQL account-creation
+rights. The local Compose image provisions its own database user with broader
+schema rights to run migrations; that convenience is not the production grant
+model above.
 
 Rotate the formerly embedded database password and session signing key on existing deployments; removing them from source does not revoke credentials. Changing the session key invalidates existing admin sessions. Keep passwords out of version control, command-line arguments, and logs.
 
@@ -1033,7 +1180,7 @@ npm ci --prefix backend/tests/browser
 python -B backend/tests/browser_smoke.py --channel chrome --repeat 2
 ```
 
-The 18 browser cases cover desktop/mobile RTL chat, login/logout, role-based
+The browser cases cover desktop/mobile RTL chat, login/logout, role-based
 navigation, theme persistence, feedback failure/retry and mocked microphone
 failures/recovery. The runner serves disposable in-memory fixtures on random
 loopback ports; it never uses live accounts, databases, models or physical audio.

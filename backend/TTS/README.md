@@ -2,6 +2,13 @@
 
 A small local web app for mixed Persian and English text-to-speech. The browser only sends text to a Python server; inference stays on the machine.
 
+`app.py` is a standalone demo with its own routes and localhost listener, not
+the chatbot entry point or administrator service. It defaults to port 5000, so
+do not run it alongside the chatbot on that port. For integrated chat playback,
+prepare the separate speech environment below and launch `backend/main.py` from
+the application environment; `backend/speech.py` starts the private worker.
+See the [application setup](../../README.md#run) and [operations guide](../../docs/operations.md).
+
 ## How it works
 
 - Persian script is normalized, converted to phonemes with `Homo-GE2PE-Persian-HF`, and synthesized with `Persian_model`.
@@ -26,7 +33,7 @@ python backend/TTS/app.py
 
 Open `http://127.0.0.1:5000`.
 
-The first synthesis/status request downloads the Persian G2P model from Hugging Face unless it is already cached. The TTS weights are read from the two local model folders, and the default Persian voice prompt is bundled in `voices/prompt_hello.wav`. Keep the model folders when cleaning the app directory. Install the Pocket TTS fork listed in `requirements.txt`; the stock package may reject the Persian configuration.
+The first synthesis/status request downloads the Persian G2P model from Hugging Face unless it is already cached. The TTS weights are read from the two local model folders, and the default Persian voice prompt is bundled in `voices/prompt_hello.wav`. Keep the model folders when cleaning the app directory. Install the Pocket TTS fork listed in `backend/TTS/requirements.txt` (included by root `requirements-tts.txt`); the stock package may reject the Persian configuration. `STT_LOCAL_FILES_ONLY` controls Whisper, not this TTS loader; prepare the speech cache/prompt separately for offline use.
 
 The chatbot uses `chat_worker.py` through `backend/speech.py`; it does not require this standalone Flask server. Verify actual Persian/English speech from the repository root with:
 

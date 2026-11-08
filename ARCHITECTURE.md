@@ -3,14 +3,19 @@
 Read this first. It should be enough to work on the project without reading every file.
 Search by function name, since line numbers drift.
 
+For executable setup steps use [README.md](README.md); for a first contribution
+use [CONTRIBUTING.md](CONTRIBUTING.md). [Operations](docs/operations.md),
+[troubleshooting](docs/troubleshooting.md) and [architecture decisions](docs/decisions/README.md)
+cover deployment, diagnosis and the reasons behind the boundaries below.
+
 ## 1. What this is
 
 A local, Persian-language (RTL) RAG chatbot. Python/Flask, MySQL, local HuggingFace models.
-- **User app** (Flask `ui_app`, port 5000): chat UI, `/chat`, `/feedback`, voice speech-to-text, runtime feature gate.
+- **User app** (Flask `ui_app`, port 5000): public chat UI, `/chat`, owner-scoped `/feedback`, voice speech-to-text, local text-to-speech and runtime feature flags.
 - **Admin app** (Flask `admin_app`, port 8000): dashboard shell plus pages for JSON Q&A import, PDF ingestion, model selection, chat history, system logs and a runtime controller.
-- Both share ONE serving process (`backend/main.py`): development uses two Flask servers; production uses one threaded Gunicorn worker listening on both ports, plus its supervising master.
+- Both share one serving process (`backend/main.py`): development uses two Flask servers; production uses one threaded Gunicorn worker listening on both ports, plus its supervising master. Optional local TTS runs in a separate private subprocess started lazily by that serving process.
 - Knowledge = `qa_documents` (JSON Q&A) + `pdf_chunks` (PDF text). Embeddings are float32 BLOBs in MySQL. Search is brute-force cosine in numpy (no vector DB).
-- Models load from local folders (`local_files_only=True`). Exception: the Whisper STT model may download on first use unless `STT_LOCAL_FILES_ONLY=1`.
+- Embedding and generator models load from local folders (`local_files_only=True`). Whisper may download on first use unless `STT_LOCAL_FILES_ONLY=1`. TTS needs separate local weights and a voice prompt; its G2P loader may download unless prepared in advance. The Whisper flag does not control TTS.
 
 ## 2. Stack
 
@@ -53,14 +58,16 @@ backend/
   searchForAnswer.py  Vector search over qa_documents / pdf_chunks + build_context
   model_registry.py   Model catalog + persisted active-model selection
   voice.py            Whisper STT on the user app (/voice/health, /voice/audio-worklet.js, WS /voice-stream)
+  speech.py           Public /tts/health and /tts/synthesize; lazy private worker and bounded synthesis
   STT/                streaming.py (AudioStream, used by voice.py), audio-worklet.js, standalone demo STT.py + README
+  TTS/                chat_worker.py, tts_engine.py, text_router.py; app.py is a separate demo
   dashboard.html/.css/.js  Admin shell served at admin `/`: sidebar + iframe that loads admin/*.html
   theme.js            Shared dark/light theme for the dashboard and every admin page (loaded as ../theme.js)
   admin/              Admin pages (.html/.css/.js each): admin (JSON), admin_pdf, adminmodel, adminchat, adminlogger, controller
   test.py             Ad-hoc retrieval smoke script, not a test suite
   tests/              Offline unittest regressions; mysql/ tests real DB effects; browser/ tests UI journeys
-  model/              (gitignored) embedding models: Qwen3-Embedding-0.6B/, gemma-4-E2B-it/
-  modelgen/           (gitignored) generator models: qwen3.5-2B/, gemma-4-E2B-it/ (Qwen3-4B files go in modelgen/ itself)
+  model/              (gitignored) active embedder: Qwen3-Embedding-0.6B/
+  modelgen/           (gitignored) qwen3.5-2B/; Qwen3-4B defaults to modelgen/ itself; Gemma is not in the catalog
   datasets/           (gitignored) sample JSON
   model_selection.json   (gitignored, runtime) persisted active model id
   controller_state.json  (gitignored, runtime) persisted voice/chat feature toggles
@@ -68,6 +75,10 @@ frontend/             User chat UI: index.html, script.js, style.css, theme.js
 requirements.txt, requirements-cuda.txt, run_gpu.cmd, README.md, LICENSE
 requirements/          Native CPU/cu118 wheel locks, shared constraints, upgrade guide and validation record
 scripts/dependencies.py  Fresh-environment installer, dependency smoke verifier and native report-to-lock recorder
+CONTRIBUTING.md       Minimal offline setup, change boundaries, review and validation guidance
+docs/operations.md    Startup, migration/serving credentials, deployment and recovery
+docs/troubleshooting.md Symptom-to-code diagnosis and known limitations
+docs/decisions/       Recorded implementation decisions, change process and ADR template
 ```
 
 ## 4. Factories and startup (`application.py`, `bootstrap.py`, `main.py`)
@@ -112,6 +123,10 @@ The runtime initialization order is:
 5. Return both apps to the selected runtime. Development starts user serving in a daemon thread and admin serving on the main thread. Production serves both through the worker's shared thread pool. Both profiles default to `APP_HOST=127.0.0.1`; LAN exposure requires explicitly setting an interface address or wildcard. Debugger and reloader are disabled.
 
 The Whisper model is not loaded at startup. It loads lazily on the first `/voice/health` call or the controller `voice_load` action.
+`/tts/health` or the first synthesis independently starts `speech.SpeechService`'s
+private worker. `TTS_PYTHON` chooses its interpreter; `.venv-tts` is preferred when
+present. TTS failure leaves text answers usable. Unloading voice through the
+controller concerns Whisper only, not this TTS worker.
 
 Management commands can import `bootstrap.initialize_database()` and invoke its
 read-only schema guard without importing models or applications. Schema changes
@@ -148,7 +163,7 @@ One database-scoped named lock excludes competing migration commands. Each versi
 ### 6.1 Chat / RAG (`user.py: chat()`, POST `/chat`)
 
 0. `controller_gate` (before_request) returns 503 when chat is disabled in the controller. The chat admission decorator rejects excess per-IP traffic with 429 and retry guidance before parsing the message or running retrieval/generation.
-1. Read JSON `{message}` and `get_client_ip()` (uses only middleware-validated `request.remote_addr`). An empty message returns 400. `chat_sessions.chat_owner_hash(create=True)` establishes or reuses a signed anonymous chat session; the server derives the public `user_id` from its ownership hash. Any supplied `user_id` is ignored.
+1. Read JSON `{message}` and `get_client_ip()` (uses only middleware-validated `request.remote_addr`). An empty message returns 400. `chat_sessions.chat_owner_hash(create=True)` establishes or reuses a signed anonymous chat session; the server derives the public `user_id` from its ownership hash. An optional legacy `user_id` string (at most 64 characters) is accepted but ignored; invalid field types still fail validation.
 2. `_retrieve_top(query, k=6)` delegates to `RetrievalService.retrieve(query, limit=6)` (an exception here returns 500):
    - `embed_texts([query])` gives qvec (float32).
    - `_search_qa(qvec, k=5)` and `_search_pdf(qvec, k=8, query=query)` from searchForAnswer.py.
@@ -157,7 +172,7 @@ One database-scoped named lock excludes competing migration commands. Each versi
    Hits: `generate_reply(message, hits[:6])`. If generation raises, the reply falls back to `hits[0]['answer']` or `['content']`, then to the fallback text.
 4. `recommended_questions` = `question` of `hits[1:4]` (QA hits only).
 5. INSERT into `chat_history`, including the server-derived `user_id` and `owner_hash`. IP is `''` unless `RETENTION_IP_DAYS > 0`. On failure returns 503. With `RETENTION_CHAT_DAYS=0`, skip history/cookie creation and return `message_id: null`; answering still works. Response `feedback_enabled` is false if chat or feedback retention is zero, and the frontend hides rating controls.
-6. Response: `{message_id, reply, recommended_questions, score, sources:[{type, filename, pages, score}]}`.
+6. Response: `{message_id, feedback_enabled, reply, recommended_questions, score, sources:[{type, filename, pages, score}]}`.
 
 Scoring:
 - QA: `_cosine_score(qvec, blob, embedding_dim)`. Rows with a dimension mismatch or zero norm are skipped.
@@ -186,9 +201,9 @@ Scoring:
   - `qwen3.5-2b`: embedding `QWEN_EMBEDDING_PATH` (default `model/Qwen3-Embedding-0.6B`); generator `QWEN35_GENERATOR_PATH`, else `GEN_MODEL`, else `modelgen/qwen3.5-2B`.
   - `qwen3-4b`: same embedding; generator `QWEN_GENERATOR_PATH`, else `GEN_MODEL`, else `modelgen/`.
 - A model is available when both of its paths contain `config.json`. `get_active_model_id()` tries the saved id or `GEN_MODEL_ID` if available, then the first available model, then the requested or default id.
-- The selection is persisted atomically in `backend/model_selection.json` (`_read_saved_id`, `_write_saved_id`).
+- The selection is persisted atomically in `backend/model_selection.json` (`_read_saved_id`, `_write_saved_id`). A recognized saved ID takes precedence over `GEN_MODEL_ID`; if the requested model lacks either config, the first available entry wins. With no available entries, the recognized requested/default ID remains selected and the loader fails. Availability is a config-presence check, not a weight/memory validation. The only catalog IDs are `qwen3.5-2b` and `qwen3-4b`; loader compatibility with Gemma does not register it.
 - Public functions: `get_active_model_id()`, `get_model_definition(id)`, `get_model_catalog()`, `model_available(id)`, `set_active_model(id)` (raises `FileNotFoundError` if unavailable).
-- Admin flow: POST `/admin/api/models` -> `admin_routes.models.admin_set_model()` -> `ModelLifecycleService.select_model()` -> `set_active_model` + `set_embedding_model` + `set_generator_model`. Returns 409 when model files are missing and 400 for an unknown id. Models reload lazily on the next request.
+- Admin flow: sign in, open `/admin/adminmodel.html` with the `models` grant or administrator role; POST `/admin/api/models` with CSRF -> `admin_routes.models.admin_set_model()` -> `ModelLifecycleService.select_model()` -> `set_active_model` + `set_embedding_model` + `set_generator_model`. Returns 409 for missing configs and 400 for an unknown ID. Selection clears loaded text models; they reload on next use. It does not re-embed stored knowledge. Re-ingest after changing the embedding model, even if dimensions match. `/adminmodel.html` is not an alias.
 
 ### 6.5 JSON Q&A ingestion (`admin_routes/knowledge.py`, `services/ingestion.py`)
 
@@ -219,7 +234,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 - `STT/streaming.py`: `AudioStream` (`feed`, `_feed_frame`, `_finalize`, `next_job`, `finish`, `has_pending`), `TranscriptionJob`, `SAMPLE_RATE=16000`, `MAX_PACKET_BYTES` (16000 bytes, 0.5 s). Voice detection is RMS energy per 100 ms frame (`voice_threshold`). A segment closes after 0.7 s of silence or 12 s of audio, and a partial transcript is produced every 1 s. More than 3 queued segments raises "cannot keep up".
 - Env: `STT_MODEL` (base), `STT_DEVICE` (cpu), `STT_COMPUTE_TYPE` (int8, or float16 on cuda), `STT_LANGUAGE` (fa; `auto` = detect), `STT_VOICE_THRESHOLD` (0.008), `STT_CPU_THREADS` (min(4, cpus)), `STT_LOCAL_FILES_ONLY`.
 - `STT/STT.py` is a standalone demo server (`/`, `/health`, WS `/stream`, POST `/voice`) that also defaults to port 5000 (`STT_PORT`). Never run it together with `main.py`. Its UI files are gitignored.
-- Frontend flow: mic -> AudioWorklet (downsamples to 16 kHz PCM16) -> WebSocket -> live transcript in the input box. On stop, the final text goes through the normal `/chat`. Spoken replies use the browser's `speechSynthesis` (a Persian voice if available) and only apply to messages sent by voice when the "voice replies" checkbox is on. Playback defaults off; the visible notice distinguishes local server-side STT/no audio files from browser/OS playback that may send reply text to a network provider.
+- Frontend flow: mic -> AudioWorklet (downsamples to 16 kHz PCM16) -> WebSocket -> live transcript in the input box. A 1.5-second pause after speech or manual stop sends the final transcript through `/chat`. Replies to voice messages use POST `/tts/synthesize` and an HTML audio player, not browser `speechSynthesis`. Playback is checked by default and can be disabled/stopped; typed messages remain text-only. The private `TTS/chat_worker.py` uses local Persian/English models and returns WAV bytes in memory. Neither microphone audio nor generated WAV is persisted by these handlers; submitted transcripts follow chat retention. See README for the separate optional TTS environment and first-use cache preparation.
 
 ### 6.9 Runtime controller (`controller.py`, `controller_api.py`)
 
@@ -227,6 +242,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 - `controller_api.register(ui_app, admin_app)` explicitly calls `register_ui` and `register_admin`, each idempotent per supplied app (`app.extensions['controller']`). HTTP actions/status delegate through `ModelLifecycleService`; importing it registers nothing and touches no models.
 - Hooks on the user app:
   - `controller_gate` (before_request): `/voice*` returns 403 when voice is off, and `/chat` returns 503 when chat is off.
+    The switches do not gate `/tts/*` or `/feedback`; TTS remains a separate public, rate-limited service and feedback follows ownership/retention policy.
   - `controller_inject` (after_request on `/` HTML): injects `window.__CTL_FEATURES__` and `<script src="/controller/features.js">`, and disables caching.
   - GET `/controller/features` (JSON) and GET `/controller/features.js`. The script hides the voice UI when voice is off, shows a "chat disabled" banner when chat is off, polls every 5 s, and reloads the page when voice is turned back on.
 - Admin routes: GET `/controller` (serves `admin/controller.html`), GET `/admin/api/controller/status` (`features`, `models` {generator, embedder, voice}, `busy`, `errors`, `gpu`), POST `/admin/api/controller/action`.
@@ -238,7 +254,7 @@ Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_
 
 - `logger.logDrop(message, level)`, or the legacy `logDrop(level, log_from, message, warninglevel)`. `_write()` inserts into `adminlogger` and falls back to the `chatbot.audit` Python logger on DB error. A thread-local flag prevents recursive logging. Caller file and function are inferred with `inspect`.
 - Levels: `logger.INFORMATION=1`, `logger.WARNING=2`, `logger.FAILED=3`.
-- `@logger.operation` wraps nearly every function. It logs completion, exception types, and Flask HTTP outcomes (4xx = warning, 5xx = failed, with an allowlisted public code, never the response body). It never logs request bodies or model inputs. Chat/feedback logs omit message IDs and rating values. `RETENTION_LOG_DAYS=0` suppresses DB logs and their fallback copies. Otherwise this writes one DB row per decorated call, including every search and embedding call.
+- `@logger.operation` wraps selected application functions, including search, embedding, generation and many HTTP handlers. It logs completion, exception types, and Flask HTTP outcomes (4xx = warning, 5xx = failed, with an allowlisted public code, never the response body). It never logs request bodies or model inputs. Chat/feedback logs omit message IDs and rating values. `RETENTION_LOG_DAYS=0` suppresses DB logs and their fallback copies. Otherwise a decorated call attempts one DB log write; even `/health` can attempt logging without making its response a database readiness check.
 - Handlers retain `@logger.operation` and validation/admission decorators; explicit route registrars bind those wrapped handlers without changing endpoint names.
 
 ## 7. HTTP API
@@ -254,9 +270,16 @@ is currently deprecated. Offline `test_api_contracts.py` exercises real handlers
 against these schemas and checks route, permission and legacy compatibility.
 
 ### User app (port 5000, explicit `UI_ALLOWED_ORIGINS` CORS)
+
+No administrator login is required on this service. Feedback requires the
+anonymous ownership cookie. `/health` is liveness only and performs no database
+or model readiness check. Speech health routes start their respective lazy
+loaders and may return 503 while loading or unavailable.
+
 | Method | Path | Handler |
 | --- | --- | --- |
 | GET | `/` | `ui_index` (serves `frontend/index.html`, controller script injected) |
+| GET | `/index.html` | `ui_index_alias` (302 to `/`) |
 | GET | static files | Flask static folder = `frontend/` (`static_url_path=''`) |
 | GET | `/health` | `health` |
 | POST | `/chat` | `chat` |
@@ -267,11 +290,19 @@ against these schemas and checks route, permission and legacy compatibility.
 | WS | `/voice-stream` | `voice_stream` |
 | GET | `/controller/features`, `/controller/features.js` | `controller_features`, `controller_features_js` |
 
-### Admin app (port 8000, authenticated, same-origin only)
+### Admin app (port 8000, same-origin only)
+
+`/login`, `/login.css`, `/login.js` and `/login-theme.js` are public; login POST
+still requires pre-login CSRF. All other registered admin operations need an
+active session and their operation policy. Production HTTPS covers public login
+resources as well. Unauthenticated APIs/logout return 401; protected HTML
+redirects to login. An authenticated but unauthorized operation returns 403.
+
 | Method | Path | Handler |
 | --- | --- | --- |
 | GET | `/` | `admin_index` (serves `backend/dashboard.html`) |
 | GET, POST | `/login` | `admin_login` (pre-login form CSRF proof required for POST) |
+| GET | `/login.css`, `/login.js`, `/login-theme.js` | `login_css`, `login_js`, `login_theme` (public login assets) |
 | POST | `/logout` | `admin_logout` (authenticated, CSRF-protected; GET never logs out) |
 | GET | `/admin/api/session` | `admin_session` (current user, session-bound `csrf_token`, server-computed `allowed_pages`) |
 | GET, POST | `/admin/api/admin-users` | `admin_users_collection` (administrator-only) |
@@ -307,7 +338,7 @@ All admin mutations (every method except GET/HEAD/OPTIONS) require CSRF proof af
   - Chat: `sendMessage(messageOverride, speakReply)` -> POST `/chat`; `addMessage` (typewriter effect); `showTyping`/`hideTyping`; `addFeedbackButtons` and `sendFeedback` -> `/feedback`; `showRecommendedQuestions`, `sendQuickQuestion`.
   - Health: `checkBackendConnection` (`/health`); `checkVoiceBackend` (`/voice/health`, polled every 3 s).
   - Voice: `startVoiceRecording`, `stopVoiceRecording`, `connectVoiceStream`, `voiceTranscript`, `voiceMessage`, `speakVoiceReply`, `setVoiceStatus`, `updateVoiceControls`, `failVoiceSession`, `releaseVoiceMicrophone`. The worklet is loaded from `/voice/audio-worklet.js` (`backend/STT/audio-worklet.js`).
-- **Admin UI**: `backend/dashboard.html` is the shell. Its sidebar items (`data-page`) set the `src` of iframe `#pageFrame` (default `admin/admin.html`). Every page loads `../theme.js` (`backend/theme.js`). Pages call the API on the same origin, or on `http://localhost:8000` when opened as `file:`.
+- **Admin UI**: `backend/dashboard.html` is the authenticated shell. Its sidebar items (`data-page`) set iframe `#pageFrame`; `dashboard.js` uses server-provided `allowed_pages` and selects the first permitted item if the initial Q&A item is denied, or leaves the frame blank for an account with no feature access. Pages use same-origin APIs and shared theme assets. Any legacy `file:` URL fallback in page code is unsupported by the access controls.
   - The shell and all admin pages load `admin-csrf.js` before page scripts and use `adminFetch(url, options)` rather than raw fetch. It obtains proof from `/admin/api/session`, attaches `X-CSRF-Token` to unsafe methods, preserves multipart bodies/JSON headers, rejects cross-origin destinations, and never retries mutations automatically. Failed logout stays on the dashboard with an error rather than falsely indicating success. File-opened admin pages are unsupported.
   - `admin.*` JSON Q&A: `api`, `loadStats`, `handleFile`, `showResult`, `loadDocuments`, `deleteDoc`, pagination and search.
   - `admin_pdf.*` PDF: `api`, `handleFile` (iframe preview), upload, `loadStats`, `loadDocuments`, `deletePdf`, `statusText`, `formatBytes`.
@@ -315,7 +346,7 @@ All admin mutations (every method except GET/HEAD/OPTIONS) require CSRF proof af
   - `adminchat.*` chat inspector: `loadSessions`, `renderSessions`, `selectSession`, `loadMessages`, `loadStats`, `renderThread`, `bubble`, `setupAutoRefresh`. Its API uses the served page origin, including HTTPS.
   - `adminlogger.*` system logs: `loadLogs`, `getFilteredLogs`, `renderLogs`, `createLogRow`, `updateStats`, `getStatus` (25 rows per page, client-side).
   - `controller.*` runtime controller: `refresh` (polls status every 2 s), `render`, `sendAction`; one toggle switch per feature and per model.
-  - The sidebar also links `admin/settings.html`, which does not exist (404).
+  - The template includes `admin/settings.html`, but it has no registered page policy or file. `allowed_pages` hides it even for administrators; direct authenticated requests are denied with 403.
 
 ## 9. Configuration and run
 
@@ -350,7 +381,7 @@ selection and controller toggles remain separate runtime state.
 
 | Var | Purpose | Default |
 | --- | --- | --- |
-| `DB_HOST/PORT/USER/PASS/NAME` | MySQL | localhost / 3306 / root / dev pw / chatbot_db |
+| `DB_HOST/PORT/USER/PASS/NAME` | MySQL | Development: localhost / 3306 / root / empty password / chatbot_db; production requires restricted user, password and database |
 | `GEN_DEVICE` | auto, cuda, cpu | auto |
 | `GEN_QUANTIZATION` | auto, 4bit, none | auto |
 | `GEN_MODEL_ID` | initial model id when nothing is saved; qwen3.5-2b or qwen3-4b | qwen3.5-2b |
@@ -376,7 +407,7 @@ Run: `python backend\main.py` (run from anywhere; imports are flat, relative to 
 - Modules import each other by flat names (`from database import ...`), so `backend/` must be the script directory or on `sys.path`.
 - `database.py` is imported by almost every module (the logger lives there), so keep it dependency-light to avoid circular imports.
 - Import graph: factories import route modules and service classes only when called; `admin` composes `admin_routes` (no route-to-route imports except shared asset paths); HTTP routes call services, never the reverse. `services.adapters` imports database/model/PDF adapters only when used; the lifecycle service resolves its adapters only on explicit operations. `generator` -> `searchForAnswer`, `model_registry`; `interface` -> `model_registry`; `controller_api` -> `controller`, lifecycle service (not the apps or model modules).
-- Feature changes that touch the user page or model lifecycle should go through `controller_api.py` hooks, which follows the existing "don't modify the core modules" pattern.
+- Change the module that owns the behavior: user interaction in `frontend/`, HTTP contracts/guards in route modules, model lifecycle in its service/adapters. Use `controller_api.py` for feature gating/control integration; it is not a general replacement for editing core modules. See CONTRIBUTING.md for regression expectations.
 - Security and production caveats: both apps default to loopback with debug disabled and require explicit development selection to use Flask's server. Production uses threaded Gunicorn on Linux/WSL and requires explicit browser-origin lists. Unapproved/opaque origins are denied before handlers on both apps; admin remains same-origin only. See README for CORS, proxy trust, credential, and network restrictions.
 - `backend/tests/test_core_units.py` covers hashing, current Persian lexical normalization, chunking, scoring/retrieval, permissions and parsing with scoped model/database doubles. Install only `backend/tests/requirements.txt`, then run `python -B backend/tests/run_tests.py --repeat 2`; this discovers all default regressions while forbidding real network/database work, model dependency imports and model-directory reads. See `backend/tests/TESTING.md` for clean-environment setup and focused discovery. `test_admin_authorization.py` retains the complete operation-policy and Flask authorization matrix. Standard `python -B -m unittest discover -s backend/tests -v` also works. `backend/test.py` remains a separate manual retrieval check, not a regression test.
 - F023 removed obsolete commented implementations (including the unused `logger.py`), redundant imports and the duplicate generator prompt assignment. `generate_reply` accepts retrieved dictionaries, reflected in its annotation. Logging remains in `database.py`.
@@ -385,7 +416,7 @@ Run: `python backend\main.py` (run from anywhere; imports are flat, relative to 
 
 ## Admin user authentication
 
-`backend/admin_users.py` owns PBKDF2 password hashing, login verification, user serialization, and user-management persistence. `backend/admin.py` applies session, CSRF, and explicit `admin_policy.py` operation checks to dashboard pages, APIs, and controller routes, and exposes `/login`, `POST /logout`, `/admin/api/session`, and `/admin/api/admin-users`. Current feature grants remain compatible, but only a true `is_admin` role grants account-management access; usernames confer no authority. The session endpoint supplies permitted navigation pages from the server policy, not a separate client role map. Account deletion forbids self-deletion by ID, not deletion of a special username. Explicit versioned migrations create the backtick-quoted MySQL table `admin-users`, add `session_version`, and create `admin_sessions`; they never seed accounts. Startup and local setup only verify the recorded schema version. `backend/setup_admin.py` provides local interactive first-account setup. `backend/admin-users/login.html` is the login view; `backend/admin/admin-user-control.html` is the administrator-only management view.
+`backend/admin_users.py` owns PBKDF2 password hashing, login verification, user serialization, and user-management persistence. `backend/admin.py` composes routes; `admin_routes/auth.py` applies the session, CSRF and `admin_policy.py` operation guard and exposes `/login`, POST `/logout` and `/admin/api/session`. `admin_routes/accounts.py` exposes account management. Only a true `is_admin` role grants account-management access; usernames confer no authority. The session endpoint supplies permitted navigation pages from server policy. Account deletion forbids self-deletion by ID, not deletion of a special username, and does not guarantee a remaining active administrator. Explicit migrations create `admin-users`, session versions and `admin_sessions` without seeded accounts. Startup and setup verify the schema first; `backend/setup_admin.py` interactively creates `administrator` with a chosen password of at least 12 characters only when no account exists, including no disabled accounts. It is not a reset/recovery command. The login view is `backend/admin-users/login.html`; account management is `backend/admin/admin-user-control.html`. See `backend/admin-users/README.md` for setup and resumption.
 
 `backend/admin_sessions.py` issues random opaque IDs (only SHA-256 hashes are stored in MySQL), checks the fixed expiry and idle deadline, and deletes sessions on logout. After login, signed cookies contain only the ID and Flask's permanent flag; current user data lives in `g.admin_user`, not the cookie. Defaults are 8 hours absolute (`ADMIN_SESSION_LIFETIME_SECONDS`, 60-86400) and 30 minutes idle (`ADMIN_SESSION_IDLE_SECONDS`, 60-absolute lifetime). Requests update activity but never renew cookies or absolute expiry. `update_user()` atomically increments `session_version` with any password, permission, active-status, or administrator-status update; every older session fails even if a change is later reverted. User deletion cascades to sessions. Old pre-upgrade cookies are rejected. Direct SQL security changes must increment `session_version` atomically too.
 
@@ -419,7 +450,7 @@ Both apps enforce nosniff, `strict-origin-when-cross-origin`, and a Permissions 
 
 The rest of CSP is sent only as `Content-Security-Policy-Report-Only`. The candidate allows local scripts/worklets, styles (including current inline styles), same-origin fetch and configured WebSocket origins, and same-origin/blob iframe PDF previews. No telemetry endpoint is exposed; evaluation uses browser console/`securitypolicyviolation` events without uploading URLs/samples. Chrome and Edge smoke evaluation found only inline-script/handler reports, with no enforced violations across chat/feedback, fake microphone + real worklet/voice socket, login/logout, admin iframe/pages, CSRF mutations, and blob PDF preview. The controller-injected feature-state script and existing inline click handlers need migration/nonces/hashes before full CSP enforcement. See README for rollout gates and commands.
 
-`backend/tests/test_safe_errors_headers.py` covers injected exception/response leaks, protocol headers, authentication/validation codes, voice failures, MIME compatibility, iframe policy and production-only trusted-scheme HSTS. `backend/tests/browser_security_smoke.py` + `.cjs` optionally exercise installed Chrome/Edge with Playwright and offline model/DB doubles on loopback ports 5000/8000. They are not part of default unittest discovery and never use real model weights/accounts.
+`backend/tests/test_safe_errors_headers.py` covers injected exception/response leaks, protocol headers, authentication/validation codes, voice failures, MIME compatibility, iframe policy and production-only trusted-scheme HSTS. The historical Chrome/Edge evaluation predates current TTS/notice changes. `backend/tests/browser_security_smoke.py` + `.cjs` use offline model/DB doubles on fixed loopback ports 5000/8000, outside default discovery. Their stale privacy/playback assertions need updating before providing current browser acceptance evidence; they never use real model weights/accounts.
 
 ## Privacy and retention (F012)
 
@@ -429,9 +460,9 @@ The rest of CSP is sent only as `Content-Security-Policy-Report-Only`. The candi
 
 `RETENTION_DELETE_ENABLED=0` pauses automatic/manual retention-job mutations, not collection or existing authorized admin erasure routes; it is not record-level legal holds. `python -B backend/retention.py --dry-run` (also the CLI default) previews independent aggregate counts without DB writes; `--apply` honors that pause. No models load. Each invocation emits a `privacy_retention` completion record with timestamp/status/counts/flags/fixed failure code only, never text/IPs/identifiers/SQL/exception messages. Applied-job records also use the normal expiring DB logger when enabled/available; Python log output remains available otherwise. No indefinitely retained special archive is created. Monitor failed/partial/locked sweeps; expiry can lag until successful cleanup. Defaults apply to existing rows on next startup; preview first or explicitly pause before upgrade.
 
-`ui_index()` now renders `frontend/index.html` with the effective policy; `/index.html` redirects to `/` so it does not serve the template as a static page. The Persian privacy notice explains purposes/ages, pause status, cookie lifetime, authorized early-deletion requests, and external backup/log policies. The visible voice notice distinguishes server-side local Whisper (bounded RAM audio, no recording files; submitted transcripts follow chat retention) from potentially network-backed browser speech playback. Playback is opt-in per page, unchecked by default, and unchecking cancels queued speech. Default development/Gunicorn access logging is disabled to avoid another visitor-IP/query-ID copy. Infrastructure logs, database backups/binlogs, exports and speech-provider retention remain operator-managed; restored snapshots require cleanup before serving. Knowledge documents and administrator accounts are not age-deleted.
+`ui_index()` renders `frontend/index.html` with the effective policy; `/index.html` redirects to `/`. The current template comments out the detailed privacy summary/retention text, so it does not visibly disclose configured lifetimes or paused deletion. Operators must publish that information separately; passing template-string assertions does not establish notice visibility. The visible voice notice describes local Whisper and server-side TTS. Playback is checked by default; disabling it or pressing stop cancels local answer playback. Default development/Gunicorn access logging is disabled. Infrastructure logs, database backups/binlogs and exports remain operator-managed; restored snapshots require cleanup before serving. Knowledge documents and administrator accounts are not age-deleted.
 
-`backend/tests/test_retention.py` runs translated cleanup SQL against an in-memory store, including expiry/null boundaries, pause/zero-day policies, independent field ages, dry-run, caps/idempotence, lock collisions, rollback/committed counts, safe completion records, configuration bounds and startup wiring. `test_privacy.py` covers actual routes' collection controls and rendered notice plus privacy-safe logs. The optional browser smoke also checks notice visibility and playback opt-in/cancellation. See README for purpose/configuration tables and operational recovery limits.
+`backend/tests/test_retention.py` runs translated cleanup SQL against an in-memory store, including expiry/null boundaries, pause/zero-day policies, independent field ages, dry-run, caps/idempotence, lock collisions, rollback/committed counts, safe completion records, configuration bounds and startup wiring. `test_privacy.py` covers route collection controls, rendered policy strings, local playback controls and privacy-safe logs, not visible notice completeness. Current browser journeys cover local TTS playback/cancellation. The older `browser_security_smoke.py`/`.cjs` expects browser speech synthesis and the now-commented notice; those assertions need updating before it can certify the current UI. See README for configuration and operational recovery limits.
 
 ## Flask/MySQL integration tests (F014)
 
@@ -441,13 +472,13 @@ The rest of CSP is sent only as `Content-Security-Policy-Report-Only`. The candi
 
 ## Browser regression tests (F015)
 
-`python -B backend/tests/browser_smoke.py --channel chrome --repeat 2` runs 18 Playwright scenarios against two ephemeral loopback servers. Install the offline Python test dependencies plus `npm ci --prefix backend/tests/browser`; Node 20+ and installed Chrome/Edge (or separately installed Chromium with `--channel chromium`) are required. The npm lockfile pins Playwright. Missing dependencies/browsers, failed assertions and empty test selection fail explicitly. No real DB, models, microphone, accounts or configured application service is used. Deployment settings are replaced; DB/model access and outbound Python sockets are forbidden. Fresh fixture tokens guard test-only reset/state routes, and the runner owns/cleans its sockets and threads. Browser requests stay on the fixture's two origins.
+`python -B backend/tests/browser_smoke.py --channel chrome --repeat 2` runs Playwright journeys against two ephemeral loopback servers. Install the offline Python test dependencies plus `npm ci --prefix backend/tests/browser`; Node 20+ and installed Chrome/Edge (or separately installed Chromium with `--channel chromium`) are required. The npm lockfile pins Playwright. Missing dependencies/browsers, failed assertions and empty test selection fail explicitly. No real DB, models, microphone, accounts or configured application service is used. Deployment settings are replaced; DB/model access and outbound Python sockets are forbidden. Fresh fixture tokens guard test-only reset/state routes, and the runner owns/cleans its sockets and threads. Browser requests stay on the fixture's two origins.
 
 `browser/journeys.spec.cjs` covers desktop/mobile RTL rendering and sending, quick/recommended questions and pending controls, login/logout and replay rejection, admin/PDF-only/no-grant navigation, theme persistence and origin/tab/iframe behavior, feedback failure/retry/overwrite, and unavailable/unsupported/denied/missing/disconnected microphone states. `browser/audio.cjs` doubles browser capture/worklet/WebSocket APIs to test draft/partial-transcript preservation, cleanup and final-transcript sending without hardware. Real Flask guards and served UI code remain in the loop; persistence/model/voice adapters are in-memory doubles supplied by `browser_support.py`. Each case resets its own fixture state, uses a fresh browser context and has no automatic retries. `test_browser_fixture.py` checks the adapters and isolation in default offline discovery.
 
-The suite detected and now protects fixes for message text inheriting LTR from the bubble container and the unauthenticated login theme script being blocked. `.message` explicitly sets RTL text while preserving bubble alignment. `/login-theme.js` serves the shared backend theme script as an exact public login asset; `/theme.js` and other dashboard assets stay authenticated. The operation-policy matrix includes the new alias.
+The suite protects fixes for message text inheriting LTR from the bubble container and the unauthenticated login theme script being blocked. `.message` explicitly sets RTL text while preserving bubble alignment. `/login-theme.js` serves the shared backend theme script as an exact public login asset; `/theme.js` and other dashboard assets stay authenticated. The operation-policy matrix includes the new alias.
 
-Each run prints an ignored `backend/tests/browser-artifacts/<id>` folder containing a JSON report and screenshots/traces/error context for failures. `--grep` focuses cases; `--channel msedge` tests Edge. See `backend/tests/TESTING.md` for complete setup and diagnostic instructions. The earlier fixed-port `browser_security_smoke.py`/`.cjs` remains a separate optional CSP/real-worklet/WebSocket compatibility check, not a substitute for this journey suite.
+Each run prints an ignored `backend/tests/browser-artifacts/<id>` folder containing a JSON report and screenshots/traces/error context for failures. `--grep` focuses cases; `--channel msedge` tests Edge. See `backend/tests/TESTING.md` for complete setup and diagnostic instructions. The earlier fixed-port `browser_security_smoke.py`/`.cjs` is a historical compatibility utility with stale notice/playback expectations, not a substitute for this journey suite.
 
 ## Continuous integration (F016)
 

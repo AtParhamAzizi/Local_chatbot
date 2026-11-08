@@ -2,13 +2,29 @@
 
 Explicit migrations create the MySQL table named `admin-users` but never seed
 an account or password. Startup and setup only check the recorded schema version.
-From the repository root, with the database environment used by the application,
-initialize a fresh, empty database before running setup:
+From the repository root, configure the same intended `APP_ENV`, `DB_HOST`,
+`DB_PORT` and `DB_NAME` as the application. For native local development,
+explicitly set `APP_ENV=development` in the terminal before these commands;
+neither Python nor this setup script reads `.env`. See the
+[native setup examples](../../README.md#setup) for protected credential input.
+Using the separate migration DB account, initialize a fresh, empty database:
 
 ```powershell
 python -B backend/schema_migrations.py upgrade
-python backend/setup_admin.py
+python -B backend/schema_migrations.py status
 ```
+
+Confirm version 4 and empty pending/incomplete lists. Switch `DB_USER` and
+`DB_PASS` to the restricted serving account, keeping the same database and
+profile, before creating the application administrator:
+
+```powershell
+python -B backend/setup_admin.py
+```
+
+The MySQL migration/serving accounts are distinct from the web administrator
+created here. Setup requires ordinary DML privileges, not schema or MySQL
+account-creation rights.
 
 For existing databases, first follow `backend/migrations/README.md`: upgrades
 require a tested backup and an explicit migration command, never startup DDL.

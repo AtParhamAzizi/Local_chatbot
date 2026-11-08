@@ -249,7 +249,7 @@ An existing installation can be reused by setting `PLAYWRIGHT_MODULE` to an
 absolute **@playwright/test** package directory, not just `playwright-core`.
 Leave that variable unset to use this repository's pinned installation.
 
-The 18 named scenarios exercise the actual served HTML/CSS/JavaScript:
+The named scenarios exercise the actual served HTML/CSS/JavaScript:
 
 - Persian document/input/message direction, mixed Persian/Latin text rendered as
   text rather than HTML, bubble placement and no horizontal overflow at desktop
@@ -268,6 +268,10 @@ The 18 named scenarios exercise the actual served HTML/CSS/JavaScript:
   unavailable backend and unsupported APIs, preserving drafts and text chat.
   Mid-recording device disconnection keeps the partial transcript and releases
   capture; a successful mocked stop sends one final transcript and closes audio.
+- Local TTS playback after a voice transcript, silence-based submission,
+  disabling playback, unavailable synthesis, stopping playback for another
+  recording and manual audio controls after autoplay denial. Speech synthesis
+  is a deterministic fixture adapter; real speech/model quality remains separate.
 
 Each scenario gets a fresh browser context and resets only the fixture's
 in-memory accounts/sessions/history, faults and limiters. Cases run serially with
@@ -325,7 +329,10 @@ assets remain authenticated, with authorization-matrix coverage.
 The older `browser_security_smoke.py` / `.cjs` remains a separate F011/F012 CSP,
 worklet and WebSocket compatibility check on fixed ports 5000/8000 with its own
 optional speech dependencies. It is not the primary journey regression runner
-and is not invoked by this suite or default unittest discovery.
+and is not invoked by this suite or default unittest discovery. Its notice
+visibility and browser-`speechSynthesis` opt-in assertions predate the current
+commented notice and local TTS UI. Update that fixture before treating it as a
+current acceptance check; historical results do not certify current UI behavior.
 
 ## Continuous integration (F016)
 

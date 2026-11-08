@@ -30,7 +30,7 @@ Every POST/PATCH/DELETE requires CSRF proof before handlers or side effects.
 | Method | Route | Operation | Required authority |
 | --- | --- | --- | --- |
 | GET / POST | `/login` | `login.view` / `login.submit` | Public; POST requires pre-login CSRF |
-| GET | `/login.css`, `/login.js` | `login.assets` | Public |
+| GET | `/login.css`, `/login.js`, `/login-theme.js` | `login.assets` | Public |
 | GET | `/` | `dashboard.view` | Authenticated |
 | GET | `/dashboard.css`, `/dashboard.js`, `/theme.js`, `/admin-csrf.js` | `dashboard.assets` | Authenticated |
 | GET | `/admin/api/session` | `session.read` | Authenticated |
