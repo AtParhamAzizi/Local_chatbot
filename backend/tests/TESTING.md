@@ -100,6 +100,68 @@ modules inside scoped fixtures so imports cannot capture a previous fixture's
 database/logger/auth dependencies. The original authorization, validation,
 privacy, MySQL and browser suites remain the client-compatibility regressions.
 
+## Embedding micro-batches (F025)
+
+`test_embedding_batches.py` checks actual adapter call sizes, uneven final
+batches, input/vector/page ordering, JSON deduplication, environment validation,
+partial progress callbacks/audit counts, malformed later-batch output, and
+temporary-file cleanup after inference/connection/persistence failure. A failed
+later batch cannot start knowledge writes or delete a previous PDF. A weakref
+check ensures the prior activation array is released before the next model call.
+
+The offline memory acceptance budget is **32 MiB of additional tracked Python/
+NumPy allocations per ingestion** at batch size 8. Both maximum-size fixtures
+contain 256 inputs: JSON uses 4096-character questions and 16000-character
+answers; PDF uses 128 extracted pages with 256 chunks through the real splitter.
+The embedding double allocates and touches an `8 x 512 x 1024` float32 activation
+(16 MiB) for each batch. Tests assert 32 calls, exactly 256 persisted vectors,
+ordered vector markers, and progress at every batch boundary. NumPy allocation
+tracking must be active or the test fails. On November 8, 2026, measured peaks
+were 21.11 MiB for JSON and 16.86 MiB for PDF. This budget excludes prebuilt raw
+fixtures, real model weights/native workspaces, HTTP parsing, and concurrent
+requests; it verifies the bounded service pipeline, not deployment RSS.
+
+```powershell
+.venv-tests\Scripts\python -B backend/tests/run_tests.py --pattern test_embedding_batches.py -v
+```
+
+An optional acceptance runner uses the installed local Qwen embedder on CPU and
+real PyMuPDF extraction, with database writes captured in memory and database/
+network access forbidden. It never starts the apps or loads the generator. Use
+the full application environment and complete local weights; no downloads or
+extra test dependencies are required. Declare the whole-process peak resident
+memory budget before running:
+
+```powershell
+.venv\Scripts\python -B backend/tests/embedding_benchmark.py --memory-budget-mib 6144 --batch-size 8 --threads 4
+```
+
+On Linux use `.venv/bin/python`. This exercises 256 mixed-length JSON questions
+(the first eight reach the real 512-token limit) and a generated 128-page PDF
+yielding 256 chunks. Add `--long-json-count 256` for sustained full-length JSON
+stress; that extended CPU run is separate from the default acceptance fixture.
+It checks batch sizes, vector counts, page/order metadata, and first/boundary/last
+vectors against single-input inference. It reports elapsed time and OS peak
+resident memory (Windows peak working set or Unix `ru_maxrss`) and fails if the
+declared budget is exceeded. The budget is an acceptance assertion, not an OS
+memory limit; batch size controls the workload. Peak RSS includes imported
+libraries and embedding weights, excludes generator/speech/concurrent requests,
+and is cumulative across both fixtures in the isolated process. Recheck after
+changing hardware, weights, dependencies, or batch size.
+
+Acceptance recorded November 8, 2026: Windows AMD64, AMD Ryzen 5 3500U,
+Python 3.13.14, torch 2.7.1+cu118 (embedding on CPU), transformers 5.20.2,
+PyMuPDF 1.28.2 and NumPy 2.5.4. The default command above passed, including the
+single-input vector comparisons, with dimension 1024 and four inference threads:
+
+| Fixture | Persisted vectors | Model batches | Ingestion + comparison time | Cumulative peak resident memory | Declared budget |
+| --- | --- | --- | --- | --- | --- |
+| JSON, 8 long + 248 short questions | 256 | 32 | 120.47 s | 4413.31 MiB | 6144 MiB |
+| PDF, 128 pages | 256 | 32 | 310.85 s | 4413.31 MiB | 6144 MiB |
+
+Heavy dependency import time precedes the per-fixture timer. These measurements
+cover captured database writes, not a live MySQL server or a serving application.
+
 ## API contracts (F022)
 
 `docs/api/openapi.json` defines the v1 payload schemas and route requirements;

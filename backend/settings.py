@@ -86,6 +86,7 @@ SETTING_REGISTRY = MappingProxyType({
     "RETENTION_INTERVAL_SECONDS": Setting("integer", 3600, 60, 86400, public=True),
     "RETENTION_BATCH_SIZE": Setting("integer", 1000, 1, 10000, public=True),
     "RETENTION_MAX_BATCHES": Setting("integer", 100, 1, 1000, public=True),
+    "EMBEDDING_BATCH_SIZE": Setting("integer", 8, 1, 64, public=True),
     "GEN_DEVICE": Setting("choice", "auto", choices=("auto", "cpu", "cuda"), public=True),
     "GEN_QUANTIZATION": Setting("choice", "auto", choices=("auto", "4bit", "none"), public=True),
     "GEN_MODEL_ID": Setting("choice", MODEL_IDS[0], choices=MODEL_IDS, public=True),

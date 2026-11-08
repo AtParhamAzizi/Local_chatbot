@@ -664,6 +664,7 @@ In addition to the deployment/session/retention tables, the registry validates:
 | Settings | Type / accepted values |
 | --- | --- |
 | `GEN_DEVICE`, `GEN_QUANTIZATION`, `GEN_MODEL_ID` | Declared choices; explicit `cpu` with `4bit` is rejected |
+| `EMBEDDING_BATCH_SIZE` | Integer, 1-64; default 8 inputs per JSON/PDF embedding call; restart after changing |
 | `GEN_MODEL`, `QWEN35_GENERATOR_PATH`, `QWEN_GENERATOR_PATH`, `QWEN_EMBEDDING_PATH` | Nonblank paths; relative to `backend/`; dedicated generator paths override `GEN_MODEL` |
 | `STT_MODEL` | Nonblank model identifier or CTranslate2 directory |
 | `STT_DEVICE`, `STT_COMPUTE_TYPE`, `STT_LANGUAGE` | Declared device/precision choices and Whisper language codes (`auto` detects language) |
@@ -699,6 +700,21 @@ ingestion failures. Existing value-validation exceptions retain their status.
 Multipart parsing, authorization, admission control and JSON responses stay in
 the HTTP modules. Database autocommit/replacement/failure-state behavior is
 unchanged; this is not a transaction-policy migration.
+
+JSON questions and PDF chunks use actual embedding micro-batches controlled by
+`EMBEDDING_BATCH_SIZE` (default 8). Vectors are staged in a disk-backed temporary
+file and read back in input order; each batch array is released before the next
+model call. All embedding batches must succeed before knowledge writes begin.
+Set a smaller batch on machines with less spare RAM. The OS temporary directory
+must be writable and have space for the vector staging file. See
+[operations](docs/operations.md#embedding-upload-capacity) for sizing and
+[the reproducible memory checks](backend/tests/TESTING.md#embedding-micro-batches-f025).
+
+The service's optional `progress=` callback receives embedding counts at zero
+and after each staged batch; the existing admin log also records partial counts
+without input text. These counts describe embedding, before publication. JSON
+totals include existing records that the database phase may skip. Uploads still
+return their existing synchronous responses; this adds no background job API.
 
 `services.retrieval.RetrievalService.retrieve(query, limit=6)` owns embedding,
 QA/PDF search and threshold/ranking. `services.lifecycle.ModelLifecycleService`

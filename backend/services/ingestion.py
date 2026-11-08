@@ -2,8 +2,8 @@
 
 import re
 import time
+from contextlib import ExitStack, contextmanager
 
-import numpy as np
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from request_validation import (
@@ -11,6 +11,8 @@ from request_validation import (
     MAX_PDF_PAGES, MAX_PDF_TEXT_CHARS, InvalidRequest, parse_json, text, validate_object,
 )
 from services import adapters
+from services.embedding_batches import staged_embeddings
+from settings import setting_value
 
 
 PDF_CHUNK_SIZE = 900
@@ -66,7 +68,7 @@ class IngestionService:
     def __init__(self, *, connect=adapters.connect_database, embed=adapters.embed_texts,
                  open_pdf=adapters.open_pdf, hash_question=adapters.hash_question,
                  hash_document=adapters.hash_document, audit=adapters.audit,
-                 clock=time.time, splitter=split_text):
+                 clock=time.time, splitter=split_text, batch_size=None, progress=None):
         self.connect = connect
         self.embed = embed
         self.open_pdf = open_pdf
@@ -75,6 +77,28 @@ class IngestionService:
         self.audit = audit
         self.clock = clock
         self.split_text = splitter
+        self.batch_size = setting_value('EMBEDDING_BATCH_SIZE') if batch_size is None else batch_size
+        if isinstance(self.batch_size, bool) or not isinstance(self.batch_size, int) or not 1 <= self.batch_size <= 64:
+            raise ValueError('batch_size must be an integer from 1 to 64')
+        self.progress = progress
+
+    def _report_embedding(self, source, completed, total):
+        self.audit(f'{source} embedding progress: completed={completed}, total={total}')
+        if self.progress is not None:
+            self.progress({'stage': 'embedding', 'source': source, 'completed': completed, 'total': total})
+
+    @contextmanager
+    def _embeddings(self, records, *, text_for, source):
+        with ExitStack() as resources:
+            try:
+                result = resources.enter_context(staged_embeddings(
+                    records, embed=self.embed, batch_size=self.batch_size, text_for=text_for,
+                    report=lambda completed, total: self._report_embedding(source, completed, total),
+                ))
+            except Exception:
+                self.audit(f'{source} embedding failed', warninglevel=3)
+                raise IngestionError({'error': 'Request failed.'}, 500) from None
+            yield result
 
     def ingest_qa(self, raw, *, replace=False):
         """Import UTF-8 JSON bytes; reject every invalid row before embedding/writes."""
@@ -98,17 +122,25 @@ class IngestionService:
             seen.add(question_hash)
             rows.append((question, answer, question_hash))
 
-        try:
-            vectors = self.embed([row[0] for row in rows])
-        except Exception as error:
-            raise IngestionError({'error': 'Request failed.'}, 500) from None
-        dim = int(vectors.shape[1])
+        with self._embeddings(rows, text_for=lambda row: row[0], source='json') as (vectors, dim):
+            inserted, updated, skipped = self._persist_qa(rows, vectors, dim, replace)
+        self.audit(f'JSON import completed: inserted={inserted}, updated={updated}, skipped={skipped}')
+        return {
+            'received':     len(payload),
+            'inserted':     inserted,
+            'updated':      updated,
+            'skipped':      skipped,
+            'embedded':     inserted + updated,
+            'duration_sec': round(self.clock() - started, 2),
+            'errors':       [],
+        }
+
+    def _persist_qa(self, rows, vectors, dim, replace):
         conn = self.connect()
         inserted = updated = skipped = 0
         try:
             with conn.cursor() as cur:
-                for (question, answer, question_hash), vec in zip(rows, vectors):
-                    blob = vec.tobytes()
+                for (question, answer, question_hash), blob in zip(rows, vectors):
                     cur.execute("SELECT id FROM qa_documents WHERE question_hash = %s", (question_hash,))
                     existing = cur.fetchone()
                     if existing:
@@ -134,16 +166,7 @@ class IngestionService:
                     inserted += 1
         finally:
             conn.close()
-        self.audit(f'JSON import completed: inserted={inserted}, updated={updated}, skipped={skipped}')
-        return {
-            'received':     len(payload),
-            'inserted':     inserted,
-            'updated':      updated,
-            'skipped':      skipped,
-            'embedded':     inserted + updated,
-            'duration_sec': round(self.clock() - started, 2),
-            'errors':       [],
-        }
+        return inserted, updated, skipped
 
     def ingest_pdf(self, raw, filename, *, replace=False):
         """Import bounded PDF bytes; preserve page metadata and legacy failure state."""
@@ -232,30 +255,23 @@ class IngestionService:
                 'success': False, 'duplicate': True, 'message': 'This PDF has already been uploaded.',
                 'document_id': existing['id'], 'filename': existing['filename'], 'status': existing['status'],
             }, 409) from None
-        try:
-            texts = [
-                chunk['content']
-                for chunk in chunks
-            ]
-            vectors = self.embed(texts)
-            if vectors is None:
-                raise RuntimeError(
-                    'embed_texts هیچ برداری برنگرداند'
-                )
-            vectors = np.asarray(vectors)
-            if vectors.ndim != 2:
-                raise RuntimeError(
-                    f'ابعاد embedding نامعتبر است: {vectors.shape}'
-                )
-            if vectors.shape[0] != len(chunks):
-                raise RuntimeError(
-                    'تعداد embeddingها با تعداد chunkها برابر نیست'
-                )
-            dim = int(vectors.shape[1])
-        except Exception as error:
-            raise IngestionError({
-                'error': 'Request failed.'
-            }, 500) from None
+        with self._embeddings(chunks, text_for=lambda chunk: chunk['content'], source='pdf') as (vectors, dim):
+            document_id = self._persist_pdf(
+                raw, filename, document_hash, pdf_page_count, chunks, existing, replace, vectors, dim,
+            )
+        return {
+            'success': True,
+            'document_id': document_id,
+            'filename': filename,
+            'file_size': len(raw),
+            'page_count': pdf_page_count,
+            'chunk_count': len(chunks),
+            'embedded_chunks': len(chunks),
+            'embedding_dim': dim,
+            'duration_sec': round(self.clock() - started, 2),
+        }
+
+    def _persist_pdf(self, raw, filename, document_hash, page_count, chunks, existing, replace, vectors, dim):
         conn = self.connect()
         document_id = None
         try:
@@ -288,7 +304,7 @@ class IngestionService:
                         filename,
                         document_hash,
                         len(raw),
-                        pdf_page_count,
+                        page_count,
                         len(chunks),
                         0,
                         dim,
@@ -297,11 +313,7 @@ class IngestionService:
                 )
                 document_id = cur.lastrowid
 
-                for chunk, vector in zip(chunks, vectors):
-                    blob = np.asarray(
-                        vector,
-                        dtype=np.float32
-                    ).tobytes()
+                for chunk, blob in zip(chunks, vectors):
                     cur.execute(
                         """
                         INSERT INTO pdf_chunks
@@ -370,17 +382,4 @@ class IngestionService:
         finally:
             conn.close()
 
-        return {
-            'success': True,
-            'document_id': document_id,
-            'filename': filename,
-            'file_size': len(raw),
-            'page_count': pdf_page_count,
-            'chunk_count': len(chunks),
-            'embedded_chunks': len(chunks),
-            'embedding_dim': dim,
-            'duration_sec': round(
-                self.clock() - started,
-                2
-            )
-        }
+        return document_id

@@ -27,6 +27,36 @@ separate migration terminal. Set the intended environment in every command's
 launch context. Keep secrets stable/private and application paths writable only
 where runtime state is expected.
 
+## Embedding upload capacity
+
+Set `EMBEDDING_BATCH_SIZE` before startup (default 8, accepted integers 1-64).
+Native launches read the process environment; Compose passes the value from
+`.env`. Restart after changing it. The count bounds each model invocation for
+both JSON and PDF imports. Input quotas still cap uploads at 256 unique JSON
+questions or 256 PDF chunks; increasing the batch size does not raise quotas.
+
+Size batches against spare CPU RAM after accounting for embedding weights,
+the generator, optional speech models, and concurrent work. This is a fixed
+input-count limit, not an automatic RAM cap. Lower it to 1-4 when memory is tight;
+the 512-token tokenizer limit remains in force. Validate your hardware/profile
+with the optional [real-model benchmark](../backend/tests/TESTING.md#embedding-micro-batches-f025).
+Its isolated-process budget excludes a running generator and concurrent requests.
+
+Vectors stage in the OS temporary directory before database publication. Reserve
+`input_count * embedding_dimension * 4` bytes per import (1 MiB at 256 x 1024),
+plus filesystem overhead, and ensure the directory is writable. Staging files
+close on every normal success/failure path; they are not durable job checkpoints.
+Embedding failure, including a failed later batch or staging write, precedes
+knowledge writes/replacement. Existing DB autocommit and PDF failure-state
+behavior still apply once persistence begins.
+
+With audit retention enabled, authorized system-report operators can see
+`json/pdf embedding progress: completed=N, total=M` in admin logs during an
+upload. No input text appears in these progress entries. Final embedding counts
+do not establish successful publication; wait for the upload response. There is
+no job polling endpoint or automatic resume. Service consumers can receive the
+same counts using `IngestionService(progress=callback)` without a Flask context.
+
 ## Provision and start
 
 1. Install/verify one dependency profile in a fresh application environment and

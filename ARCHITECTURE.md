@@ -194,6 +194,7 @@ Scoring:
 - Default model: `Qwen3-Embedding-0.6B` in `backend/model/Qwen3-Embedding-0.6B/`.
 - Constants: `ADMIN_PORT=8000`, `UI_PORT=5000`, `MAX_UPLOAD_BYTES=20MB`, `ALLOWED_EXT={'.json'}`, `MIN_SCORE=0.35`, `MAX_SEQ_LEN=512`, `ADMIN_DIR=backend/admin`.
 - Search skips stored embeddings with a different dimension. Re-ingest data after changing the embedding model.
+- Uploads call this adapter through `services/embedding_batches.py`: `EMBEDDING_BATCH_SIZE` (default 8, integer 1-64) bounds each actual model invocation. Query embedding still uses one input. The tokenizer's 512-token limit remains unchanged.
 
 ### 6.4 Model selection (`model_registry.py`)
 
@@ -207,7 +208,30 @@ Scoring:
 
 ### 6.5 JSON Q&A ingestion (`admin_routes/knowledge.py`, `services/ingestion.py`)
 
-POST `/admin/api/upload` accepts a multipart `file` (`.json`, UTF-8, max 20 MiB) containing 1-256 objects with exactly `{question, answer}`: nonblank strings of at most 4096 and 16000 characters respectively. The route bounds/parses multipart input, then calls `IngestionService.ingest_qa(raw, replace=...)`. Every row is validated before any embedding or persistence; one invalid row rejects the entire import with 400 rather than partially accepting it. Duplicate questions within valid files are dropped. All questions are embedded in one `embed_texts` call; only the question is embedded, not the answer. Rows whose `question_hash` already exists are skipped, or updated (answer + embedding) when the form field `replace` is true. Response: `{received, inserted, updated, skipped, embedded, duration_sec, errors}` (`errors` is empty on success).
+POST `/admin/api/upload` accepts a multipart `file` (`.json`, UTF-8, max 20 MiB) containing 1-256 objects with exactly `{question, answer}`: nonblank strings of at most 4096 and 16000 characters respectively. The route bounds/parses multipart input, then calls `IngestionService.ingest_qa(raw, replace=...)`. Every row is validated before any embedding or persistence; one invalid row rejects the entire import with 400 rather than partially accepting it. Duplicate questions within valid files are dropped. Questions are embedded in bounded batches in their original order; only the question is embedded, not the answer. Rows whose `question_hash` already exists are skipped, or updated (answer + embedding) when the form field `replace` is true. Response: `{received, inserted, updated, skipped, embedded, duration_sec, errors}` (`errors` is empty on success).
+
+Both import paths stage float32 vectors in a request-local, disk-backed temporary
+file, releasing each array before the next model call. Each batch must return
+exactly one vector per input, with a positive, consistent dimension and finite
+values. All batches must succeed before knowledge writes or replacement begin;
+persistence reads one BLOB at a time in input order. Staging closes on success,
+model failure, connection failure or persistence failure. The temporary directory
+must be writable, with space for `input_count * embedding_dimension * 4` bytes
+(1 MiB for 256 vectors of dimension 1024). This does not change existing database
+autocommit or PDF replacement transaction semantics.
+
+`IngestionService(..., batch_size=..., progress=callback)` permits adapter-based
+tests and service consumers. The optional callback receives
+`{stage: 'embedding', source: 'json'|'pdf', completed: int, total: int}` initially
+at zero and after every successfully staged batch, including the final short
+batch. The existing admin audit log receives the same counts without document
+text. For JSON, totals count unique validated questions, including existing DB
+records that may later be skipped; the final HTTP `embedded` field still counts
+inserts/updates only. A failed later batch leaves the last successful count and
+a safe failure log entry. Reaching `total` means embedding finished, not that
+publication succeeded. Upload HTTP responses remain synchronous; there is no
+job/polling/streaming API. See the [F025 checks](backend/tests/TESTING.md#embedding-micro-batches-f025)
+for the declared allocation and real-model memory budgets.
 Related: `admin_documents()` (`page`, `per_page` <= 100, `q` search), `admin_delete(doc_id)`, `admin_stats()` (`total_documents`, `embedded_documents`, `dim`).
 
 ### 6.6 PDF ingestion (`admin_routes/pdf.py`, `services/ingestion.py`)
@@ -218,7 +242,7 @@ POST `/admin/api/pdf/upload` bounds/parses multipart input, then calls
 1. The upload is a multipart `file` (`.pdf`, max 50 MiB, non-empty, 1-200 pages). Page counts above the limit return 413 before extraction.
 2. Text is extracted per page with PyMuPDF (`get_text("text", sort=True)`), capped at 500000 total characters before trimming. Unreadable PDFs or PDFs with no extractable text (e.g. scans) return 400. Documents close even when extraction fails or hits a limit.
 3. `split_text(text, chunk_size, overlap)` runs per page with `PDF_CHUNK_SIZE=900` and `PDF_CHUNK_OVERLAP=160`. It removes soft hyphens and hyphenated line breaks, collapses whitespace, and prefers paragraph, line and sentence breaks. Chunks never span pages (`page_start == page_end`).
-4. At most 256 chunks are accepted. Text/chunk overages return 413 before model work or document changes. After validation, dedup uses `sha256_bytes`: a duplicate returns 409 unless `replace` is true. All chunks are embedded in one `embed_texts` call.
+4. At most 256 chunks are accepted. Text/chunk overages return 413 before model work or document changes. After validation, dedup uses `sha256_bytes`: a duplicate returns 409 unless `replace` is true. Chunks use the bounded staging pipeline above; input order, chunk indices and page metadata are preserved across batch boundaries.
 5. The code inserts `pdf_documents` (`processing`) and `pdf_chunks`, then marks the document `completed` (or `failed` with `error_message`).
 
 Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_id)` (chunks cascade), `admin_pdf_stats()`.
