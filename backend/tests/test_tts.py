@@ -75,7 +75,7 @@ class EngineTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.base = Path(temporary.name)
+        self.base = Path(temporary.name).resolve()
         with patch.object(self.module.SpeechEngine, '_load_models'):
             self.engine = self.module.SpeechEngine(self.base)
         self.engine.english = Mock()
