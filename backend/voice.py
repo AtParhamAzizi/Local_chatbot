@@ -143,6 +143,7 @@ def configure_voice(app):
             device=DEVICE,
             language=LANGUAGE,
             sample_rate=SAMPLE_RATE,
+            voice_threshold=VOICE_THRESHOLD,
         ), 200
 
     if Sock is None:

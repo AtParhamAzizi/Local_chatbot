@@ -248,22 +248,45 @@ Open:
 - Admin dashboard: `http://localhost:8000`
 
 Allow microphone access in the browser on localhost or HTTPS. Click the
-microphone button to start recording; click it again to stop and send. Live
+microphone button to start recording. After speech, a 1.5-second pause stops
+capture and sends the final transcript automatically; click again to finish
+earlier. Live
 transcripts appear in the input, and the final transcript (plus any existing
 draft) goes through the normal `/chat` endpoint, including history and feedback.
-Silence and interrupted recordings are not sent automatically. The voice status
+Silence without speech and interrupted recordings are not sent. The voice status
 shows model loading, missing dependencies, microphone errors, and completion.
 
-Spoken replies use browser speech synthesis only for messages sent by voice.
-Uncheck the audio-reply option to mute or stop playback. A Persian voice must be
-available on the device/browser; otherwise the reply stays text-only. Depending
-on the selected browser/OS voice, speech playback may use a network service;
-speech-to-text stays on your own server. `STT_LANGUAGE` changes transcription,
-not the Persian chat UI or playback voice. Use `STT_LOCAL_FILES_ONLY=1` to
+Replies to voice messages are read automatically by the local Persian/English
+TTS models in `backend/TTS`. The audio-reply checkbox and stop button cancel
+playback; starting another recording also stops the previous answer. Audio
+controls remain available if the browser requires a manual play click. Typed
+messages remain text-only. Missing speech dependencies leave the text reply
+available. `STT_LANGUAGE` changes transcription. Use `STT_LOCAL_FILES_ONLY=1` to
 disallow Whisper model downloads after caching the model. Do not launch
 `backend/STT/STT.py` alongside the chatbot on its default port: the standalone
 demo also defaults to port 5000. The integrated voice endpoints are
 `/voice/health` and `/voice-stream`; one transcription runs at a time.
+
+Install the optional speech runtime separately from the chatbot environment:
+
+```powershell
+python -m venv .venv-tts
+.\.venv-tts\Scripts\python.exe -m pip install torch==2.7.1 --index-url https://download.pytorch.org/whl/cpu
+.\.venv-tts\Scripts\python.exe -m pip install -r requirements-tts.txt
+```
+
+Keep the existing `backend/TTS/English_model` and `Persian_model` folders in
+place. The application starts a private worker automatically on first voice
+use; no second web server is needed. It selects `.venv-tts/Scripts/python.exe`
+on Windows or `.venv-tts/bin/python` on Linux, then falls back to the application
+interpreter if that environment does not exist. Set `TTS_PYTHON` to select
+another prepared interpreter. `/tts/health` starts model loading;
+`POST /tts/synthesize` accepts `{"text": "..."}` (1–5,000 characters) and returns
+a noncached WAV. One synthesis runs at a time, with no unbounded job queue.
+The worker reuses its models across requests. First use may download the Persian
+G2P model and voice prompt; cache them before running without internet access.
+Run `python -B scripts/check_speech.py --offline` to verify real Persian/English
+audio from cached models without starting either web service or touching MySQL.
 
 Use the dashboard to import JSON records shaped like:
 
@@ -721,11 +744,11 @@ configured policy, including a warning when automatic deletion is paused.
 | Microphone audio | Transcribe speech on the application server using local Whisper | Bounded in-memory buffers only, not stored as audio files; submitted transcripts follow chat policy |
 | Anonymous cookie | Prove message/feedback ownership | Fixed 24-hour validity; removing the cookie does not delete stored history |
 
-Browser speech playback is separate from Whisper STT. It uses the browser/OS
-`speechSynthesis` voices, prefers a voice reporting `localService`, and can fall
-back to a network-backed voice. Playback is **unchecked by default** and the
-visible notice warns that enabling it may send answer text to a browser/OS
-provider. Turning it off cancels queued playback. Local STT means processing on
+Speech playback uses the local Persian/English models on the application server;
+answer text is not sent to a browser/OS speech provider. Playback for voice
+messages is enabled by default and can be stopped or disabled in the visible
+voice panel. Microphone and generated audio stay in memory; WAV responses use
+`Cache-Control: no-store`. Local STT means processing on
 the application server, not necessarily the user's device. Whisper can download
 model files on first use unless `STT_LOCAL_FILES_ONLY=1`; that is separate from
 uploading audio to a transcription vendor. Avoid sending sensitive information.

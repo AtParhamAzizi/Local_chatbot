@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dual Voice · Persian + English TTS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div class="eyebrow"><span class="dot"></span> CPU voice studio</div>
+        <h1>One text. <span>Two voices.</span></h1>
+        <p class="hero-copy">Write Persian, English, or both. Persian text, English words, and URLs are routed to the right local model automatically.</p>
+        <div class="status-row" aria-live="polite">
+          <span class="status-pill" id="status-pill"><i></i><span id="status-text">Loading models…</span></span>
+          <span class="status-note">Models load once on the server CPU</span>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <div class="card editor-card">
+          <div class="card-heading">
+            <div>
+              <p class="kicker">Input</p>
+              <h2>Mixed-language script</h2>
+            </div>
+            <button type="button" class="ghost-button" id="example-button">Use example</button>
+          </div>
+          <textarea id="text-input" dir="auto" maxlength="5000" spellcheck="false" placeholder="مثلاً: امروز یک meeting مهم دارم. لینک https://example.com را هم بررسی کن."></textarea>
+          <div class="editor-footer">
+            <span class="hint">Persian + English + URLs supported</span>
+            <span id="character-count">0 / 5000</span>
+          </div>
+        </div>
+
+        <aside class="card controls-card">
+          <div class="card-heading compact">
+            <div>
+              <p class="kicker">Controls</p>
+              <h2>Voice settings</h2>
+            </div>
+            <span class="cpu-badge">CPU</span>
+          </div>
+          <label for="voice-select">English voice</label>
+          <select id="voice-select">
+            <option value="af_heart">Heart · warm female</option>
+            <option value="af_bella">Bella · clear female</option>
+            <option value="af_sarah">Sarah · friendly female</option>
+            <option value="am_adam">Adam · calm male</option>
+            <option value="am_michael">Michael · deep male</option>
+          </select>
+          <div class="range-heading"><label for="speed-range">Speed</label><output id="speed-value">1.0×</output></div>
+          <input id="speed-range" type="range" min="0.5" max="2" step="0.1" value="1" />
+          <div class="range-labels"><span>0.5×</span><span>Natural</span><span>2×</span></div>
+          <button type="button" class="primary-button" id="generate-button"><span class="button-icon">▶</span><span id="generate-label">Generate speech</span></button>
+          <p class="error-message" id="error-message" role="alert"></p>
+        </aside>
+      </section>
+
+      <section class="card result-card" id="result-card" hidden>
+        <div class="result-heading">
+          <div><p class="kicker">Ready</p><h2>Your speech</h2></div>
+          <a class="download-link" id="download-link" download="persian-english-speech.wav">Download WAV <span>↓</span></a>
+        </div>
+        <audio id="audio-player" controls></audio>
+        <p class="result-meta" id="result-meta"></p>
+      </section>
+
+      <footer><span>Local models</span><span class="footer-separator">/</span><span>Private by default</span><span class="footer-separator">/</span><span>Built for Persian</span></footer>
+    </main>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

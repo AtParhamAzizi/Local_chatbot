@@ -67,7 +67,7 @@ class PrivacyEndpointTests(AbuseEndpointFixture, unittest.TestCase):
             self.assertEqual(response.status_code, 403)
             database.assert_not_called()
 
-    def test_notice_renders_actual_policy_and_playback_is_unchecked(self):
+    def test_notice_renders_actual_policy_and_local_playback_can_be_disabled(self):
         with patch.dict('os.environ', {'RETENTION_CHAT_DAYS': '9', 'RETENTION_FEEDBACK_DAYS': '90',
                                        'RETENTION_DELETE_ENABLED': '0', 'RETENTION_LOG_DAYS': '0'}):
             response = self.ui_client.get('/')
@@ -77,11 +77,13 @@ class PrivacyEndpointTests(AbuseEndpointFixture, unittest.TestCase):
         self.assertNotIn('90 روز', html)
         self.assertIn('متوقف', html)
         self.assertIn('سرور همین سامانه', html)
-        self.assertIn('سرویس اینترنتی', html)
+        self.assertIn('مدل‌های صوتی همین سرور', html)
         self.assertNotIn('{%', html)
         self.assertRegex(html, r'id="voiceReplies"[^>]*aria-describedby="playbackPrivacy"')
         checkbox = html.partition('id="voiceReplies"')[2].partition('>')[0]
-        self.assertNotIn('checked', checkbox)
+        self.assertIn('checked', checkbox)
+        self.assertIn('id="voicePlayer"', html)
+        self.assertIn('id="voiceStopButton"', html)
         alias = self.ui_client.get('/index.html')
         self.assertEqual(alias.status_code, 302)
         self.assertEqual(alias.headers['Location'], '/')

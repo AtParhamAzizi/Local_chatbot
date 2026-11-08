@@ -1,7 +1,7 @@
 """Application assembly only; importing factories does not initialize services."""
 
 
-def create_ui_app(*, retrieval_service=None):
+def create_ui_app(*, retrieval_service=None, speech_service=None):
     from settings import validate_settings
     validate_settings()
 
@@ -10,12 +10,14 @@ def create_ui_app(*, retrieval_service=None):
     from security import configure_security
     from user import FRONTEND_DIR, register_ui_routes
     from voice import configure_voice
+    from speech import configure_speech
     from services.retrieval import RetrievalService
 
     app = Flask('ui', static_folder=FRONTEND_DIR, static_url_path='', template_folder=FRONTEND_DIR)
     configure_security(app, service='ui')
     configure_chat_sessions(app)
     configure_voice(app)
+    configure_speech(app, service=speech_service)
     app.extensions['retrieval_service'] = RetrievalService() if retrieval_service is None else retrieval_service
     register_ui_routes(app)
     return app

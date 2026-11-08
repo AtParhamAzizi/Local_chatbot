@@ -8,10 +8,14 @@
         const voiceButton = document.getElementById('voiceButton');
         const voiceStatus = document.getElementById('voiceStatus');
         const voiceReplies = document.getElementById('voiceReplies');
+        const voicePlayer = document.getElementById('voicePlayer');
+        const voiceStopButton = document.getElementById('voiceStopButton');
         const connectionStatus = document.getElementById('connectionStatus');
         let voiceReady = false;
         let voiceSession = null;
         let chatBusy = false;
+        let voiceThreshold = 0.008;
+        let replyPlayback = null;
 
 
         // const quickQuestions = document.getElementById('quick-questions');
@@ -53,12 +57,13 @@
                 const data = await response.json();
                 if (voiceSession) return;
                 voiceReady = response.ok && data.status === 'ready';
+                if (Number.isFinite(data.voice_threshold) && data.voice_threshold > 0) voiceThreshold = data.voice_threshold;
                 updateVoiceControls();
                 if (!voiceReady) {
                     setVoiceStatus(data.status === 'loading' ? 'مدل گفتار در حال بارگذاری است...' :
                         `گفت‌وگوی صوتی آماده نیست: ${data.error || 'گزارش سرور را بررسی کنید.'}`, data.status !== 'loading');
                 } else if (!voiceStatus?.textContent || voiceStatus.dataset.waiting === 'true') {
-                    setVoiceStatus('روی میکروفون بزنید؛ پس از صحبت، دوباره بزنید تا پیام ارسال شود.');
+                    setVoiceStatus('روی میکروفون بزنید و صحبت کنید؛ پس از مکث، پیام خودکار ارسال و پاسخ خوانده می‌شود.');
                 }
                 if (voiceStatus) voiceStatus.dataset.waiting = String(!voiceReady);
             } catch (error) {
@@ -282,29 +287,115 @@ function setVoiceStatus(text, isError = false) {
     voiceStatus.classList.toggle('error', isError);
 }
 
-function speakVoiceReply(text) {
-    if (!text || !voiceReplies?.checked || !('speechSynthesis' in window)) return;
-    try {
-        const voices = window.speechSynthesis.getVoices().filter(candidate => candidate.lang.toLowerCase().startsWith('fa'));
-        const voice = voices.find(candidate => candidate.localService) || voices[0];
-        if (!voice) {
-            setVoiceStatus('صدای فارسی در این مرورگر موجود نیست؛ پاسخ به صورت متن نمایش داده شد.');
-            return;
-        }
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.voice = voice;
-        utterance.lang = voice.lang;
-        utterance.rate = 0.95;
-        utterance.onerror = event => {
-            if (!['canceled', 'interrupted'].includes(event.error)) {
-                setVoiceStatus('پخش صدا انجام نشد؛ پاسخ متنی در دسترس است.', true);
-            }
-        };
-        window.speechSynthesis.speak(utterance);
-    } catch (error) {
-        setVoiceStatus('پخش صدا انجام نشد؛ پاسخ متنی در دسترس است.', true);
+function stopVoiceReply() {
+    const playback = replyPlayback;
+    replyPlayback = null;
+    playback?.controller.abort();
+    if (voicePlayer) {
+        voicePlayer.pause();
+        voicePlayer.removeAttribute('src');
+        voicePlayer.load();
+        voicePlayer.hidden = true;
     }
+    if (playback?.url) URL.revokeObjectURL(playback.url);
+    if (voiceStopButton) voiceStopButton.hidden = true;
+}
+
+function speechChunks(text) {
+    const chunks = [];
+    let remaining = text.trim();
+    while (remaining.length > 400) {
+        let end = Math.max(...['. ', '؟ ', '? ', '! '].map(mark => remaining.lastIndexOf(mark, 399)));
+        if (end >= 80) end += 1;
+        else end = remaining.lastIndexOf(' ', 400);
+        if (end < 80) end = 400;
+        const next = remaining.charCodeAt(end);
+        if (next >= 0xdc00 && next <= 0xdfff) end -= 1;
+        chunks.push(remaining.slice(0, end).trim());
+        remaining = remaining.slice(end).trim();
+    }
+    if (remaining) chunks.push(remaining);
+    return chunks;
+}
+
+function playVoiceAudio(playback) {
+    return new Promise((resolve, reject) => {
+        const cleanup = () => {
+            voicePlayer.removeEventListener('ended', ended);
+            voicePlayer.removeEventListener('error', failed);
+            playback.controller.signal.removeEventListener('abort', aborted);
+        };
+        const ended = () => { cleanup(); resolve(); };
+        const failed = () => { cleanup(); reject(new Error('Audio playback failed')); };
+        const aborted = () => { cleanup(); reject(new DOMException('Stopped', 'AbortError')); };
+        voicePlayer.addEventListener('ended', ended);
+        voicePlayer.addEventListener('error', failed);
+        playback.controller.signal.addEventListener('abort', aborted, {once: true});
+        voicePlayer.play().catch(error => {
+            if (replyPlayback !== playback) return;
+            if (error.name === 'NotAllowedError') {
+                setVoiceStatus('پاسخ صوتی آماده است؛ برای شنیدن، دکمه پخش را بزنید.');
+            } else failed();
+        });
+    });
+}
+
+async function speakVoiceReply(text) {
+    if (!text || !voiceReplies?.checked || !voicePlayer) return;
+    stopVoiceReply();
+    const playback = {controller: new AbortController(), url: null};
+    replyPlayback = playback;
+    if (voiceStopButton) voiceStopButton.hidden = false;
+    try {
+        for (const chunk of speechChunks(text)) {
+            setVoiceStatus('در حال آماده‌سازی پاسخ صوتی...');
+            const response = await fetch(`${BACKEND_URL}/tts/synthesize`, {
+                method: 'POST', credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({text: chunk}),
+                signal: AbortSignal.any([playback.controller.signal, AbortSignal.timeout(250000)]),
+            });
+            if (!response.ok) throw new Error('Speech generation failed');
+            const audio = await response.blob();
+            if (replyPlayback !== playback) return;
+            if (playback.url) URL.revokeObjectURL(playback.url);
+            playback.url = URL.createObjectURL(audio);
+            voicePlayer.src = playback.url;
+            voicePlayer.hidden = false;
+            setVoiceStatus('در حال خواندن پاسخ...');
+            await playVoiceAudio(playback);
+            if (replyPlayback !== playback) return;
+        }
+        setVoiceStatus('پخش پاسخ تمام شد؛ برای پیام بعدی روی میکروفون بزنید.');
+    } catch (error) {
+        if (replyPlayback !== playback) return;
+        setVoiceStatus('پاسخ صوتی در دسترس نیست؛ پاسخ متنی را می‌توانید بخوانید.', true);
+    } finally {
+        if (replyPlayback === playback && voiceStopButton) voiceStopButton.hidden = true;
+    }
+}
+
+function detectVoicePause(session, buffer) {
+    if (session.state !== 'recording') return false;
+    const samples = new DataView(buffer);
+    let energy = 0;
+    for (let offset = 0; offset < samples.byteLength; offset += 2) {
+        const sample = samples.getInt16(offset, true) / 32768;
+        energy += sample * sample;
+    }
+    const duration = samples.byteLength / 32; // mono PCM16 at 16 kHz, in milliseconds
+    const voiced = samples.byteLength > 0 && Math.sqrt(energy / (samples.byteLength / 2)) >= voiceThreshold;
+    session.durationMs += duration;
+    if (voiced) {
+        session.speechMs += duration;
+        session.silenceMs = 0;
+        if (session.speechMs >= 200) session.hasSpeech = true;
+    } else {
+        session.silenceMs += duration;
+        if (!session.hasSpeech) session.speechMs = 0;
+    }
+    return (session.hasSpeech && session.silenceMs >= 1500) || session.durationMs >= 110000 ||
+        (!session.hasSpeech && session.durationMs >= 15000);
 }
 
 function voiceTranscript(session, finalOnly = false) {
@@ -377,8 +468,11 @@ function connectVoiceStream(session) {
 
 async function startVoiceRecording() {
     if (!voiceButton || voiceSession || !voiceReady || chatBusy) return;
-    window.speechSynthesis?.cancel();
-    const session = {state: 'connecting', segments: new Map(), captureClosed: false, draft: messageInput.value};
+    stopVoiceReply();
+    // Preload local speech models while the user speaks, without delaying capture.
+    if (voiceReplies?.checked) void fetch(`${BACKEND_URL}/tts/health`, {signal: AbortSignal.timeout(5000)}).catch(() => {});
+    const session = {state: 'connecting', segments: new Map(), captureClosed: false, draft: messageInput.value,
+        durationMs: 0, speechMs: 0, silenceMs: 0, hasSpeech: false};
     voiceSession = session;
     updateVoiceControls();
     setVoiceStatus('در حال اتصال به میکروفون و سرور...');
@@ -428,13 +522,14 @@ async function startVoiceRecording() {
                 return;
             }
             session.socket.send(event.data.buffer);
+            if (detectVoicePause(session, event.data.buffer)) void stopVoiceRecording();
         };
         session.worklet.onprocessorerror = () => failVoiceSession(session, new Error('پردازش صدای میکروفون متوقف شد.'));
         session.source = session.context.createMediaStreamSource(session.stream);
         session.source.connect(session.worklet);
         session.worklet.connect(session.context.destination);
         session.state = 'recording';
-        setVoiceStatus('در حال شنیدن؛ برای توقف و ارسال پیام، دوباره روی میکروفون بزنید.');
+        setVoiceStatus('در حال شنیدن و تبدیل گفتار به متن؛ پس از مکث پیام خودکار ارسال می‌شود. برای پایان زودتر، دوباره بزنید.');
         updateVoiceControls();
     } catch (error) {
         if (error.name === 'NotAllowedError') error = new Error('اجازه دسترسی به میکروفون را در مرورگر فعال کنید.');
@@ -477,16 +572,21 @@ if (voiceButton) {
 }
 
 if (voiceReplies) {
-    voiceReplies.disabled = !('speechSynthesis' in window);
-    if (voiceReplies.disabled) voiceReplies.checked = false;
-    else window.speechSynthesis.getVoices();
     voiceReplies.addEventListener('change', () => {
-        if (!voiceReplies.checked) window.speechSynthesis?.cancel();
+        if (!voiceReplies.checked) {
+            stopVoiceReply();
+            setVoiceStatus('خواندن پاسخ خاموش شد.');
+        }
     });
 }
 
+voiceStopButton?.addEventListener('click', () => {
+    stopVoiceReply();
+    setVoiceStatus('پخش پاسخ متوقف شد.');
+});
+
 window.addEventListener('pagehide', () => {
-    window.speechSynthesis?.cancel();
+    stopVoiceReply();
     const session = voiceSession;
     voiceSession = null;
     if (!session) return;
@@ -506,7 +606,7 @@ window.addEventListener('pageshow', () => {
             if (chatBusy || voiceSession) return;
             const message = (messageOverride ?? messageInput.value).trim();
             if (!message) return;
-            window.speechSynthesis?.cancel();
+            stopVoiceReply();
 
 
 
@@ -560,7 +660,7 @@ window.addEventListener('pageshow', () => {
 
                 hideTyping();
                 addMessage(data.reply, false, data.feedback_enabled === false ? null : data.message_id);
-                if (speakReply) speakVoiceReply(data.reply);
+                if (speakReply) void speakVoiceReply(data.reply);
                 if (data.recommended_questions && data.recommended_questions.length > 0) {
                     showRecommendedQuestions(data.recommended_questions);
                 } else {

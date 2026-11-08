@@ -1,9 +1,11 @@
 """Isolated Flask applications for browser journeys, with no real DB or models."""
 
 import importlib
+import io
 import secrets
 import sys
 import threading
+import wave
 from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -34,6 +36,8 @@ class BrowserApps:
         self.feedback_attempts = 0
         self.feedback_failures = 0
         self.voice_status = 'ready'
+        self.speech_requests = []
+        self.speech_unavailable = False
         self.forbidden = Mock(side_effect=AssertionError('Real database/model work is forbidden'))
 
     def __enter__(self):
@@ -76,7 +80,7 @@ class BrowserApps:
             self.admin = importlib.import_module('admin_routes.auth')
             self.user = importlib.import_module('user')
             application = importlib.import_module('application')
-            self.ui_app = application.create_ui_app()
+            self.ui_app = application.create_ui_app(speech_service=self)
             self.admin_app = application.create_admin_app()
             password_hash = self.accounts._hash_password(PASSWORD)
             self.rows = {
@@ -132,6 +136,24 @@ class BrowserApps:
                 return jsonify(status='ready')
             return jsonify(status=self.voice_status, code='voice_unavailable'), 503
 
+    def warmup(self):
+        pass
+
+    def status(self):
+        return 'unavailable' if self.speech_unavailable else 'ready'
+
+    def synthesize(self, text):
+        if self.speech_unavailable:
+            raise RuntimeError('Injected speech failure')
+        self.speech_requests.append(text)
+        output = io.BytesIO()
+        with wave.open(output, 'wb') as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(24000)
+            audio.writeframes(b'\0\0' * 2400)
+        return output.getvalue()
+
     def create_session(self, user):
         token = secrets.token_urlsafe(32)
         with self.lock:
@@ -169,6 +191,8 @@ class BrowserApps:
             self.feedback_attempts = 0
             self.feedback_failures = 1 if options.get('feedback_failure') else 0
             self.voice_status = 'unavailable' if options.get('voice_unavailable') else 'ready'
+            self.speech_requests.clear()
+            self.speech_unavailable = bool(options.get('speech_unavailable'))
             for app in (self.ui_app, self.admin_app):
                 for limiter in app.extensions['abuse_controls'].values():
                     limiter.clients.clear()
@@ -181,4 +205,5 @@ class BrowserApps:
             return jsonify(
                 messages=list(self.history.rows.values()), feedback_attempts=self.feedback_attempts,
                 sessions=len(self.sessions),
+                speech_requests=list(self.speech_requests),
             )

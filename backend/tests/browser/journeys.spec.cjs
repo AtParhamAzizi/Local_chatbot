@@ -329,4 +329,105 @@ test('mock recording stop sends the final transcript exactly once and frees audi
     expect(state.messages[0].user_message).toBe('\u06af\u0641\u062a\u0627\u0631 \u0622\u0632\u0645\u0627\u06cc\u0634\u06cc');
     expect(await page.evaluate(() => window.__audioMock.stopped)).toBe(1);
     expect(await page.evaluate(() => window.__audioMock.closed)).toBe(1);
+    await expect.poll(async () => (await fixtureState(context)).speech_requests).toEqual([reply]);
+    await expect.poll(() => page.evaluate(() => window.__audioMock.played)).toBe(1);
+});
+
+test('speech then silence flushes capture, sends once and reads the answer locally', async ({ page, context }) => {
+    await installAudio(context);
+    await openChat(page);
+    await expect(page.locator('#voiceButton')).toBeEnabled();
+    await expect(page.locator('#voiceReplies')).toBeChecked();
+    await page.locator('#voiceButton').click();
+    await expect(page.locator('#voiceButton')).toHaveAttribute('aria-pressed', 'true');
+    await page.evaluate(() => {
+        window.__audioMock.sockets[0].message({type: 'transcript', segment_id: 1, text: 'partial', is_final: false});
+    });
+    await expect(page.locator('#messageInput')).toHaveValue('partial');
+    await page.evaluate(() => {
+        for (let i = 0; i < 3; i++) window.__audioMock.packet(0.1);
+        for (let i = 0; i < 16; i++) window.__audioMock.packet(0);
+    });
+    await expect.poll(async () => (await fixtureState(context)).speech_requests).toEqual([reply]);
+    const state = await fixtureState(context);
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0].user_message).toBe('\u06af\u0641\u062a\u0627\u0631 \u0622\u0632\u0645\u0627\u06cc\u0634\u06cc');
+    await expect.poll(() => page.evaluate(() => window.__audioMock.played)).toBe(1);
+    expect(await page.evaluate(() => window.__audioMock.stopped)).toBe(1);
+    expect(await page.evaluate(() => window.__audioMock.closed)).toBe(1);
+});
+
+test('short pauses and initial silence do not submit an unfinished recording', async ({ page, context }) => {
+    await installAudio(context);
+    await openChat(page);
+    await expect(page.locator('#voiceButton')).toBeEnabled();
+    await page.locator('#voiceButton').click();
+    await expect(page.locator('#voiceButton')).toHaveAttribute('aria-pressed', 'true');
+    await page.evaluate(() => {
+        for (let i = 0; i < 30; i++) window.__audioMock.packet(0);
+        for (let i = 0; i < 3; i++) window.__audioMock.packet(0.1);
+        for (let i = 0; i < 10; i++) window.__audioMock.packet(0);
+        window.__audioMock.packet(0.1);
+    });
+    await expect(page.locator('#voiceButton')).toHaveAttribute('aria-pressed', 'true');
+    expect((await fixtureState(context)).messages).toHaveLength(0);
+});
+
+test('voice playback can be disabled while recording and text is still submitted', async ({ page, context }) => {
+    await installAudio(context);
+    await openChat(page);
+    await expect(page.locator('#voiceButton')).toBeEnabled();
+    await page.locator('#voiceReplies').uncheck();
+    await page.locator('#voiceButton').click();
+    await expect(page.locator('#voiceButton')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#voiceButton').click();
+    await expect(page.locator('.feedback-buttons')).toBeVisible();
+    expect((await fixtureState(context)).speech_requests).toEqual([]);
+    expect(await page.evaluate(() => window.__audioMock.played)).toBe(0);
+});
+
+test('TTS failure keeps the chatbot answer and text input available', async ({ page, context }) => {
+    await resetFixture(context, {speech_unavailable: true});
+    await installAudio(context);
+    await openChat(page);
+    await expect(page.locator('#voiceButton')).toBeEnabled();
+    await page.locator('#voiceButton').click();
+    await expect(page.locator('#voiceButton')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#voiceButton').click();
+    await expect(page.locator('.feedback-buttons')).toBeVisible();
+    await expect(page.locator('#voiceStatus')).toHaveClass(/error/);
+    await expect(page.locator('#messageInput')).toBeEnabled();
+    await expect(page.locator('#voiceButton')).toBeEnabled();
+    expect((await fixtureState(context)).messages).toHaveLength(1);
+    expect(await page.evaluate(() => window.__audioMock.played)).toBe(0);
+});
+
+test('starting another recording stops the previous answer playback', async ({ page, context }) => {
+    await installAudio(context, 'keep-playing');
+    await openChat(page);
+    await expect(page.locator('#voiceButton')).toBeEnabled();
+    await page.locator('#voiceButton').click();
+    await expect(page.locator('#voiceButton')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#voiceButton').click();
+    await expect(page.locator('#voicePlayer')).toBeVisible();
+    await expect(page.locator('#voiceStopButton')).toBeVisible();
+    await page.locator('#voiceButton').click();
+    await expect(page.locator('#voiceButton')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#voicePlayer')).toBeHidden();
+    await expect(page.locator('#voiceStopButton')).toBeHidden();
+    expect((await fixtureState(context)).messages).toHaveLength(1);
+});
+
+test('autoplay denial leaves an audio control for manual playback', async ({ page, context }) => {
+    await installAudio(context, 'autoplay-denied');
+    await openChat(page);
+    await expect(page.locator('#voiceButton')).toBeEnabled();
+    await page.locator('#voiceButton').click();
+    await expect(page.locator('#voiceButton')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#voiceButton').click();
+    await expect(page.locator('#voicePlayer')).toBeVisible();
+    await expect(page.locator('#voiceStatus')).toContainText('دکمه پخش');
+    await page.locator('#voicePlayer').evaluate(audio => audio.play());
+    await expect(page.locator('#voiceStopButton')).toBeHidden();
+    expect(await page.evaluate(() => window.__audioMock.played)).toBe(2);
 });

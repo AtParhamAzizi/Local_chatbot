@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pocket-TTS فارسی (لوکال)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>🎙️ تبدیل متن به گفتار فارسی</h1>
+      <p class="subtitle">
+        اجرای محلی <code>pocket-tts-farsi-v2</code> — مدل فونم‌محور
+      </p>
+    </header>
+
+    <section class="card">
+      <label for="text">متن فارسی</label>
+      <textarea id="text" rows="6"
+        placeholder="مثال: سلام، حال شما چطور است؟ امیدوارم روز خوبی داشته باشید."></textarea>
+      <small id="charCount">0 کاراکتر</small>
+    </section>
+
+    <section class="card grid">
+      <div>
+        <label for="voice">صدای مرجع</label>
+        <select id="voice"></select>
+      </div>
+      <div>
+        <label>آپلود صدای جدید (حداکثر ۵ ثانیه)</label>
+        <input type="file" id="voiceUpload" accept="audio/*" />
+        <button id="uploadBtn" class="secondary">آپلود</button>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button id="synthBtn" class="primary">🔊 تولید گفتار</button>
+      <button id="downloadBtn" class="secondary" disabled>⬇️ دانلود WAV</button>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <section id="playerCard" class="card hidden">
+      <audio id="player" controls></audio>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

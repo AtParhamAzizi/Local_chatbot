@@ -123,6 +123,7 @@ def configure_abuse_controls(app, *, service):
         return
     policies = {'login': (5, 60), 'upload': (6, 300)} if service == 'admin' else {
         'chat': (20, 60), 'voice': (6, 60), 'voice_health': (60, 60),
+        'tts': (30, 60), 'tts_health': (60, 60),
     }
     app.extensions['abuse_controls'] = {
         group: ClientLimiter(limit, window) for group, (limit, window) in policies.items()

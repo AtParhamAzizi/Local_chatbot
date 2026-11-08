@@ -24,3 +24,10 @@ backend/tests/browser-artifacts/
 .venv/
 .venv-tests/
 .venv-profile/
+AUTORUN
+.venv-tts/
+backend/TTS/English_model/
+backend/TTS/Persian_model/
+backend/TTS/_inspect/
+backend/.runtime/
+backend/TTS/tts/backend/pocket-tts-farsi-v2

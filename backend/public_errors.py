@@ -17,6 +17,8 @@ ERRORS = {
     'voice_unavailable': (503, 'Voice transcription is temporarily unavailable.'),
     'voice_model_failed': (503, 'The voice model could not be loaded.'),
     'transcription_failed': (500, 'Transcription failed. Please try again.'),
+    'tts_loading': (503, 'The speech playback model is loading. Please try again shortly.'),
+    'tts_unavailable': (503, 'Speech playback is temporarily unavailable. Your text reply is still available.'),
 }
 STATUS_CODES = {
     400: 'invalid_request', 401: 'authentication_required', 403: 'forbidden',

@@ -85,6 +85,21 @@ async function installAudio(context, mode = 'ready') {
         Object.defineProperty(window, 'speechSynthesis', {
             configurable: true, value: { cancel() {}, getVoices: () => [], speak() {} },
         });
+        state.played = 0;
+        HTMLMediaElement.prototype.play = function () {
+            state.played += 1;
+            if (selectedMode === 'autoplay-denied' && state.played === 1) {
+                return Promise.reject(new DOMException('User gesture needed', 'NotAllowedError'));
+            }
+            if (selectedMode !== 'keep-playing') setTimeout(() => this.dispatchEvent(new Event('ended')), 50);
+            return Promise.resolve();
+        };
+        HTMLMediaElement.prototype.pause = function () {};
+        HTMLMediaElement.prototype.load = function () {};
+        state.packet = amplitude => {
+            const samples = new Int16Array(1600).fill(Math.round(amplitude * 32767));
+            state.worklet.port.onmessage?.({data: {type: 'audio', buffer: samples.buffer}});
+        };
     }, mode);
 }
 

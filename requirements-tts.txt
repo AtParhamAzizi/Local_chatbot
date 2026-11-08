@@ -1,0 +1,4 @@
+# Optional isolated runtime for the local speech worker.
+-r backend/TTS/requirements.txt
+torch==2.7.1
+soundfile>=0.12
