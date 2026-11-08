@@ -1,6 +1,7 @@
 import os
 import threading
 from importlib.util import find_spec
+from typing import Any
 from database import logger
 from model_registry import get_active_model_id, get_model_definition
 from settings import setting_value
@@ -37,7 +38,6 @@ SYSTEM_PROMPT = (
     " در صورتی که موضوع سؤال نیاز به پشتیبانی یا پیگیری مستقیم دارد، کاربر را به شماره 1649 ارجاع بده."
 )
 
-# def _load_generator():
 @logger.operation
 def set_generator_model(model_id):
     global MODEL_ID, GENERATOR_MODEL, _gen_tokenizer, _gen_model, _gen_device
@@ -183,14 +183,12 @@ def get_generator():
 
 @torch.no_grad()
 @logger.operation
-def generate_reply(question: str, context_answers: list[str]) -> str:
-    # tok, model = get_generator()
+def generate_reply(question: str, context_answers: list[dict[str, Any]]) -> str:
     tok, model, device = get_generator()
 
 
-    # context = "\n---\n".join(a.strip() for a in context_answers if a.strip())
     context = build_context(context_answers)
-    user_msg = user_msg = f"""
+    user_msg = f"""
         اطلاعات مرجع بازیابی شده از پایگاه دانش:
         ----------------
         {context}
@@ -216,7 +214,6 @@ def generate_reply(question: str, context_answers: list[str]) -> str:
         add_generation_prompt=True,
         enable_thinking=False,
     )
-    # inputs = tok(text, return_tensors='pt').to(model.device)
     inputs = tok(text, return_tensors='pt').to(device)
 
     out = model.generate(
@@ -233,9 +230,6 @@ def generate_reply(question: str, context_answers: list[str]) -> str:
     reply = tok.decode(generated, skip_special_tokens=True).strip()
 
     # Safety net: strip any leftover think block
-    # if '' in reply:
-    #     reply = reply.split('', 1)[1].strip()
-    # return reply    
     if "<think>" in reply and "</think>" in reply:
         reply = reply.split("</think>", 1)[1].strip()
     return reply

@@ -18,8 +18,6 @@
         let replyPlayback = null;
 
 
-        // const quickQuestions = document.getElementById('quick-questions');
-        // const quickQuestionsbtn = document.getElementsByClassName('quick-question-btn');
 
 // Check backend connection on page load
         checkBackendConnection();
@@ -81,32 +79,6 @@
 
 //&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         // Function to add a message to the chat
-        // function addMessage(content, isUser) {
-        //     const messageDiv = document.createElement('div');
-        //     messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
-
-        //     if (!isUser) {
-
-        //         chatMessages.appendChild(messageDiv);
-
-        //         let index = 0;
-        //         const typingSpeed = 30;
-
-        //         function typeChar() {
-        //             if (index < content.length) {
-        //                 messageDiv.textContent += content.charAt(index);
-        //                 index++;
-        //                 chatMessages.scrollTop = chatMessages.scrollHeight;
-        //                 setTimeout(typeChar, typingSpeed);
-        //             }
-        //         }
-
-        //         typeChar();
-        //     }else {
-        //         messageDiv.textContent = content;
-        //         chatMessages.appendChild(messageDiv);
-        //     }
-        // }
 
         function addMessage(content, isUser, messageId = null) {
             const messageDiv = document.createElement('div');

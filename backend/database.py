@@ -1,4 +1,3 @@
-import pymysql
 import os
 import hashlib
 import inspect

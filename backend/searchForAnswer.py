@@ -1,6 +1,5 @@
 import numpy as np
 import re
-# from interface import embed_texts
 from database import get_conn, logger
 
 
@@ -73,15 +72,6 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = ''):
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            # cur.execute("""
-            #     SELECT c.id, c.document_id, d.filename, c.chunk_index,
-            #            page_start, page_end, content,
-            #            embedding, embedding_dim
-            #     FROM pdf_chunks AS c
-            #     INNER JOIN pdf_documents AS d ON d.id = c.document_id
-            #     WHERE c.embedding IS NOT NULL
-            #       AND d.status = 'completed'
-            # """)
             cur.execute("""
                 SELECT c.id,
                     c.document_id,
@@ -114,7 +104,7 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = ''):
             "id": r["id"],
             "document_id": r["document_id"],
             "filename": r["filename"],
-            "chunk_index": r["chunk_index"],   # was missing before
+            "chunk_index": r["chunk_index"],
             "content": r["content"],
             "page_start": r["page_start"],
             "page_end": r["page_end"],

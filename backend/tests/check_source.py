@@ -1,6 +1,7 @@
-"""Check repository source syntax without imports, plus changed-file whitespace."""
+"""Check syntax, repeated imports, tracked bytecode and changed-file whitespace."""
 
 import argparse
+import ast
 import os
 import shutil
 import subprocess
@@ -18,6 +19,37 @@ def git_files(root, *options):
     return sorted({os.fsdecode(name) for name in result.stdout.split(b'\0') if name})
 
 
+def check_generated_files(root):
+    generated = [name for name in git_files(root, '--cached')
+                 if '__pycache__' in Path(name).parts or Path(name).suffix in {'.pyc', '.pyo'}]
+    if generated:
+        raise RuntimeError('Generated Python files must be removed from the Git index: '
+                           + ', '.join(generated))
+
+
+def check_python(source, filename):
+    compile(source, str(filename), 'exec', dont_inherit=True)
+    tree = ast.parse(source, filename=str(filename))
+    # Only identical imports in an uninterrupted block; branches and local scopes
+    # are independent, and statements between imports may intentionally rebind names.
+    for parent in ast.walk(tree):
+        for _, body in ast.iter_fields(parent):
+            if not isinstance(body, list):
+                continue
+            seen = {}
+            for statement in body:
+                if not isinstance(statement, (ast.Import, ast.ImportFrom)):
+                    seen.clear()
+                    continue
+                for alias in statement.names:
+                    key = (type(statement), getattr(statement, 'level', 0),
+                           getattr(statement, 'module', None), alias.name, alias.asname)
+                    if key in seen:
+                        raise ValueError(f'{filename}:{statement.lineno}: duplicate import '
+                                         f'{alias.name!r} (first at line {seen[key]})')
+                    seen[key] = statement.lineno
+
+
 def check_syntax(root, filenames):
     sources = [root / name for name in filenames
                if Path(name).suffix in SOURCE_SUFFIXES and (root / name).is_file()]
@@ -31,7 +63,7 @@ def check_syntax(root, filenames):
     for path in sources:
         print(f'Syntax: {path.relative_to(root)}', flush=True)
         if path.suffix == '.py':
-            compile(path.read_bytes(), str(path), 'exec', dont_inherit=True)
+            check_python(path.read_bytes(), path.relative_to(root))
         else:
             subprocess.run([node, '--check', str(path)], cwd=root, check=True, timeout=30)
 
@@ -56,13 +88,14 @@ def main(argv=None):
     parser.add_argument('--base', default='HEAD', help='Git base for whitespace checks (default: HEAD)')
     options = parser.parse_args(argv)
     try:
+        check_generated_files(ROOT)
         filenames = git_files(ROOT, '--cached', '--others', '--exclude-standard')
         check_syntax(ROOT, filenames)
         check_whitespace(ROOT, options.base)
     except (OSError, SyntaxError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         print(f'Source checks failed: {error}', file=sys.stderr)
         return 1
-    print('Source syntax and changed-file whitespace passed.', flush=True)
+    print('Source syntax, repeated-import, bytecode and changed-file whitespace checks passed.', flush=True)
     return 0
 
 

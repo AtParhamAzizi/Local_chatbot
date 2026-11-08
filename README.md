@@ -1051,6 +1051,8 @@ CPU-only with no production credentials, configured database or real models.
 The aggregate `Merge checks` fails if any prerequisite fails or is skipped.
 Enable **`Merge checks`** as a required status check in the `main` branch ruleset
 to prevent failed changes from merging; the workflow cannot set repository rules.
-Run `python -B backend/tests/check_source.py` locally for source checks. No
-formatter/linter is currently configured. See `backend/tests/TESTING.md` for the
+Run `python -B backend/tests/check_source.py` locally for syntax, repeated-import,
+tracked-bytecode and changed-whitespace checks. These use the Python standard
+library, Git and Node; no general formatter or type checker is configured.
+See `backend/tests/TESTING.md` for the
 full commands, negative-control verification and separate GPU evaluation policy.

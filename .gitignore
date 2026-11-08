@@ -1,12 +1,11 @@
 backend/modelgen/gemma-4-E2B-it/
-*.pyc
+__pycache__/
+*.py[co]
 backend/model/gemma-4-E2B-it/
 backend/model_selection.json
-backend/__pycache__/
 backend/model/Qwen3-Embedding-0.6B/
 backend/modelgen/qwen3.5-2B/
 backend/datasets/
-backend/STT/__pycache__/
 backend/STT/model/
 backend/STT/style.css
 backend/STT/script.js
@@ -14,7 +13,6 @@ backend/STT/index.html
 backend/controller_state.json
 feauturePlan.md
 /backend/modelgen/
-/backend/__pycache__/*
 .env
 .env.*
 !.env.example

@@ -1,7 +1,6 @@
 
 
 import os
-import hashlib
 import threading
 from database import logger
 

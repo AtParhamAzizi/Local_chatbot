@@ -39,7 +39,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-      - name: Check Python/JavaScript syntax and changed whitespace
+      - name: Check syntax, repeated imports, tracked bytecode and changed whitespace
         env:
           CHECK_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || 'HEAD^' }}
         run: python -B backend/tests/check_source.py --base "$CHECK_BASE"
