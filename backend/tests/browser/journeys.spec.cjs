@@ -105,11 +105,71 @@ for (const [kind, failed] of [['json', false], ['pdf', false], ['json', true]]) 
         await expect(page.locator('#uploadBtn')).toBeEnabled();
         await page.locator('#uploadBtn').click();
         await expect(page.locator('#uploadBtn')).toBeDisabled();
-        await expect(page.locator('#uploadBtn')).toContainText(jobId);
+        await expect(page.locator('#ingestionProgress')).toContainText(jobId);
         await expect(page.locator('#result')).toHaveClass(failed ? /err/ : /ok/);
         await expect(page.locator('#uploadBtn')).toBeEnabled();
         if (failed) await expect(page.locator('#result')).toContainText('The request is invalid.');
         expect(polls).toBe(2);
+    });
+}
+
+for (const kind of ['json', 'pdf']) {
+    test(`background ${kind} progress, running cancellation, reload and checkpoint retry`, async ({ page }) => {
+        await login(page);
+        const prefix = kind === 'json' ? '/admin/api/upload/jobs' : '/admin/api/pdf/upload/jobs';
+        const jobId = 'b'.repeat(32);
+        let status = 'running';
+        let retried = false;
+        let stage = 0;
+        let submissions = 0;
+        let retries = 0;
+        const stages = ['extraction', 'chunking', 'embedding', 'publishing'];
+        const seen = [];
+        await page.route(`${adminURL}${prefix}**`, async route => {
+            const request = route.request();
+            if (request.method() === 'POST') {
+                expect(request.headers()['x-csrf-token']).toBeTruthy();
+                if (request.url().endsWith('/retry')) {
+                    retries++;
+                    retried = true;
+                } else submissions++;
+                status = 'running';
+                return route.fulfill({ status: 202, headers: { Location: `${prefix}/${jobId}` },
+                    json: { job_id: jobId, kind, status: 'queued' } });
+            }
+            if (request.method() === 'DELETE') {
+                expect(request.headers()['x-csrf-token']).toBeTruthy();
+                status = 'canceled';
+            }
+            const current = retried ? stages[Math.min(stage++, 3)] : 'embedding';
+            if (retried) seen.push(current);
+            if (stage > 4) status = 'completed';
+            return route.fulfill({ json: { job_id: jobId, kind, status, retryable: status === 'canceled',
+                checkpoint: 'upload', progress: { stage: current, source: kind, completed: 1, total: 2 },
+                result: kind === 'json'
+                    ? { received: 1, inserted: 1, updated: 0, skipped: 0, embedded: 1, errors: [], duration_sec: 1 }
+                    : { filename: 'upload.pdf', page_count: 1, chunk_count: 1, embedded_chunks: 1, embedding_dim: 3, duration_sec: 1 },
+            } });
+        });
+        if (kind === 'pdf') await page.addInitScript(() => { URL.createObjectURL = () => 'about:blank'; });
+        await page.goto(`${adminURL}/admin/${kind === 'json' ? 'admin' : 'admin_pdf'}.html`);
+        await page.locator('#fileInput').setInputFiles({ name: `upload.${kind}`,
+            mimeType: kind === 'json' ? 'application/json' : 'application/pdf',
+            buffer: Buffer.from(kind === 'json' ? '[{"question":"q","answer":"a"}]' : '%PDF-1.4\n%%EOF'),
+        });
+        await expect(page.locator('#uploadBtn')).toBeEnabled();
+        await page.locator('#uploadBtn').click();
+        await expect(page.locator('#ingestionProgress progress')).toHaveAttribute('value', '1');
+        await expect(page.locator('#ingestionProgress')).toContainText('1/2');
+        await page.locator('#ingestionProgress').getByRole('button', { name: 'لغو', exact: true }).click();
+        await expect(page.locator('#ingestionProgress')).toContainText('لغو شد');
+        await page.reload();
+        await expect(page.locator('#ingestionProgress')).toContainText(jobId);
+        await page.locator('#ingestionProgress').getByRole('button', { name: 'تلاش دوباره' }).click();
+        await expect(page.locator('#ingestionProgress')).toContainText('تکمیل شد', { timeout: 15000 });
+        expect(submissions).toBe(1);
+        expect(retries).toBe(1);
+        expect(new Set(seen)).toEqual(new Set(stages));
     });
 }
 

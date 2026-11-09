@@ -202,7 +202,8 @@ class FlaskMySQLTests(unittest.TestCase):
         restarted.store.recover()
         self.assertEqual(restarted.get(running, 'json')['error']['code'], 'ingestion_interrupted')
         self.assertEqual(restarted.get(canceled, 'pdf')['status'], 'canceled')
-        self.assertEqual(self.count('ingestion_job_payloads'), 0)
+        self.assertEqual(self.count('ingestion_job_payloads'), 2)
+        self.assertTrue(restarted.get(running, 'json')['retryable'])
         self.embed.assert_not_called()
 
     def pdf_bytes(self):
@@ -476,19 +477,73 @@ class FlaskMySQLTests(unittest.TestCase):
         self.assertEqual(self.upload_json(rows, headers).status_code, 200)
         self.assertEqual(self.count('qa_documents'), 1)
 
-    def test_mysql_pdf_chunk_failure_marks_document_failed_and_replace_recovers(self):
+    def test_mysql_pdf_chunk_failure_rolls_back_and_retry_recovers(self):
         headers = self.login()
         raw = self.pdf_bytes()
         with self.reject_statement('pdf_chunks', 'INSERT'):
             self.assert_error(self.upload_pdf(raw, headers), 500, 'internal_error')
-            stored = self.sql('SELECT * FROM pdf_documents')[0]
-            self.assertEqual(stored['status'], 'failed')
-            self.assertEqual(stored['error_message'], 'pdf_processing_failed')
-            self.assertEqual(stored['embedded_chunk_count'], 0)
+            self.assertEqual(self.count('pdf_documents'), 0)
             self.assertEqual(self.count('pdf_chunks'), 0)
         self.assertEqual(self.upload_pdf(raw, headers, replace=True).status_code, 200)
         self.assertEqual(self.sql('SELECT status FROM pdf_documents')[0]['status'], 'completed')
         self.assertEqual((self.count('pdf_documents'), self.count('pdf_chunks')), (1, 2))
+
+    def test_publication_failure_keeps_old_pdf_searchable_and_safe_retry_commits_once(self):
+        headers = self.login()
+        raw = self.pdf_bytes()
+        self.assertEqual(self.upload_pdf(raw, headers).status_code, 200)
+        before_docs = self.sql('SELECT * FROM pdf_documents')
+        before_chunks = self.sql('SELECT * FROM pdf_chunks ORDER BY id')
+        with self.reject_statement('pdf_chunks', 'INSERT'):
+            self.assert_error(self.upload_pdf(raw, headers, replace=True), 500, 'internal_error')
+        self.assertEqual(self.sql('SELECT * FROM pdf_documents'), before_docs)
+        self.assertEqual(self.sql('SELECT * FROM pdf_chunks ORDER BY id'), before_chunks)
+        failed = self.sql("SELECT job_id FROM ingestion_jobs WHERE status='failed'")[0]['job_id']
+        location = '/admin/api/pdf/upload/jobs/' + failed
+        self.assertEqual(self.admin_request(location + '/retry', 'POST', headers=headers).status_code, 202)
+        self.admin_app.extensions['ingestion_jobs'].wait(failed, 'pdf', timeout=10)
+        self.assertEqual((self.count('pdf_documents'), self.count('pdf_chunks')), (1, 2))
+        self.assert_error(self.admin_request(location + '/retry', 'POST', headers=headers), 409, 'conflict')
+
+    def test_json_later_row_failure_rolls_back_prior_rows_and_job_completion(self):
+        headers = self.login()
+        self.sql("CREATE TRIGGER f027_second BEFORE INSERT ON qa_documents FOR EACH ROW "
+                 "BEGIN IF NEW.question='fail second' THEN SIGNAL SQLSTATE '45000'; END IF; END")
+        try:
+            self.assert_error(self.upload_json([
+                {'question': 'first row', 'answer': 'a'}, {'question': 'fail second', 'answer': 'b'},
+            ], headers), 500, 'internal_error')
+        finally:
+            self.sql('DROP TRIGGER f027_second')
+        self.assertEqual(self.count('qa_documents'), 0)
+        failed = self.sql("SELECT job_id FROM ingestion_jobs WHERE status='failed'")[0]['job_id']
+        location = '/admin/api/upload/jobs/' + failed
+        self.assertEqual(self.admin_request(location + '/retry', 'POST', headers=headers).status_code, 202)
+        self.assertEqual(self.admin_app.extensions['ingestion_jobs'].wait(failed, 'json', timeout=10)['inserted'], 2)
+        self.assertEqual(self.count('qa_documents'), 2)
+
+    def test_cancellation_during_publication_rolls_back_and_never_becomes_searchable(self):
+        self.assertTrue(self.ingestion_worker.stop())
+        jobs = self.admin_app.extensions['ingestion_jobs']
+        job_id = jobs.submit('json', b'[{"question":"first","answer":"a"},{"question":"second","answer":"b"}]', 'cancel.json')['job_id']
+        original = jobs.store.progress
+        observed = []
+
+        def progress(job, event):
+            original(job, event)
+            if event['stage'] == 'publishing' and event['completed'] == 1:
+                observed.append(self.count('qa_documents'))
+                jobs.cancel(job_id, 'json')
+
+        with patch.object(jobs.store, 'progress', side_effect=progress):
+            jobs.process_one('manual-worker', lambda: None)
+        self.assertEqual(observed, [0])
+        self.assertEqual(self.count('qa_documents'), 0)
+        self.assertEqual(jobs.get(job_id, 'json')['status'], 'canceled')
+        jobs.retry(job_id, 'json')
+        jobs.process_one('manual-worker', lambda: None)
+        self.assertEqual(self.count('qa_documents'), 2)
+        self.assertEqual(jobs.get(job_id, 'json')['status'], 'completed')
 
     def test_mysql_session_insert_failure_does_not_authenticate_and_recovers(self):
         token = self.login_form()

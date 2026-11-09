@@ -54,11 +54,21 @@ class IngestionJobs:
             'created_at': timestamp(job['created_at']), 'started_at': timestamp(job['started_at']),
             'finished_at': timestamp(job['finished_at']),
             'result': json.loads(job['result_json']) if job['result_json'] else None, 'error': error,
+            'progress': json.loads(job['progress_json']) if job['progress_json'] else None,
+            'checkpoint': 'upload' if job['checkpoint_available'] else None,
+            'retryable': bool(job['status'] in {'failed', 'canceled'} and job['checkpoint_available']
+                              and job['finished_at'] is not None),
         }
 
     def cancel(self, job_id, kind):
         self._get(job_id, kind)
         self.store.cancel(job_id, kind)
+        return self.get(job_id, kind)
+
+    def retry(self, job_id, kind):
+        self._get(job_id, kind)
+        self.store.expire_checkpoints()
+        self.store.retry(job_id, kind)
         return self.get(job_id, kind)
 
     def wait(self, job_id, kind, *, timeout=240):
@@ -85,15 +95,19 @@ class IngestionJobs:
                 raise RuntimeError('Job ownership was lost')
 
         try:
-            raw = self.store.payload(job)
+            raw = self.store.payload(job, guard=publication_guard)
             publication_guard()
             if job['kind'] == 'json':
                 result = self.processor.ingest_qa(
                     raw, replace=bool(job['replace_existing']), publication_guard=publication_guard,
+                    progress=lambda event: self.store.progress(job, event),
+                    publication=lambda result: self.store.publication(job, result, publication_guard),
                 )
             else:
                 result = self.processor.ingest_pdf(
                     raw, job['filename'], replace=bool(job['replace_existing']), publication_guard=publication_guard,
+                    progress=lambda event: self.store.progress(job, event),
+                    publication=lambda result: self.store.publication(job, result, publication_guard),
                 )
             self.store.finish(job, result=result)
         except Exception as error:

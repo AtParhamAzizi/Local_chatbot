@@ -144,9 +144,7 @@ $('#uploadBtn').addEventListener('click', async () => {
   fd.append('replace', $('#replaceDupes').checked ? 'true' : 'false');
 
   try {
-    const r = await adminIngestion('/admin/api/upload/jobs', fd, job => {
-      btn.textContent = `${job.status} (${job.job_id})`;
-    });
+    const r = await adminIngestion('/admin/api/upload/jobs', fd, window.adminIngestionStatus);
     showResult('ok',
       `✅ پردازش با موفقیت انجام شد (${r.duration_sec} ثانیه)`,
       [
@@ -268,5 +266,6 @@ $('#searchInput').addEventListener('keypress', e => {
 });
 
 /* ---------------- init ---------------- */
+window.addEventListener('ingestion-completed', () => { loadStats(); loadDocuments(); });
 loadStats();
 loadDocuments();

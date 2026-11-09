@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Local Chatbot API",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "Stable v1 baseline for existing unversioned UI/admin routes. See README.md beside this document for authentication, compatibility and versioning rules. Demo STT/TTS servers and browser assets are excluded."
   },
   "x-api-major": "1",
@@ -235,7 +235,7 @@
             }
           }
         ],
-        "summary": "Cancel a queued job. Running or finished jobs return 409; canceling an already canceled job succeeds.",
+        "summary": "Cancel queued or running work; canceling an already canceled job succeeds.",
         "responses": {
           "200": {
             "description": "Success",
@@ -257,7 +257,8 @@
           "default": {
             "$ref": "#/components/responses/Error"
           }
-        }
+        },
+        "description": "Cancel queued or running work. A successful response fences publication immediately; see operations.md for the cooperative compute bound."
       }
     },
     "/admin/api/pdf/upload/jobs": {
@@ -458,7 +459,7 @@
             }
           }
         ],
-        "summary": "Cancel a queued job. Running or finished jobs return 409; canceling an already canceled job succeeds.",
+        "summary": "Cancel queued or running work; canceling an already canceled job succeeds.",
         "responses": {
           "200": {
             "description": "Success",
@@ -480,7 +481,8 @@
           "default": {
             "$ref": "#/components/responses/Error"
           }
-        }
+        },
+        "description": "Cancel queued or running work. A successful response fences publication immediately; see operations.md for the cooperative compute bound."
       }
     },
     "/health": {
@@ -2587,6 +2589,144 @@
           }
         }
       }
+    },
+    "/admin/api/upload/jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "admin_qa_retry_job",
+        "x-endpoint": "admin_qa_retry_job",
+        "x-service": "admin",
+        "x-csrf-required": true,
+        "x-permission": "json_upload",
+        "servers": [
+          {
+            "url": "http://localhost:8000",
+            "description": "Development only; replace with the deployed HTTPS origin."
+          }
+        ],
+        "security": [
+          {
+            "AdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Required for mutations; multipart forms also accept csrf_token."
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "summary": "Retry failed or canceled work from its saved upload checkpoint.",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "202": {
+            "description": "Queued for retry; poll Location.",
+            "headers": {
+              "API-Version": {
+                "schema": {
+                  "const": "1"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJob"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "description": "Retry a failed or canceled job from its saved upload within 24 hours. Empty body. Repeating while queued is idempotent. Completed/running jobs or expired/missing checkpoints return 409. Capacity limits apply."
+      }
+    },
+    "/admin/api/pdf/upload/jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "admin_pdf_retry_job",
+        "x-endpoint": "admin_pdf_retry_job",
+        "x-service": "admin",
+        "x-csrf-required": true,
+        "x-permission": "pdf_upload",
+        "servers": [
+          {
+            "url": "http://localhost:8000",
+            "description": "Development only; replace with the deployed HTTPS origin."
+          }
+        ],
+        "security": [
+          {
+            "AdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Required for mutations; multipart forms also accept csrf_token."
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "summary": "Retry failed or canceled work from its saved upload checkpoint.",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "202": {
+            "description": "Queued for retry; poll Location.",
+            "headers": {
+              "API-Version": {
+                "schema": {
+                  "const": "1"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJob"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "description": "Retry a failed or canceled job from its saved upload within 24 hours. Empty body. Repeating while queued is idempotent. Completed/running jobs or expired/missing checkpoints return 409. Capacity limits apply."
+      }
     }
   },
   "components": {
@@ -2737,6 +2877,65 @@
                 "type": "null"
               }
             ]
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "stage": {
+                    "type": "string",
+                    "enum": [
+                      "extraction",
+                      "chunking",
+                      "embedding",
+                      "publishing"
+                    ]
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "json",
+                      "pdf"
+                    ]
+                  },
+                  "completed": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "total": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "stage",
+                  "source",
+                  "completed",
+                  "total"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "checkpoint": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "upload"
+                ]
+              }
+            ]
+          },
+          "retryable": {
+            "type": "boolean"
           }
         },
         "required": [

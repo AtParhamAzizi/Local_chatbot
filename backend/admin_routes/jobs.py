@@ -1,4 +1,4 @@
-"""Authorized asynchronous upload submission, polling and queued cancellation."""
+"""Authorized asynchronous upload submission, polling, cancellation and retry."""
 
 from flask import current_app, g, jsonify, request, url_for
 
@@ -39,6 +39,23 @@ def job_status(job_id, kind):
         return jsonify(error.payload), error.status
 
 
+@query_schema({})
+@limit_requests('upload')
+@logger.operation
+def retry_job(job_id, kind):
+    if request.get_data(cache=False):
+        return jsonify(error='Retry does not accept a request body.'), 400
+    try:
+        job = current_app.extensions['ingestion_jobs'].retry(job_id, kind)
+        response = jsonify(job)
+        response.status_code = 202
+        response.headers['Location'] = url_for('admin_qa_job' if kind == 'json' else 'admin_pdf_job', job_id=job_id)
+        response.headers['Retry-After'] = '1'
+        return response
+    except IngestionError as error:
+        return jsonify(error.payload), error.status
+
+
 def register_routes(app):
     for prefix, kind, name in (('/admin/api/upload/jobs', 'json', 'qa'),
                                ('/admin/api/pdf/upload/jobs', 'pdf', 'pdf')):
@@ -46,3 +63,5 @@ def register_routes(app):
                          defaults={'kind': kind}, methods=['POST'])
         app.add_url_rule(prefix + '/<job_id>', endpoint=f'admin_{name}_job', view_func=job_status,
                          defaults={'kind': kind}, methods=['GET', 'DELETE'])
+        app.add_url_rule(prefix + '/<job_id>/retry', endpoint=f'admin_{name}_retry_job', view_func=retry_job,
+                         defaults={'kind': kind}, methods=['POST'])

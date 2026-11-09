@@ -47,8 +47,8 @@ Vectors stage in the OS temporary directory before database publication. Reserve
 plus filesystem overhead, and ensure the directory is writable. Staging files
 close on every normal success/failure path; they are not durable job checkpoints.
 Embedding failure, including a failed later batch or staging write, precedes
-knowledge writes/replacement. Existing DB autocommit and PDF failure-state
-behavior still apply once persistence begins.
+knowledge writes/replacement. F027 publishes knowledge and successful job
+completion atomically; publication failure rolls back the whole import.
 
 With audit retention enabled, authorized system-report operators can see
 `json/pdf embedding progress: completed=N, total=M` in admin logs during an
@@ -58,7 +58,7 @@ same counts using `IngestionService(progress=callback)` without a Flask context.
 
 ## Durable ingestion jobs (F026)
 
-Apply migration 5 before deploying; follow the backup/stopped-writer procedure
+Apply migrations through 6 before deploying; follow the backup/stopped-writer procedure
 in the migration guide. Serving accounts need SELECT/INSERT/UPDATE/DELETE on
 `ingestion_jobs` and `ingestion_job_payloads`, without DDL privileges.
 Startup launches the ingestion supervisor only after schema/model validation.
@@ -72,10 +72,52 @@ embedding; file transfer and durable storage still take time. Poll the response'
 timestamps, safe errors and the final `result`. Validation of JSON rows and PDF
 contents happens in the worker, so invalid contents are reported as failed jobs.
 Keep the job ID/Location when disconnecting; reconnect using the same authorized
-admin session or a fresh login. The upload page shows the ID and polls while open.
-DELETE that Location cancels queued jobs and frees their payload; repeated
-cancellation succeeds. Running/finished jobs return 409. JSON and PDF jobs require
-their respective upload grants; POST/DELETE also require CSRF.
+admin session or a fresh login. The upload page shows the ID, stage/counts and
+Cancel/Retry controls. It remembers the last job Location in tab session storage
+and reconnects after reload/navigation. JSON and PDF jobs require their respective
+upload grants; POST/DELETE also require CSRF.
+
+GET includes `progress: {stage, source, completed, total}`, `checkpoint: 'upload'`
+when a usable saved upload exists, and `retryable`. Stages are `extraction`,
+`chunking`, `embedding`, `publishing`. PDF extraction/chunking count pages;
+JSON extraction counts one parse and chunking counts validation/deduplication
+rows. Embedding and publishing count unique questions/PDF chunks. Counts belong
+to their stage and reset on retry. Publishing at total still requires `completed`
+to establish a committed result.
+
+DELETE the Location cancels queued **or running** work; repeating succeeds.
+Completed/failed jobs return 409. Cancellation and the final publication commit
+serialize on the job row: cancellation winning means the entire knowledge
+transaction rolls back; publication winning means DELETE returns 409 and the
+complete import/result is retained. Old PDF versions stay searchable until commit.
+
+Cancellation bound: after a successful DELETE, no later publication can commit.
+Worker cancellation is cooperative, checked at each 1 MiB upload restore chunk,
+JSON validation row, PDF extraction page, page chunking operation, embedding
+batch (at most `EMBEDDING_BATCH_SIZE`, 64 inputs maximum), and publication record.
+At most the currently started unit finishes before the attempt stops and its
+temporary vectors/transaction close. A publication record includes its SQL and
+audit calls. Upload parsing/hashing and PDF opening are also single bounded-input
+units (20/50 MiB upload limits). These are **work-unit bounds, not a guaranteed
+number of seconds**: an in-flight native PDF/model operation, SQL/driver wait or
+audit call is not preempted. Smaller embedding batches reduce cancellation latency.
+A hung native call requires serving-process restart; its canceled attempt remains
+fenced, and the new pool cannot replay it without an explicit retry. Do not use
+thread termination to interrupt shared models. Pool capacity remains occupied by
+an in-flight call until it returns, even though logical cancellation frees queue
+admission immediately.
+
+POST `Location/retry` with an empty body retries failed/canceled work using the
+same ID and saved upload. It returns 202 with Location/Retry-After; repeating while
+queued is idempotent. Running/completed or expired/missing checkpoints return 409;
+queue capacity still applies. Every claim has a new attempt token, so an old
+canceled worker cannot overwrite progress or publish after a retry. Extraction,
+chunking and embeddings are recomputed: the durable safe checkpoint is the
+checksum-verified upload, not model-specific intermediate vectors. A crash before
+commit rolls back all knowledge; a crash after commit retains the completed job
+and result, avoiding ambiguous replay. Independent duplicate submissions retain
+the existing unique-question/PDF-hash rules; transport idempotency for a lost
+initial submission response remains a separate feature.
 
 `INGESTION_WORKERS=1` bounds concurrent jobs (1-4). A MySQL connection-held named
 lock elects one pool per database; standby processes retry election. Claims use
@@ -87,19 +129,27 @@ the worker count **plus** simultaneous chat/speech work.
 `INGESTION_QUEUE_CAPACITY=16` caps queued plus running jobs (1-256); full or busy
 admission returns 503. Worst-case active payload storage is 50 MiB times that
 capacity, plus database overhead (800 MiB by default). Payloads use 1 MiB chunks
-to stay below ordinary MySQL packet limits. Raw bytes are removed on terminal
-transitions; job metadata/results persist, without automatic age deletion.
+to stay below ordinary MySQL packet limits. Completed jobs delete bytes in the
+publication transaction. Failed/canceled jobs retain bytes for 24 hours after
+their terminal timestamp for retry, then become ineligible even before cleanup.
+The worker removes up to 1024 expired payload chunks per claim/poll; submissions
+and retries also sweep expired checkpoints. Cleanup waits for a live worker or
+submission when serving is stopped. Retried jobs retain their active upload.
+Allow storage for up to 24 hours of failed/canceled uploads in addition to active
+capacity; queue capacity does not cap that retained history. Job metadata/results
+persist, without automatic age deletion.
 Database backups/binlogs can retain those bytes and need normal protection.
 
 On restart/takeover, queued work remains queued and is processed. Previously
-running jobs become `failed` with code `ingestion_interrupted`, and their payloads
-are removed. Completed, failed and canceled states remain unchanged. Jobs are
-not automatically replayed: current knowledge publication can have partial
-autocommitted writes, including PDF replacement. Inspect knowledge before
-resubmitting interrupted work. Check safe worker logs, database connectivity,
+running jobs become `failed` with code `ingestion_interrupted`, keeping the upload
+checkpoint for an explicit retry within 24 hours. Terminal states stay unchanged.
+Check safe worker logs, database connectivity,
 disk space and job errors when a queue stops advancing. Graceful shutdown drains
 active work while holding the pool lock; abrupt termination follows recovery
-above. Checkpoints, running-job cancellation and atomic replacements remain F027/F028.
+above. Before upgrading from F026, drain/stop old workers. Already interrupted
+pre-F027 attempts may have partial autocommitted knowledge; inspect/clean those
+manually. A legacy started job without F027 progress is never offered a retry
+checkpoint. Migration 6 cannot reconstruct ownership of old partial knowledge.
 
 Legacy upload endpoints use the same queue but wait up to 240 seconds. A 503
 timeout does not cancel durable work; use asynchronous submission for clients

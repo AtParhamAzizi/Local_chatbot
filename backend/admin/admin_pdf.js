@@ -344,7 +344,7 @@ $('#uploadBtn')
                 const r =
                     await adminIngestion(
                         '/admin/api/pdf/upload/jobs', fd,
-                        job => { btn.textContent = `${job.status} (${job.job_id})`; }
+                        window.adminIngestionStatus
                     );
 
 
@@ -792,6 +792,7 @@ $('#searchInput')
 
 
 
+window.addEventListener('ingestion-completed', () => { loadStats(); loadDocuments(); });
 loadStats();
 
 loadDocuments();

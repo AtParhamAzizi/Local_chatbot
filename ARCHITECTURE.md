@@ -150,15 +150,15 @@ an already-prepared app; it does not implicitly start retention or initialize se
 | `admin-users` | id, username UNIQUE, password_hash, is_active, is_admin, permissions JSON, session_version, created_at, updated_at | Security changes increment session_version atomically |
 | `admin_sessions` | token_hash PRIMARY KEY, user_id FK, session_version, expires_at, last_seen_at | Opaque admin logins; Unix-second deadlines; user deletion cascades |
 | `schema_migrations` | version PRIMARY KEY, name, checksum, status, started_at, applied_at, backup_path, backup_sha256 | Ordered DDL ledger; never modified by startup or request handlers |
-| `ingestion_jobs` | job_id PRIMARY KEY, kind, filename, status, worker_id, result_json, error_code, created_at, started_at, finished_at | Durable queued/running/completed/failed/canceled states; terminal metadata retained |
-| `ingestion_job_payloads` | job_id FK, chunk_index, content MEDIUMBLOB; PRIMARY KEY(job_id, chunk_index) | Transactionally submitted upload bytes in 1 MiB chunks; removed at terminal transitions |
+| `ingestion_jobs` | job_id PRIMARY KEY, kind, filename, status, worker_id, progress_json, result_json, error_code, created_at, started_at, finished_at | Durable lifecycle, attempt fencing and stage/count progress; terminal metadata retained |
+| `ingestion_job_payloads` | job_id FK, chunk_index, content MEDIUMBLOB; PRIMARY KEY(job_id, chunk_index) | Transactionally submitted bytes in 1 MiB chunks; successful publication deletes bytes, failed/canceled checkpoints expire after 24 hours |
 
 Env: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`. All defaults and validation live in `settings.SETTING_REGISTRY`; `database.DB_CONFIG` adds the MySQL adapter's charset, `DictCursor` and `autocommit=True`. Development defaults are localhost, 3306, root, an empty password and `chatbot_db`; production requires explicit restricted-account credentials. `interface.py` has no separate database configuration. Use `database.get_conn()`; rows are accessed by column name.
 ### Explicit migrations (F020)
 
-Read `backend/migrations/README.md` before deployment. Run `python -B backend/schema_migrations.py status` for the recorded schema version (unversioned = 0, current = 5), pending/incomplete versions and latest supported version. Empty pre-created databases use `upgrade`; existing databases require stopped writers, a restore-tested pre-upgrade dump and `upgrade --backup PATH`. File existence/nonzero size and SHA-256 are checked/recorded, not backup validity; restore-testing remains an operator requirement. Startup and `setup_admin.py` only require the current ledger and never repair a schema opportunistically.
+Read `backend/migrations/README.md` before deployment. Run `python -B backend/schema_migrations.py status` for the recorded schema version (unversioned = 0, current = 6), pending/incomplete versions and latest supported version. Empty pre-created databases use `upgrade`; existing databases require stopped writers, a restore-tested pre-upgrade dump and `upgrade --backup PATH`. File existence/nonzero size and SHA-256 are checked/recorded, not backup validity; restore-testing remains an operator requirement. Startup and `setup_admin.py` only require the current ledger and never repair a schema opportunistically.
 
-Migrations create the original six tables (1), add account session versions and `admin_sessions` (2), widen legacy log messages (3), add nullable anonymous ownership (4), and create durable ingestion jobs/payloads (5). Documented pre-ledger databases, including those already carrying these changes, are adopted using explicit migration-only table/column guards without rewriting records. Legacy ownership remains NULL; existing ownership, credentials, permissions, feedback and float32 embedding bytes stay intact. Unsupported legacy column layouts fail before DDL. This is not a repair tool for arbitrary manual schema/type/constraint changes.
+Migrations create the original six tables (1), add account session versions and `admin_sessions` (2), widen legacy log messages (3), add nullable anonymous ownership (4), create durable ingestion jobs/payloads (5), and add durable job progress (6). Documented pre-ledger databases, including those already carrying these changes, are adopted using explicit migration-only table/column guards without rewriting records. Legacy ownership remains NULL; existing ownership, credentials, permissions, feedback and float32 embedding bytes stay intact. Unsupported legacy column layouts fail before DDL. This is not a repair tool for arbitrary manual schema/type/constraint changes.
 
 One database-scoped named lock excludes competing migration commands. Each version records running/applied/failed state, timestamps, checksum and backup identity; checksums/order/future versions fail closed. MySQL DDL commits implicitly, so interrupted work is not presented as transactionally rolled back. After inspecting/fixing failures, the documented `upgrade --resume --backup PATH` retries idempotent incomplete steps; ordinary upgrade refuses them. There is no unsafe downgrade command: restore a clean replacement database and matching old release if forward completion cannot be verified. Ordinary serving needs no CREATE/ALTER grants. Imports of the migration module are side-effect-free, including under missing deployment configuration.
 
@@ -221,8 +221,8 @@ values. All batches must succeed before knowledge writes or replacement begin;
 persistence reads one BLOB at a time in input order. Staging closes on success,
 model failure, connection failure or persistence failure. The temporary directory
 must be writable, with space for `input_count * embedding_dimension * 4` bytes
-(1 MiB for 256 vectors of dimension 1024). This does not change existing database
-autocommit or PDF replacement transaction semantics.
+(1 MiB for 256 vectors of dimension 1024). F027 uses an explicit publication
+transaction for all JSON writes/PDF replacement and successful job completion.
 
 `IngestionService(..., batch_size=..., progress=callback)` permits adapter-based
 tests and service consumers. The optional callback receives
@@ -248,19 +248,22 @@ Legacy POST `/admin/api/pdf/upload` queues and waits up to 240 seconds for its o
 2. Text is extracted per page with PyMuPDF (`get_text("text", sort=True)`), capped at 500000 total characters before trimming. Unreadable PDFs or PDFs with no extractable text (e.g. scans) return 400. Documents close even when extraction fails or hits a limit.
 3. `split_text(text, chunk_size, overlap)` runs per page with `PDF_CHUNK_SIZE=900` and `PDF_CHUNK_OVERLAP=160`. It removes soft hyphens and hyphenated line breaks, collapses whitespace, and prefers paragraph, line and sentence breaks. Chunks never span pages (`page_start == page_end`).
 4. At most 256 chunks are accepted. Text/chunk overages return 413 before model work or document changes. After validation, dedup uses `sha256_bytes`: a duplicate returns 409 unless `replace` is true. Chunks use the bounded staging pipeline above; input order, chunk indices and page metadata are preserved across batch boundaries.
-5. The code inserts `pdf_documents` (`processing`) and `pdf_chunks`, then marks the document `completed` (or `failed` with `error_message`).
+5. One transaction replaces/inserts `pdf_documents` and its chunks, marks the document completed, records the successful job result and deletes upload bytes. Failure or cancellation rolls everything back, keeping any previous document searchable.
 
 Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_id)` (chunks cascade), `admin_pdf_stats()`.
 
-### 6.6.1 Durable ingestion jobs (F026)
+### 6.6.1 Durable ingestion jobs and safe retries (F026/F027)
 
 `services.ingestion_jobs.IngestionJobs` submits/reads/cancels/executes jobs without
 Flask contexts; `services.job_store.MySQLJobStore` owns persistence. POST
 `/admin/api/upload/jobs` or `/admin/api/pdf/upload/jobs` returns
 `{job_id, kind, status: 'queued'}`, `Location`, and `Retry-After: 1` after committing
 metadata and chunked file bytes together. GET that Location returns lifecycle
-state, UTC timestamps, final `result` or safe `error`. DELETE cancels queued work
-idempotently; running/completed/failed jobs return 409. Reads/mutations require
+state, UTC timestamps, final `result` or safe `error`, `progress` stage/counts,
+`checkpoint` and `retryable`. DELETE cancels queued/running work idempotently;
+completed/failed jobs return 409. POST `Location/retry` with an empty body returns
+202, requeues failed/canceled work under the same ID and obeys admission limits.
+Queued retries are idempotent; running/completed/expired checkpoints return 409. Reads/mutations require
 the corresponding upload grant, with CSRF on mutations. The admin pages submit
 and poll these endpoints; synchronous legacy paths wait on this same queue.
 
@@ -271,16 +274,35 @@ bounds concurrent jobs; `INGESTION_QUEUE_CAPACITY=16` (1-256) caps queued plus
 running work; full/busy admission returns 503. `INGESTION_POLL_SECONDS=1`
 (0.05-30) controls idle polling/election retries. A lost lease prevents further
 claims; guards run between embedding batches and before knowledge publication.
+Each claim receives a unique attempt token (including retries in the same pool).
 One shared supervisor starts explicitly after schema/models, never on import.
 
 Queued jobs and bytes survive restarts. On election/restart, abandoned running
-jobs become failed with `ingestion_interrupted`; terminal states stay terminal.
-They are not replayed because knowledge writes retain existing autocommit/PDF
-replacement semantics. Inspect knowledge before resubmission; checkpoints,
-running-job cancellation and atomic publication belong to F027/F028. Raw upload
-bytes use 1 MiB payload chunks with a SHA-256 integrity check and are deleted
-when the job completes/fails/is canceled; metadata/results remain. Legacy wait
-timeouts return 503 without canceling work. See `docs/operations.md` for sizing.
+jobs become failed with `ingestion_interrupted`; completed/canceled/failed states
+stay unchanged until explicit retry. The checksum-verified upload is the durable
+safe checkpoint; extraction/chunking/embedding are recomputed. Failed/canceled
+bytes are retryable for 24 hours from termination, then a bounded sweep removes
+them during worker polls/submission/retry. Successful bytes are deleted together
+with knowledge publication and the job result, so a crash cannot create ambiguous
+success. Canceled/stale attempts cannot update progress or publish after retry.
+
+Publication writes knowledge in one transaction without holding the job-row lock
+until its final locking ownership read and successful finish. Cancellation can
+therefore win during knowledge writes and force rollback; publication winning the
+final row lock commits a complete result and subsequent cancellation returns 409.
+Only committed knowledge is searchable. PDF replacement retains the old document
+until commit. Progress reports extraction/page chunking, embedding batches and
+publication records, with independent stage totals.
+
+Cancellation is fenced on acknowledgement; physical work stops at the next unit
+boundary (one payload chunk, JSON row, PDF page, embedding batch or publication
+record, plus bounded-input parsing/opening/hashing). Native calls/SQL are not
+preempted, so this is a work-unit bound with no unconditional seconds guarantee.
+See `docs/operations.md` for exact limits and hung-call recovery. Legacy started
+F026 jobs without progress are ineligible for retry because they could have old
+partial autocommit writes; drain workers before migration 6 and inspect those
+separately. Legacy wait timeouts return 503 without canceling work. See
+[ADR 0004](docs/decisions/0004-ingestion-publication-and-retries.md).
 
 ### 6.7 Feedback (`user.py: feedback()`, POST `/feedback`)
 
@@ -374,12 +396,14 @@ redirects to login. An authenticated but unauthorized operation returns 403.
 | GET | `/admin/api/stats` | `admin_stats` |
 | POST | `/admin/api/upload` | `admin_upload` |
 | POST | `/admin/api/upload/jobs` | `admin_qa_submit_job` (202 + durable ID) |
-| GET, DELETE | `/admin/api/upload/jobs/<job_id>` | `admin_qa_job` (poll/cancel queued) |
+| GET, DELETE | `/admin/api/upload/jobs/<job_id>` | `admin_qa_job` (progress/cancel queued or running) |
+| POST | `/admin/api/upload/jobs/<job_id>/retry` | `admin_qa_retry_job` (202 from saved upload) |
 | GET | `/admin/api/documents` | `admin_documents` |
 | DELETE | `/admin/api/documents/<int:doc_id>` | `admin_delete` |
 | POST | `/admin/api/pdf/upload` | `admin_pdf_upload` |
 | POST | `/admin/api/pdf/upload/jobs` | `admin_pdf_submit_job` (202 + durable ID) |
-| GET, DELETE | `/admin/api/pdf/upload/jobs/<job_id>` | `admin_pdf_job` (poll/cancel queued) |
+| GET, DELETE | `/admin/api/pdf/upload/jobs/<job_id>` | `admin_pdf_job` (progress/cancel queued or running) |
+| POST | `/admin/api/pdf/upload/jobs/<job_id>/retry` | `admin_pdf_retry_job` (202 from saved upload) |
 | GET | `/admin/api/pdf/documents` | `admin_pdf_documents` |
 | DELETE | `/admin/api/pdf/documents/<int:doc_id>` | `admin_pdf_delete` |
 | GET | `/admin/api/pdf/stats` | `admin_pdf_stats` |
@@ -531,7 +555,7 @@ The rest of CSP is sent only as `Content-Security-Policy-Report-Only`. The candi
 
 `python -B backend/tests/run_mysql_tests.py --repeat 2` provisions a fresh MySQL 8.4 Docker container using only `backend/tests/mysql/compose.yaml` and an explicit empty Compose env file. Install `backend/tests/mysql/requirements.txt` (the offline dependencies plus PyMuPDF and PyMySQL's RSA authentication extra). Each invocation uses a random project/schema/password and random loopback-only host port; the non-root test account is scoped to that schema. Inherited deployment `DB_*`/`COMPOSE_*`/`F014_*` settings are ignored. PyMySQL factories and sockets reject every unprovisioned target, including attempts swallowed by Flask's error handlers. The data directory is tmpfs, never a developer volume. Before destructive per-test cleanup, fixtures verify both the provisioned config and `SELECT DATABASE()`. A `finally` removes only that run's project even on failure; no external-database override exists.
 
-`backend/tests/mysql/test_api.py` uses the explicit migration runner and Flask clients against real MySQL for login/session revocation, forbidden/CSRF actions, JSON/PDF ingestion and dedup/replacement/cascades, knowledge-backed chat persistence/ownership, feedback, and zero retention. Embeddings/generation and speech are doubled, but parsing, PyMuPDF extraction, retrieval, authentication, authorization, logging and SQL are real. Temporary MySQL triggers inject rejected writes; tests check status/public codes, actual stored effects (including failed-PDF state under current autocommit), and recovery. Connection failures are separately injected at connection boundaries. This directory is excluded from default unittest discovery; offline `test_mysql_isolation.py` validates the safety machinery without Docker or network. Missing prerequisites fail explicitly rather than skipping. See `backend/tests/TESTING.md` for setup, coverage and interrupted-run cleanup.
+`backend/tests/mysql/test_api.py` uses the explicit migration runner and Flask clients against real MySQL for login/session revocation, forbidden/CSRF actions, JSON/PDF ingestion and dedup/replacement/cascades, knowledge-backed chat persistence/ownership, feedback, and zero retention. Embeddings/generation and speech are doubled, but parsing, PyMuPDF extraction, retrieval, authentication, authorization, logging and SQL are real. Temporary MySQL triggers inject rejected writes; tests check status/public codes, atomic publication rollback, previous-PDF preservation and checkpoint retries. Connection failures are separately injected at connection boundaries. This directory is excluded from default unittest discovery; offline `test_mysql_isolation.py` validates the safety machinery without Docker or network. Missing prerequisites fail explicitly rather than skipping. See `backend/tests/TESTING.md` for setup, coverage and interrupted-run cleanup. The F027 MySQL cases were added but not executed locally because Docker was stopped.
 
 ## Browser regression tests (F015)
 

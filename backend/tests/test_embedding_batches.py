@@ -50,6 +50,9 @@ class RecordingDatabase:
     def commit(self):
         pass
 
+    def begin(self):
+        pass
+
     def rollback(self):
         pass
 
@@ -228,6 +231,47 @@ class EmbeddingBatchTests(unittest.TestCase):
         self.assertNotIn('private', str(caught.exception.payload))
         embed.assert_not_called()
         self.assertEqual(self.database.connections, 0)
+
+    def test_job_progress_reports_all_stages_and_page_counts(self):
+        events = []
+        self.service(batch_size=1, open_pdf=self.pdf(['0 first', '1 second'])).ingest_pdf(
+            b'pdf', 'test.pdf', progress=events.append,
+        )
+        stages = [event['stage'] for event in events]
+        self.assertEqual(list(dict.fromkeys(stages)), ['extraction', 'chunking', 'embedding', 'publishing'])
+        for stage in ('extraction', 'chunking', 'embedding', 'publishing'):
+            counts = [event['completed'] for event in events if event['stage'] == stage]
+            self.assertEqual((counts[0], counts[-1]), (0, 2))
+            self.assertEqual(counts, sorted(counts))
+            self.assertTrue(all(event['total'] == 2 for event in events if event['stage'] == stage))
+
+    def test_cancel_during_pdf_extraction_or_chunking_stops_at_next_page_and_closes_pdf(self):
+        for stage in ('extraction', 'chunking'):
+            with self.subTest(stage=stage):
+                stopped = False
+                open_pdf = self.pdf(['0 first', '1 second', '2 third'])
+                splitter = Mock(side_effect=lambda text, **options: [text])
+                embed = Mock(side_effect=AssertionError('Canceled job must not embed'))
+
+                def report(event):
+                    nonlocal stopped
+                    if event['stage'] == stage and event['completed'] == 1:
+                        stopped = True
+
+                def guard():
+                    if stopped:
+                        raise RuntimeError('Canceled')
+
+                with self.assertRaises(Exception):
+                    self.service(open_pdf=open_pdf, splitter=splitter, embed=embed).ingest_pdf(
+                        b'pdf', 'cancel.pdf', progress=report, publication_guard=guard,
+                    )
+                open_pdf.return_value.close.assert_called_once()
+                if stage == 'extraction':
+                    self.assertEqual(open_pdf.return_value.load_page.call_count, 1)
+                else:
+                    self.assertEqual(splitter.call_count, 1)
+                embed.assert_not_called()
 
     def test_maximum_upload_fixtures_fit_32_mib_additional_allocation_budget(self):
         budget = 32 * 1024 * 1024

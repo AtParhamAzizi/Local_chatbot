@@ -44,7 +44,7 @@ with different routes; their `/voice`, `/stream`, `/api/status` and
 
 ## Requests and transport
 
-### Background upload submissions (1.1, F026)
+### Background uploads and safe retries (1.2, F026/F027)
 
 Use `POST /admin/api/upload/jobs` for JSON and `POST /admin/api/pdf/upload/jobs`
 for PDF with the same bounded multipart fields and authorization as the legacy
@@ -55,8 +55,14 @@ UTC timestamps, `result` (the legacy import result on completion), and `error`
 (an allowlisted `{code, error}` on failure). Polling returns 200 even when the
 job failed; inspect `status`. Unknown/malformed/wrong-kind IDs return 404.
 
-`DELETE Location` cancels only queued jobs (200); cancellation is idempotent,
-and running/completed/failed jobs return 409. Mutations require CSRF. JSON jobs
+Status also includes `progress: {stage, source, completed, total}` or null,
+`checkpoint: 'upload'` or null, and boolean `retryable`. Progress stages are
+`extraction`, `chunking`, `embedding`, `publishing`; stage totals are independent.
+`DELETE Location` cancels queued or running jobs (200); cancellation is idempotent,
+and completed/failed jobs return 409. `POST Location/retry` with no body returns
+202 and requeues failed/canceled work from its saved upload within 24 hours.
+Queued retries are idempotent; running/completed/expired/missing-checkpoint jobs
+return 409. Retries retain the same job ID and obey admission limits. Mutations require CSRF. JSON jobs
 require `json_upload`, PDF jobs `pdf_upload`, including reads and cancellation;
 any account with that grant may manage its kind's jobs. Unknown query fields
 are rejected. Queue admission returns 503 when full/busy. There is no implicit
@@ -64,9 +70,13 @@ deduplication of submissions; keep the returned ID rather than retry a confirmed
 submission. A lost submission response has no idempotency guarantee.
 
 State and queued payloads persist in MySQL. After service restart, queued jobs
-continue; interrupted running jobs fail with `ingestion_interrupted`. Inspect
-knowledge before resubmission because publication may have partial writes.
-Completed/failed/canceled jobs stay terminal. Legacy `/admin/api/upload` and
+continue; interrupted running jobs fail with `ingestion_interrupted` and can be
+retried from the upload checkpoint. Publication and job completion share one
+transaction, preventing searchable partial data and replay after a committed
+success. Completed jobs stay terminal. Failed/canceled bytes expire after 24
+hours; successful bytes are deleted at commit. See the
+[cancellation work-unit bound](../operations.md#durable-ingestion-jobs-f026),
+retention and pre-F027 migration caveat. Legacy `/admin/api/upload` and
 `/admin/api/pdf/upload` retain synchronous response schemas while using the same
 worker queue; they wait at most 240 seconds, with 503 on timeout and work still queued/running.
 

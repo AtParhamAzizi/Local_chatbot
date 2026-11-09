@@ -244,7 +244,7 @@ class IngestionServiceTests(ServiceFixture, unittest.TestCase):
         self.assertEqual(self.connection.close.call_count, 2)
         document.close.assert_called_once()
 
-    def test_pdf_persistence_failure_rolls_back_and_records_safe_failed_state(self):
+    def test_pdf_persistence_failure_rolls_back_without_publishing_a_failed_document(self):
         self.document()
         def fail_chunk(query, parameters=None):
             if 'INSERT INTO pdf_chunks' in query:
@@ -254,8 +254,8 @@ class IngestionServiceTests(ServiceFixture, unittest.TestCase):
             self.service.ingest_pdf(b'pdf', 'test.pdf')
         self.assertEqual(caught.exception.status, 500)
         self.connection.rollback.assert_called_once()
-        self.assertEqual(self.cursor.execute.call_args.args[1], ('pdf_processing_failed', 17))
-        self.connection.commit.assert_called_once()
+        self.assertFalse(any('error_message' in call.args[0] for call in self.cursor.execute.call_args_list))
+        self.connection.commit.assert_not_called()
         self.assertEqual(self.connection.close.call_count, 2)
 
 

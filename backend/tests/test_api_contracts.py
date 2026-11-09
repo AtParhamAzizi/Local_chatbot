@@ -165,12 +165,16 @@ class ApiContractTests(AbuseEndpointFixture, unittest.TestCase):
                        'started_at': None, 'finished_at': None, 'result': None, 'error': None}
                 jobs.get.return_value = job
                 jobs.cancel.return_value = {**job, 'status': 'canceled', 'finished_at': self.timestamp.isoformat()}
+                jobs.retry.return_value = {**job, 'checkpoint': 'upload', 'retryable': False,
+                                          'progress': {'stage': 'embedding', 'source': kind, 'completed': 1, 'total': 2}}
                 response = self.admin_open(prefix, 'POST', headers=self.headers,
                                            data={'file': (io.BytesIO(b'content'), 'upload.' + kind)})
                 self.check(response, prefix, 'POST', 202)
                 self.assertEqual(response.headers['Location'], prefix + '/' + job_id)
                 self.check(self.admin_open(prefix + '/' + job_id, headers=self.headers), prefix + '/{job_id}')
                 self.check(self.admin_open(prefix + '/' + job_id, 'DELETE', headers=self.headers), prefix + '/{job_id}', 'DELETE')
+                self.check(self.admin_open(prefix + '/' + job_id + '/retry', 'POST', headers=self.headers),
+                           prefix + '/{job_id}/retry', 'POST', 202)
         legacy_ui = {'/': 'ui_index', '/index.html': 'ui_index_alias', '/health': 'health',
                      '/chat': 'chat', '/feedback': 'feedback', '/voice/health': 'voice_health',
                      '/voice/audio-worklet.js': 'voice_worklet', '/voice-stream': 'voice_stream',

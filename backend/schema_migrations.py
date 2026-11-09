@@ -58,6 +58,7 @@ MIGRATIONS = (
     Migration(3, 'log_message_text', 'adminlogger', 'message', True),
     Migration(4, 'chat_ownership', 'chat_history', 'owner_hash'),
     Migration(5, 'ingestion_jobs'),
+    Migration(6, 'ingestion_progress', 'ingestion_jobs', 'progress_json'),
 )
 LATEST_VERSION = MIGRATIONS[-1].version
 REQUIRED_COLUMNS = {

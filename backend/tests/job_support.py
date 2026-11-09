@@ -18,7 +18,7 @@ class JobDatabase:
                     job_id TEXT PRIMARY KEY, kind TEXT, filename TEXT, replace_existing INTEGER,
                     file_size INTEGER, payload_sha256 TEXT, submitted_by INTEGER,
                     status TEXT DEFAULT 'queued', worker_id TEXT, result_json TEXT,
-                    error_code TEXT, error_status INTEGER, created_at TEXT,
+                    error_code TEXT, error_status INTEGER, progress_json TEXT, created_at TEXT,
                     started_at TEXT, finished_at TEXT
                 );
                 CREATE TABLE ingestion_job_payloads (
@@ -92,6 +92,9 @@ class JobCursor:
             if query.startswith('DELETE payload FROM'):
                 query = "DELETE FROM ingestion_job_payloads WHERE job_id IN (SELECT job_id FROM ingestion_jobs WHERE status='failed')"
             query = query.replace('%s', '?').replace('UTC_TIMESTAMP(6)', 'UTC_TIMESTAMP()')
+            query = query.replace('DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY)', "datetime(UTC_TIMESTAMP(), '-1 day')")
+            if query.startswith('DELETE FROM ingestion_job_payloads') and query.endswith(' LIMIT 1024'):
+                query = query[:-len(' LIMIT 1024')]
             query = query.replace(' FOR UPDATE SKIP LOCKED', '').replace(' FOR UPDATE', '')
             self.raw.execute(query, parameters)
             self.rowcount = self.raw.rowcount

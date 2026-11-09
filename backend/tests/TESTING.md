@@ -1,5 +1,24 @@
 # Offline unit-test foundation
 
+## Job progress, cancellation and retry (F027)
+
+Run `python -B backend/tests/run_tests.py --pattern test_ingestion_jobs.py -v`
+for durable progress/ownership, cancellation between model batches, same-pool
+retry fencing, capacity, 24-hour expiry, restart recovery, rollback on interruption
+and knowledge/result atomicity. SQLite translates the metadata SQL and provides
+real transaction visibility/rollback; it does not establish MySQL locking semantics.
+`test_embedding_batches.py` and `test_service_boundaries.py` cover staging cleanup
+and direct service transaction boundaries. API/permission tests cover both retry
+routes, allowed fields, grants and CSRF.
+
+Run `python -B backend/tests/browser_smoke.py --channel chrome --grep background`
+for JSON/PDF progress controls, cancellation, reload recovery and same-job retry.
+The disposable MySQL suite also exercises later-row rejection, canceled publication,
+retained previous PDFs and safe retries against real InnoDB. Local F027 validation
+passed offline and Chrome checks; Docker was stopped, so the added MySQL checks
+were not executed locally. See [operations](../../docs/operations.md#durable-ingestion-jobs-f026)
+for the documented work-unit cancellation bound and pre-F027 migration caveat.
+
 Use Python 3.12 or 3.13 on Windows or Linux. From the repository root, create
 a separate environment with only the lightweight test dependencies:
 
@@ -55,11 +74,11 @@ those belong in separately provisioned integration suites.
 
 ## Factory and startup boundaries (F018)
 
-`test_ingestion_jobs.py` (F026) runs the production MySQL job store's statements
+`test_ingestion_jobs.py` (F026/F027) runs the production MySQL job store's statements
 through a disk-backed SQLite adapter, translating MySQL time/lock syntax. It
 checks durable queued and terminal states across fresh service/store instances,
 interrupted-running recovery, payload chunk/checksum handling, bounded admission,
-queued cancellation, safe failures, bounded worker concurrency and standby
+queued/running cancellation, safe retries/failures, bounded worker concurrency and standby
 takeover, plus real Flask submission/polling/auth/CSRF without model work during
 submission. This is offline protocol evidence, not MySQL syntax certification.
 The disposable MySQL suite covers actual migrations, payload persistence and
@@ -269,15 +288,15 @@ statuses/public error codes and separately queried MySQL effects:
   unknown, legacy and invalid requests that leave ratings unchanged.
 - Actual MySQL `SIGNAL` trigger failures during session creation, JSON insertion,
   PDF chunk insertion, chat insertion, feedback update and administrator chat
-  deletion. Assertions cover safe errors, no rejected writes, failed-PDF state
-  under current autocommit behavior, and recovery after removing the trigger.
+  deletion. Assertions cover safe errors, atomic JSON rollback, previous-PDF
+  preservation, canceled publication and recovery through checkpoint retries.
   Separate connection-boundary `OperationalError` injection covers unavailable
   connections without stopping another service or changing deployment credentials.
 
 Only embedding/generation and speech adapters are deterministic doubles; model
 loaders/imports and model-directory reads remain forbidden. These tests do not
-evaluate real model quality, voice, browser behavior, or guarantee atomic
-multi-row imports (the application currently uses autocommit).
+evaluate real model quality, voice or browser behavior. Knowledge publication
+uses explicit transactions; unrelated route writes still use autocommit.
 
 `mysql/test_schema.py` independently rebuilds only that provisioned database
 using the released baseline and populated legacy fixtures. It checks upgrade

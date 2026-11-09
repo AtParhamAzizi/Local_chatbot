@@ -72,9 +72,9 @@ class MigrationTests(unittest.TestCase):
 
     def test_empty_schema_records_all_versions_and_reports_current(self):
         report = self.run_upgrade()
-        self.assertEqual(report, {'schema_version': 5, 'latest_version': 5, 'pending': [], 'incomplete': []})
-        self.assertEqual(self.apply.call_count, 5)
-        self.assertEqual([record['status'] for record in self.store.records.values()], ['applied'] * 5)
+        self.assertEqual(report, {'schema_version': 6, 'latest_version': 6, 'pending': [], 'incomplete': []})
+        self.assertEqual(self.apply.call_count, 6)
+        self.assertEqual([record['status'] for record in self.store.records.values()], ['applied'] * 6)
         self.assertTrue(all(record['backup_sha256'] is None for record in self.store.records.values()))
         self.store.connection.autocommit.assert_called_once_with(True)
         self.store.connection.close.assert_called_once()
@@ -123,14 +123,14 @@ class MigrationTests(unittest.TestCase):
             self.run_upgrade(resume=True)
         self.apply.side_effect = self.store.apply
         report = self.run_upgrade(resume=True, backup=self.backup)
-        self.assertEqual(report['schema_version'], 5)
-        self.assertEqual([call.args[0].version for call in self.apply.call_args_list], [1, 2, 2, 3, 4, 5])
+        self.assertEqual(report['schema_version'], 6)
+        self.assertEqual([call.args[0].version for call in self.apply.call_args_list], [1, 2, 2, 3, 4, 5, 6])
         self.assertTrue(any('RELEASE_LOCK' in query for query, parameters in self.store.queries))
 
     def test_process_interruption_leaves_running_record_and_cannot_serve(self):
         self.run_upgrade()
-        self.store.records[5]['status'] = 'running'
-        with self.assertRaisesRegex(self.migrations.MigrationError, 'version 4'):
+        self.store.records[6]['status'] = 'running'
+        with self.assertRaisesRegex(self.migrations.MigrationError, 'version 5'):
             self.migrations.require_current_schema(connect=self.connect)
         with self.assertRaises(self.migrations.MigrationError):
             self.run_upgrade(backup=self.backup)
@@ -141,7 +141,7 @@ class MigrationTests(unittest.TestCase):
                 self.run_upgrade()
             self.store.queries.clear()
             status = self.migrations.schema_status(connect=self.connect)
-            self.assertEqual(status['schema_version'], 5 if initialized else 0)
+            self.assertEqual(status['schema_version'], 6 if initialized else 0)
             if initialized:
                 self.assertEqual(self.migrations.require_current_schema(connect=self.connect), status)
             else:

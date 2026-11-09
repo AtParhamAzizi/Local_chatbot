@@ -87,12 +87,45 @@ class IngestionService:
         if self.progress is not None:
             self.progress({'stage': 'embedding', 'source': source, 'completed': completed, 'total': total})
 
+    def _report(self, stage, source, completed, total, progress, guard):
+        if guard is not None:
+            guard()
+        if progress is not None:
+            progress({'stage': stage, 'source': source, 'completed': completed, 'total': total})
+
     @contextmanager
-    def _embeddings(self, records, *, text_for, source, publication_guard=None):
+    def _publication(self, result, publication):
+        if publication is not None:
+            with publication(result) as connection:
+                yield connection
+            return
+        connection = self.connect()
+        try:
+            connection.begin()
+            yield connection
+            connection.commit()
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    @contextmanager
+    def _pdf_publication(self, result, publication):
+        try:
+            with self._publication(result, publication) as connection:
+                yield connection
+        except Exception:
+            raise IngestionError({'error': 'Request failed.'}, 500) from None
+
+    @contextmanager
+    def _embeddings(self, records, *, text_for, source, publication_guard=None, progress=None):
         def report(completed, total):
             if publication_guard is not None:
                 publication_guard()
             self._report_embedding(source, completed, total)
+            if progress is not None:
+                progress({'stage': 'embedding', 'source': source, 'completed': completed, 'total': total})
 
         with ExitStack() as resources:
             try:
@@ -105,18 +138,23 @@ class IngestionService:
                 raise IngestionError({'error': 'Request failed.'}, 500) from None
             yield result
 
-    def ingest_qa(self, raw, *, replace=False, publication_guard=None):
+    def ingest_qa(self, raw, *, replace=False, publication_guard=None, progress=None, publication=None):
         """Import UTF-8 JSON bytes; reject every invalid row before embedding/writes."""
         self.audit('Received a knowledge-base JSON upload')
         started = self.clock()
 
+        self._report('extraction', 'json', 0, 1, progress, publication_guard)
         payload = parse_json(raw)
         if not isinstance(payload, list) or not payload:
             raise InvalidRequest('The uploaded JSON must be a non-empty array of question/answer objects.')
         if len(payload) > MAX_IMPORT_ROWS:
             raise RequestEntityTooLarge()
+        self._report('extraction', 'json', 1, 1, progress, publication_guard)
+        self._report('chunking', 'json', 0, len(payload), progress, publication_guard)
         rows, seen = [], set()
         for item in payload:
+            if publication_guard is not None:
+                publication_guard()
             item = validate_object(item, {
                 'question': text(MAX_MESSAGE_CHARS, 1), 'answer': text(MAX_ANSWER_CHARS, 1),
             }, required=('question', 'answer'))
@@ -126,61 +164,57 @@ class IngestionService:
                 continue
             seen.add(question_hash)
             rows.append((question, answer, question_hash))
+        self._report('chunking', 'json', len(payload), len(payload), progress, publication_guard)
 
         with self._embeddings(rows, text_for=lambda row: row[0], source='json',
-                              publication_guard=publication_guard) as (vectors, dim):
+                              publication_guard=publication_guard, progress=progress) as (vectors, dim):
             if publication_guard is not None:
                 publication_guard()
-            inserted, updated, skipped = self._persist_qa(rows, vectors, dim, replace)
+            result = {'received': len(payload), 'errors': []}
+            with self._publication(result, publication) as conn:
+                inserted, updated, skipped = self._persist_qa(rows, vectors, dim, replace, conn, progress, publication_guard)
+                result.update(inserted=inserted, updated=updated, skipped=skipped,
+                              embedded=inserted + updated, duration_sec=round(self.clock() - started, 2))
         self.audit(f'JSON import completed: inserted={inserted}, updated={updated}, skipped={skipped}')
-        return {
-            'received':     len(payload),
-            'inserted':     inserted,
-            'updated':      updated,
-            'skipped':      skipped,
-            'embedded':     inserted + updated,
-            'duration_sec': round(self.clock() - started, 2),
-            'errors':       [],
-        }
+        return result
 
-    def _persist_qa(self, rows, vectors, dim, replace):
-        conn = self.connect()
+    def _persist_qa(self, rows, vectors, dim, replace, conn, progress, guard):
         inserted = updated = skipped = 0
-        try:
-            with conn.cursor() as cur:
-                for (question, answer, question_hash), blob in zip(rows, vectors):
-                    cur.execute("SELECT id FROM qa_documents WHERE question_hash = %s", (question_hash,))
-                    existing = cur.fetchone()
-                    if existing:
-                        if replace:
-                            cur.execute(
-                                "UPDATE qa_documents "
-                                "   SET answer=%s, embedding=%s, embedding_dim=%s "
-                                " WHERE id=%s",
-                                (answer, blob, dim, existing['id'])
-                            )
-                            self.audit(f"Updated knowledge-base record id={existing['id']}, embedding_dim={dim}")
-                            updated += 1
-                        else:
-                            skipped += 1
-                        continue
-                    cur.execute(
-                        "INSERT INTO qa_documents "
-                        "  (question, answer, question_hash, embedding, embedding_dim) "
-                        "VALUES (%s, %s, %s, %s, %s)",
-                        (question, answer, question_hash, blob, dim)
-                    )
-                    self.audit(f'Inserted knowledge-base record id={cur.lastrowid}, embedding_dim={dim}')
-                    inserted += 1
-        finally:
-            conn.close()
+        self._report('publishing', 'json', 0, len(rows), progress, guard)
+        with conn.cursor() as cur:
+            for index, ((question, answer, question_hash), blob) in enumerate(zip(rows, vectors)):
+                self._report('publishing', 'json', index, len(rows), progress, guard)
+                cur.execute("SELECT id FROM qa_documents WHERE question_hash = %s", (question_hash,))
+                existing = cur.fetchone()
+                if existing:
+                    if replace:
+                        cur.execute(
+                            "UPDATE qa_documents "
+                            "   SET answer=%s, embedding=%s, embedding_dim=%s "
+                            " WHERE id=%s",
+                            (answer, blob, dim, existing['id'])
+                        )
+                        self.audit(f"Updated knowledge-base record id={existing['id']}, embedding_dim={dim}")
+                        updated += 1
+                    else:
+                        skipped += 1
+                    continue
+                cur.execute(
+                    "INSERT INTO qa_documents "
+                    "  (question, answer, question_hash, embedding, embedding_dim) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (question, answer, question_hash, blob, dim)
+                )
+                self.audit(f'Inserted knowledge-base record id={cur.lastrowid}, embedding_dim={dim}')
+                inserted += 1
+        self._report('publishing', 'json', len(rows), len(rows), progress, guard)
         return inserted, updated, skipped
 
-    def ingest_pdf(self, raw, filename, *, replace=False, publication_guard=None):
-        """Import bounded PDF bytes; preserve page metadata and legacy failure state."""
+    def ingest_pdf(self, raw, filename, *, replace=False, publication_guard=None, progress=None, publication=None):
+        """Import bounded PDF bytes and publish the complete document atomically."""
         started = self.clock()
-
-
+        if publication_guard is not None:
+            publication_guard()
         try:
             pdf = self.open_pdf(stream=raw, filetype='pdf')
         except Exception as error:
@@ -199,7 +233,10 @@ class IngestionService:
         pages = []
         total_text_chars = 0
         try:
+            self._report('extraction', 'pdf', 0, pdf.page_count, progress, publication_guard)
             for page_number in range(pdf.page_count):
+                if publication_guard is not None:
+                    publication_guard()
                 page = pdf.load_page(page_number)
                 text = page.get_text("text", sort=True)
                 total_text_chars += len(text)
@@ -211,6 +248,7 @@ class IngestionService:
                         'page': page_number + 1,
                         'text': text
                     })
+                self._report('extraction', 'pdf', page_number + 1, pdf.page_count, progress, publication_guard)
         except RequestEntityTooLarge:
             raise
         except Exception as error:
@@ -227,7 +265,10 @@ class IngestionService:
 
         chunks = []
         chunk_index = 0
-        for page in pages:
+        self._report('chunking', 'pdf', 0, len(pages), progress, publication_guard)
+        for page_index, page in enumerate(pages):
+            if publication_guard is not None:
+                publication_guard()
             page_chunks = self.split_text(
                 page['text'],
                 chunk_size=PDF_CHUNK_SIZE,
@@ -243,11 +284,16 @@ class IngestionService:
                     'content': content
                 })
                 chunk_index += 1
+            self._report('chunking', 'pdf', page_index + 1, len(pages), progress, publication_guard)
         if not chunks:
             raise IngestionError({
                 'error': 'هیچ chunk قابل استفاده‌ای از PDF تولید نشد'
             }, 400) from None
+        if publication_guard is not None:
+            publication_guard()
         document_hash = self.hash_document(raw)
+        if publication_guard is not None:
+            publication_guard()
         conn = self.connect()
         try:
             with conn.cursor() as cur:
@@ -264,133 +310,109 @@ class IngestionService:
                 'document_id': existing['id'], 'filename': existing['filename'], 'status': existing['status'],
             }, 409) from None
         with self._embeddings(chunks, text_for=lambda chunk: chunk['content'], source='pdf',
-                              publication_guard=publication_guard) as (vectors, dim):
+                              publication_guard=publication_guard, progress=progress) as (vectors, dim):
             if publication_guard is not None:
                 publication_guard()
-            document_id = self._persist_pdf(
-                raw, filename, document_hash, pdf_page_count, chunks, existing, replace, vectors, dim,
-            )
-        return {
-            'success': True,
-            'document_id': document_id,
-            'filename': filename,
-            'file_size': len(raw),
-            'page_count': pdf_page_count,
-            'chunk_count': len(chunks),
-            'embedded_chunks': len(chunks),
-            'embedding_dim': dim,
-            'duration_sec': round(self.clock() - started, 2),
-        }
-
-    def _persist_pdf(self, raw, filename, document_hash, page_count, chunks, existing, replace, vectors, dim):
-        conn = self.connect()
-        document_id = None
-        try:
-            with conn.cursor() as cur:
-                if existing and replace:
-                    document_id = existing['id']
-                    cur.execute(
-                        """
-                        DELETE FROM pdf_documents
-                        WHERE id = %s
-                        """,
-                        (document_id,)
-                    )
-                cur.execute(
-                    """
-                    INSERT INTO pdf_documents
-                    (
-                        filename,
-                        document_hash,
-                        file_size,
-                        page_count,
-                        chunk_count,
-                        embedded_chunk_count,
-                        embedding_dim,
-                        status
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        filename,
-                        document_hash,
-                        len(raw),
-                        page_count,
-                        len(chunks),
-                        0,
-                        dim,
-                        'processing'
-                    )
+            result = {
+                'success': True,
+                'filename': filename,
+                'file_size': len(raw),
+                'page_count': pdf_page_count,
+                'chunk_count': len(chunks),
+                'embedded_chunks': len(chunks),
+                'embedding_dim': dim,
+                'duration_sec': round(self.clock() - started, 2),
+            }
+            with self._pdf_publication(result, publication) as conn:
+                result['document_id'] = self._persist_pdf(
+                    raw, filename, document_hash, pdf_page_count, chunks, existing, replace, vectors, dim,
+                    conn, progress, publication_guard,
                 )
-                document_id = cur.lastrowid
+        return result
 
-                for chunk, blob in zip(chunks, vectors):
-                    cur.execute(
-                        """
-                        INSERT INTO pdf_chunks
-                        (
-                            document_id,
-                            chunk_index,
-                            page_start,
-                            page_end,
-                            content,
-                            embedding,
-                            embedding_dim
-                        )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """,
-                        (
-                            document_id,
-                            chunk['chunk_index'],
-                            chunk['page_start'],
-                            chunk['page_end'],
-                            chunk['content'],
-                            blob,
-                            dim
-                        )
-                    )
-                # ---------------------------------------------
-                # Update status
-                # ---------------------------------------------
+    def _persist_pdf(self, raw, filename, document_hash, page_count, chunks, existing, replace, vectors, dim,
+                     conn, progress, guard):
+        document_id = None
+        self._report('publishing', 'pdf', 0, len(chunks), progress, guard)
+        with conn.cursor() as cur:
+            if existing and replace:
+                document_id = existing['id']
                 cur.execute(
                     """
-                    UPDATE pdf_documents
-                    SET
-                        embedded_chunk_count = %s,
-                        status = 'completed'
+                    DELETE FROM pdf_documents
                     WHERE id = %s
                     """,
+                    (document_id,)
+                )
+            cur.execute(
+                """
+                INSERT INTO pdf_documents
+                (
+                    filename,
+                    document_hash,
+                    file_size,
+                    page_count,
+                    chunk_count,
+                    embedded_chunk_count,
+                    embedding_dim,
+                    status
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    filename,
+                    document_hash,
+                    len(raw),
+                    page_count,
+                    len(chunks),
+                    0,
+                    dim,
+                    'processing'
+                )
+            )
+            document_id = cur.lastrowid
+
+            for index, (chunk, blob) in enumerate(zip(chunks, vectors)):
+                self._report('publishing', 'pdf', index, len(chunks), progress, guard)
+                cur.execute(
+                    """
+                    INSERT INTO pdf_chunks
                     (
-                        len(chunks),
-                        document_id
+                        document_id,
+                        chunk_index,
+                        page_start,
+                        page_end,
+                        content,
+                        embedding,
+                        embedding_dim
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        document_id,
+                        chunk['chunk_index'],
+                        chunk['page_start'],
+                        chunk['page_end'],
+                        chunk['content'],
+                        blob,
+                        dim
                     )
                 )
-            conn.commit()
-        except Exception as error:
-            conn.rollback()
-            try:
-                with conn.cursor() as cur:
-                    if document_id:
-                        cur.execute(
-                            """
-                            UPDATE pdf_documents
-                            SET
-                                status = 'failed',
-                                error_message = %s
-                            WHERE id = %s
-                            """,
-                            (
-                                'pdf_processing_failed',
-                                document_id
-                            )
-                        )
-                conn.commit()
-            except Exception:
-                pass
-            raise IngestionError({
-                'error': 'Request failed.'
-            }, 500) from None
-        finally:
-            conn.close()
-
+            # ---------------------------------------------
+            # Update status
+            # ---------------------------------------------
+            cur.execute(
+                """
+                UPDATE pdf_documents
+                SET
+                    embedded_chunk_count = %s,
+                    status = 'completed'
+                WHERE id = %s
+                """,
+                (
+                    len(chunks),
+                    document_id
+                )
+            )
+        self._report('publishing', 'pdf', len(chunks), len(chunks), progress, guard)
         return document_id

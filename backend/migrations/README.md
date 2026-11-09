@@ -83,6 +83,15 @@ or tampered history fail both commands. No models are loaded by either command.
 | 3 | `003_log_message_text.sql` | Widens legacy CHAR/VARCHAR log messages to TEXT; existing TEXT/MEDIUMTEXT/LONGTEXT is left alone |
 | 4 | `004_chat_ownership.sql` | Adds missing nullable ASCII `owner_hash`; legacy messages remain unowned, existing ownership and feedback remain intact |
 | 5 | `005_ingestion_jobs.sql` | Creates durable ingestion job metadata and chunked upload payloads; existing knowledge is unchanged |
+| 6 | `006_ingestion_progress.sql` | Adds nullable durable stage/count progress; existing rows and knowledge stay intact |
+
+For F027, stop/drain the F026 workers before upgrading through version 6. New
+publication and job completion commit atomically. Old started jobs without F027
+progress are ineligible for checkpoint retry: their earlier autocommit writes
+could be partial and require manual inspection/cleanup. Queued old uploads are
+safe to process. No upgrade can reconstruct which old JSON rows were partially
+written. Follow [job operations](../../docs/operations.md#durable-ingestion-jobs-f026)
+for cancellation bounds, retry windows and payload cleanup.
 
 The baseline accepts the documented legacy table columns, including databases
 that already received some or all earlier opportunistic changes. Missing tables

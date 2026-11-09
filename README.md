@@ -237,7 +237,7 @@ commands, including administrator setup, logs, and shutdown.
    See `backend/migrations/README.md` for backup, restore and interruption recovery.
    Startup only checks the recorded schema version; it never creates/alters tables.
 
-   Confirm `status` reports `schema_version: 5`, `latest_version: 5`, and empty
+   Confirm `status` reports `schema_version: 6`, `latest_version: 6`, and empty
    `pending`/`incomplete` lists. A zero exit from `status` alone does not mean the
    schema is current. Then switch back to the serving account, keeping the same
    host, port, database and application profile. In PowerShell:
@@ -701,8 +701,9 @@ It owns value validation, extraction/chunking, embedding and persistence; it
 returns ordinary dictionaries and raises `IngestionError` for controlled
 ingestion failures. Existing value-validation exceptions retain their status.
 Multipart parsing, authorization, admission control and JSON responses stay in
-the HTTP modules. Database autocommit/replacement/failure-state behavior is
-unchanged; this is not a transaction-policy migration.
+the HTTP modules. Publication uses an explicit transaction: all JSON writes or
+the complete PDF replacement become visible together. Failed imports roll back;
+an existing PDF remains searchable until its replacement commits.
 
 JSON questions and PDF chunks use actual embedding micro-batches controlled by
 `EMBEDDING_BATCH_SIZE` (default 8). Vectors are staged in a disk-backed temporary
@@ -721,12 +722,19 @@ totals include existing records that the database phase may skip.
 The admin upload pages use durable background jobs (F026). POST multipart files
 to `/admin/api/upload/jobs` (JSON) or `/admin/api/pdf/upload/jobs` (PDF). Submission
 returns **202** `{job_id, kind, status: 'queued'}` after committing the upload to
-MySQL, with a `Location` for GET polling or DELETE queued cancellation. Extraction
+MySQL, with a `Location` for GET progress or DELETE queued/running cancellation. Extraction
 and embedding run in the bounded worker pool. Job states and uploads survive a
 service restart; interrupted running jobs become failed with `ingestion_interrupted`,
-while queued jobs continue. Check existing knowledge before resubmitting interrupted
-work because publication retains its existing autocommit behavior. Raw payloads
-are deleted on completion, failure or cancellation; final job metadata remains.
+while queued jobs continue. Polling shows extraction, chunking, embedding and
+publishing counts. The admin pages offer cancellation and checkpoint retries,
+and reconnect to their saved job after reload. POST `Location/retry` with an
+empty body retries failed/canceled work from its saved upload within 24 hours;
+embeddings are recomputed. Publication and successful job completion commit
+together, so retries cannot replay an ambiguously published import. Completed
+payloads are deleted at commit; failed/canceled bytes expire after 24 hours.
+Cancellation fences publication when acknowledged and computation stops at the
+next safe checkpoint (one in-flight page/batch/record; native calls are not
+preempted). Apply migration 6 and read the documented bound and legacy-job caveat.
 The original `/admin/api/upload` and `/admin/api/pdf/upload` paths submit to the
 same queue and wait up to 240 seconds for their legacy response. Prefer job
 submission to avoid occupying an HTTP thread or timing out. See
@@ -1102,8 +1110,8 @@ Voice failures use `voice_loading`, `voice_unavailable`, or `voice_model_failed`
 (503); WebSocket error messages include a public `code` alongside `message`,
 including `transcription_failed` and `rate_limited`. Unhealthy voice responses
 do not expose model configuration or installation instructions. Controller
-background failures expose `model_action_failed`; failed PDF ingestion stores
-`pdf_processing_failed`, not exception text. The standalone STT demo also avoids
+background failures expose `model_action_failed`; failed ingestion jobs store
+allowlisted public error codes and roll back knowledge writes. The standalone STT demo also avoids
 returning raw model/transcription exceptions.
 
 The following headers apply to pages, assets, redirects, and errors on both apps:
