@@ -157,6 +157,41 @@ class FlaskMySQLTests(unittest.TestCase):
             'replace': str(replace).lower(),
         })
 
+    def test_preflight_reports_existing_data_without_changing_searchable_rows_or_jobs(self):
+        headers = self.login()
+        self.assertEqual(self.upload_json([{'question': 'existing', 'answer': 'original'}], headers).status_code, 200)
+        raw_pdf = self.pdf_bytes()
+        self.assertEqual(self.upload_pdf(raw_pdf, headers).status_code, 200)
+        self.embed.reset_mock()
+        protected = ('qa_documents', 'pdf_documents', 'pdf_chunks', 'ingestion_jobs', 'ingestion_job_payloads')
+        before = {table: self.sql(f'SELECT * FROM `{table}`') for table in protected}
+        records = [{'question': 'existing', 'answer': 'replacement'}, {'question': 'existing', 'answer': 'duplicate'},
+                   {'question': 'new', 'answer': 'unpublished'}]
+        response = self.admin_request('/admin/api/upload/preflight', 'POST', headers=headers, data={
+            'file': (io.BytesIO(json.dumps(records).encode()), 'preview.json'), 'replace': 'true',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json['can_publish'])
+        self.assertEqual(response.json['counts'], dict(records=3, pages=None, duplicates_in_file=1,
+                                                       duplicates_existing=1, expected_chunks=2,
+                                                       inserts=1, updates=1, skipped=1))
+        for replace in (False, True):
+            response = self.admin_request('/admin/api/pdf/upload/preflight', 'POST', headers=headers, data={
+                'file': (io.BytesIO(raw_pdf), 'preview.pdf'), 'replace': str(replace).lower(),
+            })
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json['can_publish'], replace)
+            self.assertEqual(response.json['counts']['duplicates_existing'], 1)
+            self.assertEqual(response.json['samples'][0]['page'], 1)
+        response = self.admin_request('/admin/api/upload/preflight', 'POST', headers=headers, data={
+            'file': (io.BytesIO(b'[{"question":"bad","answer":3}]'), 'invalid.json'),
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json['issues'][0]['record'], 1)
+        self.assertFalse(response.json['can_publish'])
+        self.assertEqual(before, {table: self.sql(f'SELECT * FROM `{table}`') for table in protected})
+        self.embed.assert_not_called()
+
     def test_async_job_submission_survives_worker_restart_and_keeps_terminal_result(self):
         from ingestion_worker import IngestionWorker
         from services.ingestion_jobs import IngestionJobs

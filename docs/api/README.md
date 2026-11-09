@@ -3,7 +3,7 @@
 The checked-in `openapi.json` describes the supported chatbot UI and administrator
 HTTP APIs, their request/response JSON Schemas, parameters, media types, permissions,
 and voice WebSocket frames. Its `info.version` is the contract revision, currently
-`1.0.0`. Both applications advertise `API-Version: 1` on successes, errors,
+`1.3.0`. Both applications advertise `API-Version: 1` on successes, errors,
 redirects, and HEAD responses. This is a response marker, not a negotiation header;
 clients do not send it. Allowed UI origins can read it through CORS.
 
@@ -43,6 +43,47 @@ with different routes; their `/voice`, `/stream`, `/api/status` and
   cursors, idempotency keys or bulk operations require an explicit contract first.
 
 ## Requests and transport
+
+### Ingestion preflight (1.3, F029)
+
+POST `/admin/api/upload/preflight` or `/admin/api/pdf/upload/preflight` with the
+same multipart `file`, `replace` and CSRF proof as an import. The respective
+`json_upload`/`pdf_upload` permission is required. Preview shares the upload
+rate budget (six attempts per client per five minutes), including publication
+and retries; it does not consume queue capacity. It extracts and validates the
+whole bounded file synchronously without embeddings, model loading, retained
+upload bytes, jobs or searchable writes. Request audit metadata may be written.
+
+HTTP 200 includes `valid`, `can_publish`, `counts`, `cost`, `samples`, `issues`
+and `issues_truncated`, plus kind/filename/replace. Content errors use
+`valid=false`, `can_publish=false`, null counts/cost and actionable issues.
+Each issue has severity/message and, when applicable, a one-based `record`
+and `field` or `page`. At most 20 issues are returned; fix those and preview
+again if truncated. File-level syntax/shape errors have no record location.
+Transport, multipart, extension, auth and byte-limit errors retain standard
+HTTP errors. A structurally valid existing PDF has `valid=true` but
+`can_publish=false` unless replacement is enabled. Mixed text/scanned PDFs
+warn about pages with no extracted text; an entirely scanned PDF is invalid.
+
+Counts distinguish `duplicates_in_file` (JSON questions; first occurrence wins)
+from `duplicates_existing` (unique question matches or one exact-byte PDF).
+`expected_chunks` is the prepared unique-question/PDF-chunk count. `inserts`,
+`updates` and `skipped` count JSON records or PDF documents; JSON skipped includes
+within-file duplicates. `records` is null for PDF and `pages` is null for JSON.
+Existing questions still incur embedding work even when skipped, matching the
+publication pipeline. A blocked duplicate PDF incurs zero embedding work.
+Cost reports `embedding_inputs`, `embedding_batches`, `input_characters` and
+configured `batch_size`; these are local workload estimates, not token, RAM,
+currency or timing guarantees. Tokenizer truncation and hardware affect actual cost.
+
+Samples select first/middle/last prepared records or chunks (up to three) and
+truncate each text field to 240 characters. JSON samples retain original record
+numbers after deduplication; PDF samples identify the source page. A preview
+does not approve a stored upload: publish the original file separately. The
+admin pages enable publication only after preview, invalidate it when the file
+or replace option changes, and ignore responses for old selections. Publication
+always revalidates and rechecks duplicates; concurrent imports can change counts.
+All reports are `Cache-Control: no-store`.
 
 ### Background uploads and safe retries (1.2, F026/F027)
 

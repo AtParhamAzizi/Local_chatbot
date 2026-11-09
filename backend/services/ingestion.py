@@ -8,7 +8,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 from request_validation import (
     MAX_ANSWER_CHARS, MAX_IMPORT_ROWS, MAX_MESSAGE_CHARS, MAX_PDF_CHUNKS,
-    MAX_PDF_PAGES, MAX_PDF_TEXT_CHARS, InvalidRequest, parse_json, text, validate_object,
+    MAX_PDF_PAGES, MAX_PDF_TEXT_CHARS, InvalidRequest, parse_json, text,
 )
 from services import adapters
 from services.embedding_batches import staged_embeddings
@@ -24,6 +24,19 @@ class IngestionError(Exception):
         super().__init__(payload.get('error', 'Ingestion failed'))
         self.payload = payload
         self.status = status
+
+
+class PreparationInvalid(InvalidRequest):
+    def __init__(self, issues, *, truncated=False):
+        super().__init__(issues[0]['message'])
+        self.issues = issues
+        self.truncated = truncated
+
+
+class PreparationLimit(RequestEntityTooLarge):
+    def __init__(self, message, **location):
+        super().__init__()
+        self.issues = [{'message': message, **location}]
 
 
 def split_text(text, chunk_size=1200, overlap=200):
@@ -138,39 +151,62 @@ class IngestionService:
                 raise IngestionError({'error': 'Request failed.'}, 500) from None
             yield result
 
-    def ingest_qa(self, raw, *, replace=False, publication_guard=None, progress=None, publication=None):
-        """Import UTF-8 JSON bytes; reject every invalid row before embedding/writes."""
-        self.audit('Received a knowledge-base JSON upload')
-        started = self.clock()
-
+    def _prepare_qa(self, raw, *, publication_guard=None, progress=None):
         self._report('extraction', 'json', 0, 1, progress, publication_guard)
         payload = parse_json(raw)
         if not isinstance(payload, list) or not payload:
             raise InvalidRequest('The uploaded JSON must be a non-empty array of question/answer objects.')
         if len(payload) > MAX_IMPORT_ROWS:
-            raise RequestEntityTooLarge()
+            raise PreparationLimit(f'Split the file into arrays of at most {MAX_IMPORT_ROWS} records.')
         self._report('extraction', 'json', 1, 1, progress, publication_guard)
         self._report('chunking', 'json', 0, len(payload), progress, publication_guard)
-        rows, seen = [], set()
-        for item in payload:
+        rows, seen, issues, record_numbers = [], set(), [], []
+        issue_count = 0
+        for record_number, item in enumerate(payload, 1):
             if publication_guard is not None:
                 publication_guard()
-            item = validate_object(item, {
-                'question': text(MAX_MESSAGE_CHARS, 1), 'answer': text(MAX_ANSWER_CHARS, 1),
-            }, required=('question', 'answer'))
+            record_issues = []
+            if not isinstance(item, dict):
+                record_issues.append({'message': 'Use an object with question and answer strings.'})
+            else:
+                if item.keys() - {'question', 'answer'}:
+                    record_issues.append({'message': 'Remove fields other than question and answer.'})
+                validated = {}
+                for field, maximum in (('question', MAX_MESSAGE_CHARS), ('answer', MAX_ANSWER_CHARS)):
+                    try:
+                        validated[field] = text(maximum, 1)(item.get(field), field)
+                    except InvalidRequest as error:
+                        record_issues.append({'field': field, 'message': error.description})
+                item = validated
+            for issue in record_issues:
+                issue_count += 1
+                if len(issues) < 20:
+                    issues.append({'record': record_number, **issue})
+            if record_issues:
+                continue
             question, answer = item['question'], item['answer']
             question_hash = self.hash_question(question)
             if question_hash in seen:
                 continue
             seen.add(question_hash)
             rows.append((question, answer, question_hash))
+            record_numbers.append(record_number)
         self._report('chunking', 'json', len(payload), len(payload), progress, publication_guard)
+        if issues:
+            raise PreparationInvalid(issues, truncated=issue_count > len(issues))
+        return len(payload), rows, record_numbers
+
+    def ingest_qa(self, raw, *, replace=False, publication_guard=None, progress=None, publication=None):
+        """Import UTF-8 JSON bytes; reject every invalid row before embedding/writes."""
+        self.audit('Received a knowledge-base JSON upload')
+        started = self.clock()
+        received, rows, _ = self._prepare_qa(raw, publication_guard=publication_guard, progress=progress)
 
         with self._embeddings(rows, text_for=lambda row: row[0], source='json',
                               publication_guard=publication_guard, progress=progress) as (vectors, dim):
             if publication_guard is not None:
                 publication_guard()
-            result = {'received': len(payload), 'errors': []}
+            result = {'received': received, 'errors': []}
             with self._publication(result, publication) as conn:
                 inserted, updated, skipped = self._persist_qa(rows, vectors, dim, replace, conn, progress, publication_guard)
                 result.update(inserted=inserted, updated=updated, skipped=skipped,
@@ -210,58 +246,57 @@ class IngestionService:
         self._report('publishing', 'json', len(rows), len(rows), progress, guard)
         return inserted, updated, skipped
 
-    def ingest_pdf(self, raw, filename, *, replace=False, publication_guard=None, progress=None, publication=None):
-        """Import bounded PDF bytes and publish the complete document atomically."""
-        started = self.clock()
+    def _prepare_pdf(self, raw, *, publication_guard=None, progress=None):
         if publication_guard is not None:
             publication_guard()
         try:
             pdf = self.open_pdf(stream=raw, filetype='pdf')
-        except Exception as error:
-            raise IngestionError({
-                'error': 'Request failed.'
-            }, 400) from None
+        except Exception:
+            raise PreparationInvalid([{'message': 'Open the PDF locally, remove password protection, and export a readable PDF.'}]) from None
         pdf_page_count = pdf.page_count
         if pdf_page_count > MAX_PDF_PAGES:
             pdf.close()
-            raise RequestEntityTooLarge()
+            raise PreparationLimit(f'Split the PDF into files of at most {MAX_PDF_PAGES} pages.')
         if pdf.page_count == 0:
             pdf.close()
             raise IngestionError({
                 'error': 'فایل PDF هیچ صفحه‌ای ندارد'
             }, 400) from None
-        pages = []
+        pages, empty_pages = [], []
         total_text_chars = 0
         try:
             self._report('extraction', 'pdf', 0, pdf.page_count, progress, publication_guard)
             for page_number in range(pdf.page_count):
                 if publication_guard is not None:
                     publication_guard()
-                page = pdf.load_page(page_number)
-                text = page.get_text("text", sort=True)
+                try:
+                    page = pdf.load_page(page_number)
+                    text = page.get_text("text", sort=True)
+                except Exception:
+                    raise PreparationInvalid([{'page': page_number + 1,
+                                               'message': 'Text extraction failed. Re-export this page as a readable PDF.'}]) from None
                 total_text_chars += len(text)
                 if total_text_chars > MAX_PDF_TEXT_CHARS:
-                    raise RequestEntityTooLarge()
+                    raise PreparationLimit(f'Extracted text exceeds {MAX_PDF_TEXT_CHARS} characters. Split the PDF before this page.',
+                                           page=page_number + 1)
                 text = text.strip()
                 if text:
                     pages.append({
                         'page': page_number + 1,
                         'text': text
                     })
+                else:
+                    empty_pages.append(page_number + 1)
                 self._report('extraction', 'pdf', page_number + 1, pdf.page_count, progress, publication_guard)
-        except RequestEntityTooLarge:
+        except (RequestEntityTooLarge, PreparationInvalid):
             raise
         except Exception as error:
             raise IngestionError({'error': 'Unable to extract PDF text.'}, 400) from None
         finally:
             pdf.close()
         if not pages:
-            raise IngestionError({
-                'error': (
-                    'هیچ متن قابل استخراجی از PDF پیدا نشد. '
-                    'ممکن است PDF اسکن‌شده باشد.'
-                )
-            }, 400) from None
+            raise PreparationInvalid([{'page': page_number, 'message': 'No extractable text. Apply OCR to this page before importing.'}
+                                      for page_number in empty_pages[:20]], truncated=len(empty_pages) > 20)
 
         chunks = []
         chunk_index = 0
@@ -276,7 +311,7 @@ class IngestionService:
             )
             for content in page_chunks:
                 if len(chunks) >= MAX_PDF_CHUNKS:
-                    raise RequestEntityTooLarge()
+                    raise PreparationLimit(f'Chunk count exceeds {MAX_PDF_CHUNKS}. Split the PDF before this page.', page=page['page'])
                 chunks.append({
                     'chunk_index': chunk_index,
                     'page_start': page['page'],
@@ -289,6 +324,12 @@ class IngestionService:
             raise IngestionError({
                 'error': 'هیچ chunk قابل استفاده‌ای از PDF تولید نشد'
             }, 400) from None
+        return pdf_page_count, chunks, empty_pages
+
+    def ingest_pdf(self, raw, filename, *, replace=False, publication_guard=None, progress=None, publication=None):
+        """Import bounded PDF bytes and publish the complete document atomically."""
+        started = self.clock()
+        pdf_page_count, chunks, _ = self._prepare_pdf(raw, publication_guard=publication_guard, progress=progress)
         if publication_guard is not None:
             publication_guard()
         document_hash = self.hash_document(raw)
@@ -329,6 +370,80 @@ class IngestionService:
                     conn, progress, publication_guard,
                 )
         return result
+
+    def preflight(self, raw, filename, *, kind, replace=False):
+        """Inspect the complete bounded upload without embedding, jobs or publication."""
+        report = {
+            'kind': kind, 'filename': filename, 'valid': False, 'can_publish': False,
+            'replace': replace, 'counts': None, 'cost': None, 'samples': [],
+            'issues': [], 'issues_truncated': False,
+        }
+        try:
+            if kind == 'json':
+                received, rows, record_numbers = self._prepare_qa(raw)
+                connection = self.connect()
+                try:
+                    with connection.cursor() as cursor:
+                        placeholders = ','.join(['%s'] * len(rows))
+                        cursor.execute(f'SELECT question_hash FROM qa_documents WHERE question_hash IN ({placeholders})',
+                                       tuple(row[2] for row in rows))
+                        existing = len(cursor.fetchall())
+                finally:
+                    connection.close()
+                inputs = [row[0] for row in rows]
+                report['counts'] = {
+                    'records': received, 'pages': None, 'duplicates_in_file': received - len(rows),
+                    'duplicates_existing': existing, 'expected_chunks': len(rows),
+                    'inserts': len(rows) - existing, 'updates': existing if replace else 0,
+                    'skipped': received - len(rows) + (0 if replace else existing),
+                }
+                sample_indexes = sorted({0, len(rows) // 2, len(rows) - 1})
+                report['samples'] = [{'record': record_numbers[index], 'question': rows[index][0][:240],
+                                      'answer': rows[index][1][:240]} for index in sample_indexes]
+            elif kind == 'pdf':
+                page_count, chunks, empty_pages = self._prepare_pdf(raw)
+                connection = self.connect()
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute('SELECT id FROM pdf_documents WHERE document_hash = %s', (self.hash_document(raw),))
+                        existing = bool(cursor.fetchone())
+                finally:
+                    connection.close()
+                inputs = [chunk['content'] for chunk in chunks] if not existing or replace else []
+                report['counts'] = {
+                    'records': None, 'pages': page_count, 'duplicates_in_file': 0,
+                    'duplicates_existing': int(existing), 'expected_chunks': len(chunks),
+                    'inserts': int(not existing), 'updates': int(existing and replace),
+                    'skipped': int(existing and not replace),
+                }
+                sample_indexes = sorted({0, len(chunks) // 2, len(chunks) - 1})
+                report['samples'] = [{'page': chunks[index]['page_start'], 'text': chunks[index]['content'][:240]}
+                                     for index in sample_indexes]
+                report['issues'] = [{'severity': 'warning', 'page': page_number,
+                                     'message': 'No extractable text on this page; it will be skipped. Apply OCR if it contains knowledge.'}
+                                    for page_number in empty_pages[:20]]
+                report['issues_truncated'] = len(empty_pages) > 20
+                if existing and not replace:
+                    report['issues'].insert(0, {'severity': 'error', 'message': 'This PDF already exists. Enable replacement or select a different PDF.'})
+                    report['issues_truncated'] = report['issues_truncated'] or len(report['issues']) > 20
+                    report['issues'] = report['issues'][:20]
+            else:
+                raise ValueError('Unsupported ingestion kind')
+        except (InvalidRequest, RequestEntityTooLarge, IngestionError) as error:
+            issues = getattr(error, 'issues', None)
+            if issues is None:
+                message = error.description if isinstance(error, InvalidRequest) else 'No usable PDF content. Export a PDF with extractable text.'
+                issues = [{'message': message}]
+            report['issues'] = [{'severity': 'error', **issue} for issue in issues]
+            report['issues_truncated'] = getattr(error, 'truncated', False)
+            return report
+        report['valid'] = True
+        report['can_publish'] = not any(issue['severity'] == 'error' for issue in report['issues'])
+        report['cost'] = {
+            'embedding_inputs': len(inputs), 'embedding_batches': (len(inputs) + self.batch_size - 1) // self.batch_size,
+            'input_characters': sum(map(len, inputs)), 'batch_size': self.batch_size,
+        }
+        return report
 
     def _persist_pdf(self, raw, filename, document_hash, page_count, chunks, existing, replace, vectors, dim,
                      conn, progress, guard):

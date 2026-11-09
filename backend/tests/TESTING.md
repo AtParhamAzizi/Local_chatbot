@@ -1,5 +1,18 @@
 # Offline unit-test foundation
 
+## Ingestion preflight (F029)
+
+Run `python -B backend/tests/run_tests.py --pattern test_ingestion_preflight.py -v`
+for read-only service/HTTP checks, exact duplicate/work counts, strict record
+validation, original sample locations, actionable PDF pages, quotas and bounded
+reports. API and authorization suites cover the two new endpoints and schemas.
+Run `python -B backend/tests/browser_smoke.py --channel chrome --grep 'preflight|background'`
+for preview-only JSON/PDF journeys, errors, text rendering, changed-selection
+races and compatibility with publication/progress/cancellation/retry controls.
+The disposable MySQL suite includes a real-PDF regression comparing all knowledge
+and job rows before/after previews while forbidding embedding calls. It requires
+Docker; offline doubles do not establish real InnoDB behavior.
+
 ## Job progress, cancellation and retry (F027)
 
 Run `python -B backend/tests/run_tests.py --pattern test_ingestion_jobs.py -v`

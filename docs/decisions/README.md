@@ -17,6 +17,7 @@ unrecorded historical team approval or new feature delivery.
 | [0002](0002-session-and-operation-boundaries.md) | Separate administrator sessions and anonymous chat ownership, explicit operation policies and CSRF |
 | [0003](0003-explicit-migrations-and-local-models.md) | Explicit versioned migrations and locally prepared text models/dependency profiles |
 | [0004](0004-ingestion-publication-and-retries.md) | Atomic knowledge/job publication, cooperative cancellation and saved-upload retries |
+| [0005](0005-ingestion-preflight.md) | Transient ingestion preview using publication preparation, with advisory cost and duplicate counts |
 
 ## When and how to add one
 

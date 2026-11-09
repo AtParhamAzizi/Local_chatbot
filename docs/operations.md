@@ -56,6 +56,31 @@ upload. No input text appears in these progress entries. Final embedding counts
 do not establish successful publication; poll the job until `completed`. Service consumers can receive the
 same counts using `IngestionService(progress=callback)` without a Flask context.
 
+## Inspect an import before publication (F029)
+
+On either admin import page, select a JSON/PDF file and the replacement option,
+then choose **بررسی و پیش‌نمایش بدون انتشار**. Inspect duplicates, expected
+chunks, estimated embedding work, samples and record/page issues. Correct errors
+and preview again; warnings identify pages that will contribute no text. OCR
+scanned pages before importing when their content should be searchable.
+Only then use the separate publication button. Changing the file or replacement
+option requires another preview. Preview never submits a job or changes searchable
+knowledge; normal request audit metadata may still be recorded.
+
+The complete bounded file is validated/extracted, but samples show only first,
+middle and last prepared records/chunks, at most 240 characters per text field.
+There are at most 20 issues per report. Use the listed one-based record/page
+numbers to find errors and repeat preview after correction. Estimates count local
+embedding inputs, batches and characters. They do not predict seconds, GPU RAM
+or money; compare work counts against your hardware measurements. Existing JSON
+questions are still embedded even when skipped. No model is loaded by preview.
+
+Preview is synchronous, transient and advisory; its database checks can become
+stale before publication, which validates again. It uses the existing upload
+byte/page/text/chunk quotas and six-attempt/five-minute client budget shared
+with publication/retry. It does not reserve queue capacity. Do not retry 429
+immediately; obey `Retry-After`. See the [API details](api/README.md#ingestion-preflight-13-f029).
+
 ## Durable ingestion jobs (F026)
 
 Apply migrations through 6 before deploying; follow the backup/stopped-writer procedure

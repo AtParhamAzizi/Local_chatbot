@@ -220,6 +220,8 @@ fileInput.addEventListener(
 function handleFile(file) {
 
     clearResult();
+    selectedFile = null;
+    window.adminResetPreflight(null);
 
     if (
         !file.name
@@ -283,8 +285,7 @@ function handleFile(file) {
         .classList.add('show');
 
 
-    $('#uploadBtn')
-        .disabled = false;
+    window.adminResetPreflight(file);
 }
 
 
@@ -297,7 +298,7 @@ $('#uploadBtn')
         'click',
         async () => {
 
-            if (!selectedFile)
+            if (!window.adminCanPublish(selectedFile, $('#replaceDupes').checked))
                 return;
 
 
@@ -386,7 +387,7 @@ $('#uploadBtn')
 
             } finally {
 
-                btn.disabled = false;
+                btn.disabled = !window.adminCanPublish(selectedFile, $('#replaceDupes').checked);
 
                 btn.textContent =
                     original;
@@ -405,6 +406,7 @@ $('#clearBtn')
         () => {
 
             selectedFile = null;
+            window.adminResetPreflight(null);
 
             fileInput.value = '';
 

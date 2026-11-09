@@ -538,6 +538,16 @@ The user service exposes:
 
 Administrator endpoints are available under `/admin/api/` on port 8000 for knowledge-base management, PDFs, logs, and chat history.
 
+Both import pages offer **بررسی و پیش‌نمایش بدون انتشار** before publication:
+inspect duplicate counts, extraction samples, expected chunks, estimated local
+embedding work and actionable record/page errors. Preview validates the original
+bounded JSON/PDF without creating a job, embedding or changing searchable knowledge.
+Changing the file or replacement option requires another preview before the
+publication button is enabled. API clients can POST multipart files to
+`/admin/api/upload/preflight` or `/admin/api/pdf/upload/preflight`; see the
+[preflight contract](docs/api/README.md#ingestion-preflight-13-f029). Estimates are
+advisory work counts; publication always revalidates and rechecks current duplicates.
+
 The complete route inventory is in the API contract. These access boundaries
 apply before the handlers:
 

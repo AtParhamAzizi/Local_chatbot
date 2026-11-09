@@ -1,6 +1,80 @@
 (function () {
     let tokenRequest = null;
     const ingestionWatchers = new Map();
+    let ingestionActive = false;
+    let reviewedFile = null;
+    let reviewedReplace = false;
+    let preflightRevision = 0;
+
+    window.adminCanPublish = (file, replace) => !ingestionActive && file !== null &&
+        file === reviewedFile && replace === reviewedReplace;
+
+    window.adminResetPreflight = function (file) {
+        preflightRevision += 1;
+        reviewedFile = null;
+        document.getElementById('preflightReport')?.remove();
+        document.getElementById('preflightBtn').disabled = !file || ingestionActive;
+        document.getElementById('uploadBtn').disabled = true;
+    };
+
+    async function previewUpload(pdf) {
+        const file = selectedFile;
+        if (!file || ingestionActive) return;
+        window.adminResetPreflight(file);
+        const revision = preflightRevision;
+        const replace = document.getElementById('replaceDupes').checked;
+        const button = document.getElementById('preflightBtn');
+        button.disabled = true;
+        const panel = document.createElement('div');
+        panel.id = 'preflightReport';
+        panel.setAttribute('role', 'status');
+        panel.setAttribute('aria-live', 'polite');
+        panel.style.whiteSpace = 'pre-wrap';
+        panel.style.overflowWrap = 'anywhere';
+        panel.textContent = 'در حال بررسی فایل؛ دانش قابل جستجو تغییر نمی‌کند…';
+        document.getElementById('result').before(panel);
+        const body = new FormData();
+        body.append('file', file, file.name);
+        body.append('replace', String(replace));
+        try {
+            const response = await window.adminFetch(`/admin/api/${pdf ? 'pdf/' : ''}upload/preflight`, { method: 'POST', body });
+            const report = await response.json();
+            if (revision !== preflightRevision) return;
+            if (!response.ok) throw new Error(report.error || `HTTP ${response.status}`);
+            const lines = [report.can_publish ? 'بررسی کامل شد؛ برای انتشار دکمه شروع را بزنید.' : 'پیش از انتشار، خطاهای زیر را اصلاح کنید.'];
+            if (report.counts) {
+                const counts = report.counts;
+                lines.push(`رکوردها: ${counts.records ?? '—'} | صفحات: ${counts.pages ?? '—'}`,
+                    `تکراری در فایل: ${counts.duplicates_in_file} | موجود در دانش: ${counts.duplicates_existing}`,
+                    `قطعه‌های مورد انتظار: ${counts.expected_chunks}`,
+                    `درج: ${counts.inserts} | جایگزینی: ${counts.updates} | نادیده گرفته‌شده: ${counts.skipped}`);
+            }
+            if (report.cost) {
+                lines.push(`برآورد پردازش: ${report.cost.embedding_inputs} متن، ${report.cost.embedding_batches} دسته، ${report.cost.input_characters} نویسه`,
+                    'زمان و مصرف منابع به مدل و سخت‌افزار بستگی دارد. این بررسی بردارسازی انجام نمی‌دهد.');
+            }
+            for (const issue of report.issues) {
+                const location = issue.record ? `رکورد ${issue.record}` : issue.page ? `صفحه ${issue.page}` : 'فایل';
+                lines.push(`${issue.severity === 'warning' ? 'هشدار' : 'خطا'} — ${location}${issue.field ? ` / ${issue.field}` : ''}: ${issue.message}`);
+            }
+            if (report.issues_truncated) lines.push('فقط ۲۰ مورد اول نمایش داده شد. پس از اصلاح، دوباره بررسی کنید.');
+            lines.push('نمونه استخراج (ابتدا، میانه و انتها؛ حداکثر ۲۴۰ نویسه از هر فیلد):');
+            for (const sample of report.samples) {
+                lines.push(sample.record ? `رکورد ${sample.record}: ${sample.question}\n${sample.answer}` : `صفحه ${sample.page}: ${sample.text}`);
+            }
+            lines.push('این برآورد موقتی است؛ هنگام انتشار، فایل و موارد تکراری دوباره بررسی می‌شوند.');
+            panel.textContent = lines.join('\n\n');
+            if (report.can_publish) {
+                reviewedFile = file;
+                reviewedReplace = replace;
+            }
+            document.getElementById('uploadBtn').disabled = !window.adminCanPublish(selectedFile, replace);
+        } catch (error) {
+            if (revision === preflightRevision) panel.textContent = error.message;
+        } finally {
+            if (revision === preflightRevision) button.disabled = ingestionActive;
+        }
+    }
 
     function getToken() {
         if (!tokenRequest) {
@@ -46,13 +120,20 @@
     };
 
     window.adminIngestion = async function (url, body, onStatus) {
-        let response = await window.adminFetch(url, { method: 'POST', body });
-        let job = await response.json();
-        if (!response.ok) throw new Error(job.error || `HTTP ${response.status}`);
-        const location = response.headers.get('Location');
-        if (!location) throw new Error('Missing ingestion job location.');
-        sessionStorage.setItem(location.includes('/pdf/') ? 'pdf-ingestion-job' : 'qa-ingestion-job', location);
-        return window.adminWatchIngestion(location, onStatus);
+        ingestionActive = true;
+        document.getElementById('preflightBtn').disabled = true;
+        try {
+            const response = await window.adminFetch(url, { method: 'POST', body });
+            const job = await response.json();
+            if (!response.ok) throw new Error(job.error || `HTTP ${response.status}`);
+            const location = response.headers.get('Location');
+            if (!location) throw new Error('Missing ingestion job location.');
+            sessionStorage.setItem(location.includes('/pdf/') ? 'pdf-ingestion-job' : 'qa-ingestion-job', location);
+            return await window.adminWatchIngestion(location, onStatus);
+        } finally {
+            ingestionActive = false;
+            document.getElementById('preflightBtn').disabled = !selectedFile;
+        }
     };
 
     window.adminWatchIngestion = function (location, onStatus) {
@@ -100,9 +181,11 @@
         identity.textContent = job.job_id;
         panel.append(identity);
         const active = ['queued', 'running'].includes(job.status);
+        ingestionActive = active;
         const upload = document.querySelector('#uploadBtn');
         if (active) upload.disabled = true;
-        else if (typeof selectedFile !== 'undefined') upload.disabled = !selectedFile;
+        else if (typeof selectedFile !== 'undefined') upload.disabled = !window.adminCanPublish(selectedFile, document.getElementById('replaceDupes').checked);
+        document.getElementById('preflightBtn').disabled = active || !selectedFile;
         if (progress) {
             const meter = document.createElement('progress');
             meter.max = progress.total || 1;
@@ -136,6 +219,8 @@
     document.addEventListener('DOMContentLoaded', () => {
         const pdf = window.location.pathname.endsWith('/admin_pdf.html');
         if (!pdf && !window.location.pathname.endsWith('/admin.html')) return;
+        document.getElementById('preflightBtn').addEventListener('click', () => previewUpload(pdf));
+        document.getElementById('replaceDupes').addEventListener('change', () => window.adminResetPreflight(selectedFile));
         const location = sessionStorage.getItem(pdf ? 'pdf-ingestion-job' : 'qa-ingestion-job');
         if (location && /^\/admin\/api\/(pdf\/)?upload\/jobs\/[0-9a-f]{32}$/.test(location)) {
             window.adminWatchIngestion(location, window.adminIngestionStatus).catch(() => {});

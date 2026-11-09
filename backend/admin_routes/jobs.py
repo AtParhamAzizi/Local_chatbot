@@ -29,6 +29,15 @@ def submit_job(kind):
 
 
 @query_schema({})
+@limit_requests('upload')
+@logger.operation
+def preflight_upload(kind):
+    extensions, maximum = ({'.json'}, MAX_JSON_UPLOAD_BYTES) if kind == 'json' else ({'.pdf'}, MAX_PDF_UPLOAD_BYTES)
+    raw, filename, replace = read_upload(extensions, maximum)
+    return jsonify(current_app.extensions['ingestion_service'].preflight(raw, filename, kind=kind, replace=replace))
+
+
+@query_schema({})
 @logger.operation
 def job_status(job_id, kind):
     jobs = current_app.extensions['ingestion_jobs']
@@ -59,6 +68,8 @@ def retry_job(job_id, kind):
 def register_routes(app):
     for prefix, kind, name in (('/admin/api/upload/jobs', 'json', 'qa'),
                                ('/admin/api/pdf/upload/jobs', 'pdf', 'pdf')):
+        app.add_url_rule(prefix.removesuffix('/jobs') + '/preflight', endpoint=f'admin_{name}_preflight',
+                         view_func=preflight_upload, defaults={'kind': kind}, methods=['POST'])
         app.add_url_rule(prefix, endpoint=f'admin_{name}_submit_job', view_func=submit_job,
                          defaults={'kind': kind}, methods=['POST'])
         app.add_url_rule(prefix + '/<job_id>', endpoint=f'admin_{name}_job', view_func=job_status,

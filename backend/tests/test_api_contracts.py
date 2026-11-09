@@ -267,6 +267,25 @@ class ApiContractTests(AbuseEndpointFixture, unittest.TestCase):
         self.check(self.admin_open('/admin/api/controller/action', 'POST', headers=self.headers,
                                    json={'action': 'generator_load'}), '/admin/api/controller/action', 'POST', 202)
 
+    def test_preflight_success_and_content_error_reports_use_real_preparation(self):
+        connection, _ = self.database_rows()
+        with patch.object(self.ingestion, 'embed') as embed:
+            path = '/admin/api/upload/preflight'
+            for records in ([{'question': 'question', 'answer': 'answer'}], [{'question': 'bad', 'answer': 4}]):
+                report = self.check(self.admin_open(path, 'POST', headers=self.headers,
+                                    data={'file': (io.BytesIO(json.dumps(records).encode()), 'records.json')}), path, 'POST')
+                self.assertEqual(report['can_publish'], isinstance(records[0]['answer'], str))
+            path = '/admin/api/pdf/upload/preflight'
+            for extracted in ('A short PDF paragraph.', ''):
+                document = Mock(page_count=1)
+                document.load_page.return_value.get_text.return_value = extracted
+                with patch.object(self.ingestion, 'open_pdf', return_value=document):
+                    report = self.check(self.admin_open(path, 'POST', headers=self.headers,
+                                        data={'file': (io.BytesIO(b'%PDF-test'), 'guide.pdf')}), path, 'POST')
+                self.assertEqual(report['can_publish'], bool(extracted))
+            embed.assert_not_called()
+            connection.commit.assert_not_called()
+
     def test_real_ingestion_success_payloads_and_document_deletion(self):
         self.database_rows()
         vector = np.array([[0.1, 0.2]], dtype=np.float32)

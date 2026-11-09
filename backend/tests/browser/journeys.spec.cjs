@@ -73,10 +73,124 @@ async function login(page, username = 'browser-admin') {
     await expect(page.locator('#logoutButton')).toBeVisible();
 }
 
+function preflightReport(kind) {
+    return { kind, filename: `upload.${kind}`, valid: true, can_publish: true, replace: false,
+        counts: { records: kind === 'json' ? 4 : null, pages: kind === 'pdf' ? 3 : null,
+            duplicates_in_file: 1, duplicates_existing: 2, expected_chunks: 3, inserts: 1, updates: 0, skipped: 3 },
+        cost: { embedding_inputs: 3, embedding_batches: 1, input_characters: 40, batch_size: 8 },
+        samples: kind === 'json' ? [{ record: 1, question: '<img src=x onerror="window.sampleExecuted=true">', answer: 'sample answer' }]
+            : [{ page: 3, text: '<script>window.sampleExecuted=true</script> extracted sample' }],
+        issues: [], issues_truncated: false };
+}
+
+async function mockPreflight(page, kind, report = preflightReport(kind)) {
+    const prefix = kind === 'json' ? '/admin/api/upload' : '/admin/api/pdf/upload';
+    await page.route(`${adminURL}${prefix}/preflight`, route => {
+        expect(route.request().headers()['x-csrf-token']).toBeTruthy();
+        return route.fulfill({ json: report });
+    });
+}
+
+for (const kind of ['json', 'pdf']) {
+    test(`preflight ${kind} preview is read-only, safe to render and invalidated by changed options or file`, async ({ page }) => {
+        await login(page);
+        await mockPreflight(page, kind);
+        let publications = 0;
+        page.on('request', request => {
+            if (/\/upload(?:\/jobs)?$/.test(new URL(request.url()).pathname) && request.method() === 'POST') publications++;
+        });
+        if (kind === 'pdf') await page.addInitScript(() => { URL.createObjectURL = () => 'about:blank'; });
+        await page.goto(`${adminURL}/admin/${kind === 'json' ? 'admin' : 'admin_pdf'}.html`);
+        await page.locator('#fileInput').setInputFiles({ name: `upload.${kind}`, buffer: Buffer.from('original content'),
+            mimeType: kind === 'json' ? 'application/json' : 'application/pdf' });
+        await expect(page.locator('#uploadBtn')).toBeDisabled();
+        await page.locator('#preflightBtn').click();
+        await expect(page.locator('#uploadBtn')).toBeEnabled();
+        await expect(page.locator('#preflightReport')).toContainText('sample');
+        await expect(page.locator('#preflightReport')).toContainText('40');
+        await expect(page.locator('#preflightReport img, #preflightReport script')).toHaveCount(0);
+        expect(await page.evaluate(() => window.sampleExecuted)).toBeUndefined();
+        await page.locator('#replaceDupes').check();
+        await expect(page.locator('#uploadBtn')).toBeDisabled();
+        await expect(page.locator('#preflightReport')).toHaveCount(0);
+        await page.locator('#preflightBtn').click();
+        await expect(page.locator('#uploadBtn')).toBeEnabled();
+        await page.locator('#fileInput').setInputFiles({ name: `different.${kind}`, buffer: Buffer.from('different content') });
+        await expect(page.locator('#uploadBtn')).toBeDisabled();
+        await expect(page.locator('#preflightReport')).toHaveCount(0);
+        await page.locator('#clearBtn').click();
+        await expect(page.locator('#preflightBtn')).toBeDisabled();
+        expect(publications).toBe(0);
+    });
+
+    test(`preflight ${kind} validation shows record or page errors and prevents publication`, async ({ page }) => {
+        await login(page);
+        const report = { ...preflightReport(kind), valid: false, can_publish: false, counts: null, cost: null,
+            issues: [{ severity: 'error', message: 'Fix this source value.', ...(kind === 'json' ? { record: 7, field: 'answer' } : { page: 7 }) }] };
+        await mockPreflight(page, kind, report);
+        if (kind === 'pdf') await page.addInitScript(() => { URL.createObjectURL = () => 'about:blank'; });
+        await page.goto(`${adminURL}/admin/${kind === 'json' ? 'admin' : 'admin_pdf'}.html`);
+        await page.locator('#fileInput').setInputFiles({ name: `invalid.${kind}`, buffer: Buffer.from('invalid content') });
+        await page.locator('#preflightBtn').click();
+        await expect(page.locator('#preflightReport')).toContainText('Fix this source value.');
+        await expect(page.locator('#preflightReport')).toContainText('7');
+        if (kind === 'json') await expect(page.locator('#preflightReport')).toContainText('answer');
+        await expect(page.locator('#uploadBtn')).toBeDisabled();
+    });
+}
+
+test('preflight response for a previous selection cannot enable publication', async ({ page }) => {
+    await login(page);
+    let finishPreview;
+    let started = false;
+    await page.route(`${adminURL}/admin/api/upload/preflight`, async route => {
+        started = true;
+        await new Promise(resolve => { finishPreview = resolve; });
+        await route.fulfill({ json: preflightReport('json') });
+    });
+    await page.goto(`${adminURL}/admin/admin.html`);
+    await page.locator('#fileInput').setInputFiles({ name: 'first.json', buffer: Buffer.from('[]') });
+    await page.locator('#preflightBtn').click();
+    await expect.poll(() => started).toBe(true);
+    await page.locator('#fileInput').setInputFiles({ name: 'second.json', buffer: Buffer.from('[]') });
+    const response = page.waitForResponse(`${adminURL}/admin/api/upload/preflight`);
+    finishPreview();
+    await response;
+    await expect(page.locator('#uploadBtn')).toBeDisabled();
+    await expect(page.locator('#preflightReport')).toHaveCount(0);
+});
+
+test('preflight controls stay disabled while publication submission is pending', async ({ page }) => {
+    await login(page);
+    await mockPreflight(page, 'json');
+    let finishSubmission;
+    let submitted = false;
+    await page.route(`${adminURL}/admin/api/upload/jobs`, async route => {
+        submitted = true;
+        await new Promise(resolve => { finishSubmission = resolve; });
+        await route.fulfill({ status: 503, json: { code: 'service_unavailable', error: 'Queue is busy.' } });
+    });
+    await page.goto(`${adminURL}/admin/admin.html`);
+    await page.locator('#fileInput').setInputFiles({ name: 'first.json', buffer: Buffer.from('[]') });
+    await page.locator('#preflightBtn').click();
+    await expect(page.locator('#uploadBtn')).toBeEnabled();
+    await page.locator('#uploadBtn').click();
+    await expect.poll(() => submitted).toBe(true);
+    await page.locator('#replaceDupes').check();
+    await page.locator('#fileInput').setInputFiles({ name: 'second.json', buffer: Buffer.from('[]') });
+    await expect(page.locator('#preflightBtn')).toBeDisabled();
+    await expect(page.locator('#uploadBtn')).toBeDisabled();
+    finishSubmission();
+    await expect(page.locator('#result')).toContainText('Queue is busy.');
+    await expect(page.locator('#preflightBtn')).toBeEnabled();
+    await expect(page.locator('#uploadBtn')).toBeDisabled();
+});
+
 for (const [kind, failed] of [['json', false], ['pdf', false], ['json', true]]) {
     test(`background ${kind} upload ${failed ? 'failure' : 'completion'} restores controls`, async ({ page }) => {
         await login(page);
         const prefix = kind === 'json' ? '/admin/api/upload/jobs' : '/admin/api/pdf/upload/jobs';
+        await mockPreflight(page, kind);
         const jobId = 'a'.repeat(32);
         let polls = 0;
         await page.route(`${adminURL}${prefix}**`, async route => {
@@ -102,6 +216,7 @@ for (const [kind, failed] of [['json', false], ['pdf', false], ['json', true]]) 
             name: `upload.${kind}`, mimeType: kind === 'json' ? 'application/json' : 'application/pdf',
             buffer: Buffer.from(kind === 'json' ? '[{"question":"question","answer":"answer"}]' : '%PDF-1.4\n%%EOF'),
         });
+        await page.locator('#preflightBtn').click();
         await expect(page.locator('#uploadBtn')).toBeEnabled();
         await page.locator('#uploadBtn').click();
         await expect(page.locator('#uploadBtn')).toBeDisabled();
@@ -117,6 +232,7 @@ for (const kind of ['json', 'pdf']) {
     test(`background ${kind} progress, running cancellation, reload and checkpoint retry`, async ({ page }) => {
         await login(page);
         const prefix = kind === 'json' ? '/admin/api/upload/jobs' : '/admin/api/pdf/upload/jobs';
+        await mockPreflight(page, kind);
         const jobId = 'b'.repeat(32);
         let status = 'running';
         let retried = false;
@@ -157,6 +273,7 @@ for (const kind of ['json', 'pdf']) {
             mimeType: kind === 'json' ? 'application/json' : 'application/pdf',
             buffer: Buffer.from(kind === 'json' ? '[{"question":"q","answer":"a"}]' : '%PDF-1.4\n%%EOF'),
         });
+        await page.locator('#preflightBtn').click();
         await expect(page.locator('#uploadBtn')).toBeEnabled();
         await page.locator('#uploadBtn').click();
         await expect(page.locator('#ingestionProgress progress')).toHaveAttribute('value', '1');

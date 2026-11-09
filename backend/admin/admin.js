@@ -6,7 +6,6 @@ const API_BASE = (window.location.protocol === 'file:')
 const $ = (s) => document.querySelector(s);
 
 let selectedFile = null;
-let parsedRows   = [];
 let currentPage  = 1;
 let totalPages   = 1;
 const PER_PAGE   = 10;
@@ -54,84 +53,23 @@ fileInput.addEventListener('change', e => {
 });
 
 function handleFile(file) {
+  selectedFile = null;
+  window.adminResetPreflight(null);
   if (!file.name.toLowerCase().endsWith('.json')) {
     showResult('err', 'فقط فایل با پسوند .json پذیرفته می‌شود.');
     return;
   }
   selectedFile = file;
-  const reader = new FileReader();
-
-  reader.onload = (ev) => {
-    let data;
-    try { data = JSON.parse(ev.target.result); }
-    catch (err) {
-      showResult('err', 'فایل JSON معتبر نیست: ' + err.message);
-      parsedRows = [];
-      $('#uploadBtn').disabled = true;
-      $('#fileInfo').classList.remove('show');
-      $('#preview').classList.remove('show');
-      return;
-    }
-
-    if (!Array.isArray(data)) {
-      showResult('err', 'ساختار فایل باید یک آرایه باشد: [{"question": "...", "answer": "..."}]');
-      parsedRows = [];
-      $('#uploadBtn').disabled = true;
-      return;
-    }
-
-    const valid = [], problems = [];
-    data.forEach((row, i) => {
-      if (!row || typeof row !== 'object' || Array.isArray(row)) {
-        problems.push(`ردیف ${i + 1}: باید یک آبجکت باشد`);
-      } else if (typeof row.question !== 'string' || !row.question.trim()) {
-        problems.push(`ردیف ${i + 1}: فیلد question خالی یا نامعتبر است`);
-      } else if (typeof row.answer !== 'string' || !row.answer.trim()) {
-        problems.push(`ردیف ${i + 1}: فیلد answer خالی یا نامعتبر است`);
-      } else {
-        valid.push({ question: row.question.trim(), answer: row.answer.trim() });
-      }
-    });
-
-    parsedRows = valid;
-
-    $('#fileInfo').innerHTML = `
-      <b>${esc(file.name)}</b> — ${(file.size / 1024).toFixed(1)} کیلوبایت<br>
-      ✅ ردیف‌های معتبر: <b>${valid.length}</b>
-      ${problems.length ? ` &nbsp;|&nbsp; ⚠️ ردیف‌های نامعتبر: <b>${problems.length}</b>` : ''}
-    `;
-    $('#fileInfo').classList.add('show');
-
-    if (valid.length) {
-      const rows = valid.slice(0, 5).map(r => `
-        <tr>
-          <td class="q"><div class="ellip">${esc(r.question)}</div></td>
-          <td class="a"><div class="ellip">${esc(r.answer)}</div></td>
-        </tr>`).join('');
-      $('#preview').innerHTML = `
-        <table>
-          <thead><tr><th>پرسش</th><th>پاسخ</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>`;
-      $('#preview').classList.add('show');
-    } else {
-      $('#preview').classList.remove('show');
-    }
-
-    $('#uploadBtn').disabled = valid.length === 0;
-    clearResult();
-    if (problems.length) {
-      showResult('err', 'بعضی ردیف‌ها نامعتبر بودند و ارسال نخواهند شد:',
-                 problems.slice(0, 8));
-    }
-  };
-
-  reader.readAsText(file, 'utf-8');
+  $('#fileInfo').textContent = `${file.name} — ${(file.size / 1024).toFixed(1)} کیلوبایت`;
+  $('#fileInfo').classList.add('show');
+  $('#preview').classList.remove('show');
+  window.adminResetPreflight(file);
+  clearResult();
 }
 
 /* ---------------- upload ---------------- */
 $('#uploadBtn').addEventListener('click', async () => {
-  if (!selectedFile) return;
+  if (!window.adminCanPublish(selectedFile, $('#replaceDupes').checked)) return;
 
   const btn = $('#uploadBtn');
   const original = btn.textContent;
@@ -163,14 +101,14 @@ $('#uploadBtn').addEventListener('click', async () => {
   } catch (e) {
     showResult('err', '❌ خطا: ' + e.message);
   } finally {
-    btn.disabled = false;
+    btn.disabled = !window.adminCanPublish(selectedFile, $('#replaceDupes').checked);
     btn.textContent = original;
   }
 });
 
 $('#clearBtn').addEventListener('click', () => {
   selectedFile = null;
-  parsedRows = [];
+  window.adminResetPreflight(null);
   fileInput.value = '';
   $('#fileInfo').classList.remove('show');
   $('#preview').classList.remove('show');

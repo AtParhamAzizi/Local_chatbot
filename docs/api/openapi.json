@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Local Chatbot API",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "description": "Stable v1 baseline for existing unversioned UI/admin routes. See README.md beside this document for authentication, compatibility and versioning rules. Demo STT/TTS servers and browser assets are excluded."
   },
   "x-api-major": "1",
@@ -37,6 +37,208 @@
     "request_extensions": "Unknown JSON fields are rejected; clients must send only documented fields."
   },
   "paths": {
+    "/admin/api/upload/preflight": {
+      "post": {
+        "operationId": "admin_qa_preflight",
+        "x-endpoint": "admin_qa_preflight",
+        "x-service": "admin",
+        "x-csrf-required": true,
+        "x-permission": "json_upload",
+        "servers": [
+          {
+            "url": "http://localhost:8000",
+            "description": "Development only; replace with the deployed HTTPS origin."
+          }
+        ],
+        "security": [
+          {
+            "AdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Required for POST; multipart forms also accept csrf_token."
+          }
+        ],
+        "summary": "Validate a json import and preview duplicates, samples, chunks and processing work without publication.",
+        "description": "No job, payload retention, embedding or knowledge write. Reads existing hashes. Content problems return 200 with valid=false and actionable issues; a structurally valid duplicate PDF has valid=true and can_publish=false unless replacement is enabled. Transport/schema/auth/size failures use standard errors. This advisory snapshot is revalidated on publication. Shares upload admission limits.",
+        "responses": {
+          "200": {
+            "description": "Read-only preview, including content validation failures.",
+            "headers": {
+              "API-Version": {
+                "schema": {
+                  "const": "1"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionPreflight"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "One nonempty .json file, at most 20971520 bytes.",
+                    "x-max-bytes": 20971520
+                  },
+                  "replace": {
+                    "type": "string",
+                    "enum": [
+                      "true",
+                      "false",
+                      "1",
+                      "0",
+                      "yes",
+                      "no",
+                      "on",
+                      "off"
+                    ],
+                    "default": "false"
+                  },
+                  "csrf_token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/api/pdf/upload/preflight": {
+      "post": {
+        "operationId": "admin_pdf_preflight",
+        "x-endpoint": "admin_pdf_preflight",
+        "x-service": "admin",
+        "x-csrf-required": true,
+        "x-permission": "pdf_upload",
+        "servers": [
+          {
+            "url": "http://localhost:8000",
+            "description": "Development only; replace with the deployed HTTPS origin."
+          }
+        ],
+        "security": [
+          {
+            "AdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Required for POST; multipart forms also accept csrf_token."
+          }
+        ],
+        "summary": "Validate a pdf import and preview duplicates, samples, chunks and processing work without publication.",
+        "description": "No job, payload retention, embedding or knowledge write. Reads existing hashes. Content problems return 200 with valid=false and actionable issues; a structurally valid duplicate PDF has valid=true and can_publish=false unless replacement is enabled. Transport/schema/auth/size failures use standard errors. This advisory snapshot is revalidated on publication. Shares upload admission limits.",
+        "responses": {
+          "200": {
+            "description": "Read-only preview, including content validation failures.",
+            "headers": {
+              "API-Version": {
+                "schema": {
+                  "const": "1"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionPreflight"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "One nonempty .pdf file, at most 52428800 bytes.",
+                    "x-max-bytes": 52428800
+                  },
+                  "replace": {
+                    "type": "string",
+                    "enum": [
+                      "true",
+                      "false",
+                      "1",
+                      "0",
+                      "yes",
+                      "no",
+                      "on",
+                      "off"
+                    ],
+                    "default": "false"
+                  },
+                  "csrf_token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/api/upload/jobs": {
       "post": {
         "operationId": "admin_qa_submit_job",
@@ -2776,6 +2978,260 @@
       }
     },
     "schemas": {
+      "IngestionPreflight": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "json",
+              "pdf"
+            ]
+          },
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "valid": {
+            "type": "boolean"
+          },
+          "can_publish": {
+            "type": "boolean"
+          },
+          "replace": {
+            "type": "boolean"
+          },
+          "counts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IngestionPreflightCounts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IngestionPreflightCost"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "samples": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PreflightQaSample"
+                },
+                {
+                  "$ref": "#/components/schemas/PreflightPdfSample"
+                }
+              ]
+            }
+          },
+          "issues": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/PreflightIssue"
+            }
+          },
+          "issues_truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "filename",
+          "valid",
+          "can_publish",
+          "replace",
+          "counts",
+          "cost",
+          "samples",
+          "issues",
+          "issues_truncated"
+        ],
+        "additionalProperties": false
+      },
+      "IngestionPreflightCounts": {
+        "type": "object",
+        "properties": {
+          "records": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pages": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duplicates_in_file": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "duplicates_existing": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_chunks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "inserts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updates": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "records",
+          "pages",
+          "duplicates_in_file",
+          "duplicates_existing",
+          "expected_chunks",
+          "inserts",
+          "updates",
+          "skipped"
+        ],
+        "additionalProperties": false
+      },
+      "IngestionPreflightCost": {
+        "type": "object",
+        "properties": {
+          "embedding_inputs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "embedding_batches": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "input_characters": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "batch_size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          }
+        },
+        "required": [
+          "embedding_inputs",
+          "embedding_batches",
+          "input_characters",
+          "batch_size"
+        ],
+        "additionalProperties": false
+      },
+      "PreflightQaSample": {
+        "type": "object",
+        "properties": {
+          "record": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 256
+          },
+          "question": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "answer": {
+            "type": "string",
+            "maxLength": 240
+          }
+        },
+        "required": [
+          "record",
+          "question",
+          "answer"
+        ],
+        "additionalProperties": false
+      },
+      "PreflightPdfSample": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 240
+          }
+        },
+        "required": [
+          "page",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "PreflightIssue": {
+        "type": "object",
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": [
+              "warning",
+              "error"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "record": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 256
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "question",
+              "answer"
+            ]
+          }
+        },
+        "required": [
+          "severity",
+          "message"
+        ],
+        "additionalProperties": false
+      },
       "IngestionAccepted": {
         "type": "object",
         "properties": {

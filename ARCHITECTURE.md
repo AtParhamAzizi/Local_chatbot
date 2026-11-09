@@ -304,6 +304,32 @@ partial autocommit writes; drain workers before migration 6 and inspect those
 separately. Legacy wait timeouts return 503 without canceling work. See
 [ADR 0004](docs/decisions/0004-ingestion-publication-and-retries.md).
 
+### 6.6.2 Ingestion preflight (F029)
+
+POST `/admin/api/upload/preflight` and `/admin/api/pdf/upload/preflight` accept the
+same bounded multipart file/replace fields as publication, with the corresponding
+upload permission, session, CSRF and shared upload rate limit. They run the same
+`IngestionService._prepare_qa/_prepare_pdf` validation, extraction and splitting
+as publication, followed by read-only hash queries. They never embed, load models,
+create jobs, retain upload checkpoints or write searchable knowledge. Normal
+request audit metadata may still be recorded.
+
+The report includes duplicates within the JSON file and against existing knowledge,
+expected chunks, insert/update/skip counts, embedding inputs/batches/characters,
+and up to three samples from the first/middle/last prepared records or chunks.
+Samples carry original one-based record/page locations and at most 240 characters
+per field. Up to 20 actionable issues identify record/field or PDF page; blank
+pages warn about skipped text and OCR. Invalid content returns a 200 report with
+`valid=false`; malformed multipart/auth/transport-size errors retain normal HTTP
+errors. A valid duplicate PDF blocks publication unless replacement is selected.
+Cost is an estimate of local work, not elapsed time or currency.
+
+Both admin import pages require a successful preview for the selected file and
+replace option before enabling publication. Changing either invalidates the report;
+late responses for older selections are ignored. Reports render as text. Preview
+is advisory and stores no approval token: publication still validates the original
+bytes and checks current duplicates. See [ADR 0005](docs/decisions/0005-ingestion-preflight.md).
+
 ### 6.7 Feedback (`user.py: feedback()`, POST `/feedback`)
 
 `{message_id: int > 0, feedback: 'like'|'dislike'}` updates `chat_history`; a new rating overwrites the old one. Zero chat/feedback retention disables feedback with 403 before DB access. The signed chat cookie is required; missing, tampered, or expired proof returns 401 without a history lookup. Both the UPDATE and its unchanged-row existence check constrain `id` AND the current `owner_hash`. Unknown, foreign, and legacy-unowned rows all return the same 404. Invalid input returns 400; a DB error returns 503. Client-supplied user IDs, ownership fields, and IP headers cannot grant ownership. Chat/feedback responses are no-store.
@@ -395,12 +421,14 @@ redirects to login. An authenticated but unauthorized operation returns 403.
 | GET, POST | `/admin/api/models` | `admin_models`, `admin_set_model` |
 | GET | `/admin/api/stats` | `admin_stats` |
 | POST | `/admin/api/upload` | `admin_upload` |
+| POST | `/admin/api/upload/preflight` | `admin_qa_preflight` (read-only content report) |
 | POST | `/admin/api/upload/jobs` | `admin_qa_submit_job` (202 + durable ID) |
 | GET, DELETE | `/admin/api/upload/jobs/<job_id>` | `admin_qa_job` (progress/cancel queued or running) |
 | POST | `/admin/api/upload/jobs/<job_id>/retry` | `admin_qa_retry_job` (202 from saved upload) |
 | GET | `/admin/api/documents` | `admin_documents` |
 | DELETE | `/admin/api/documents/<int:doc_id>` | `admin_delete` |
 | POST | `/admin/api/pdf/upload` | `admin_pdf_upload` |
+| POST | `/admin/api/pdf/upload/preflight` | `admin_pdf_preflight` (read-only content report) |
 | POST | `/admin/api/pdf/upload/jobs` | `admin_pdf_submit_job` (202 + durable ID) |
 | GET, DELETE | `/admin/api/pdf/upload/jobs/<job_id>` | `admin_pdf_job` (progress/cancel queued or running) |
 | POST | `/admin/api/pdf/upload/jobs/<job_id>/retry` | `admin_pdf_retry_job` (202 from saved upload) |
