@@ -8,7 +8,7 @@ API specification.
 
 ## Recorded implementation decisions
 
-These records describe code present on November 8, 2026; they do not assert an
+These records describe behavior at their stated dates; they do not assert an
 unrecorded historical team approval or new feature delivery.
 
 | Record | Decision |
@@ -18,6 +18,7 @@ unrecorded historical team approval or new feature delivery.
 | [0003](0003-explicit-migrations-and-local-models.md) | Explicit versioned migrations and locally prepared text models/dependency profiles |
 | [0004](0004-ingestion-publication-and-retries.md) | Atomic knowledge/job publication, cooperative cancellation and saved-upload retries |
 | [0005](0005-ingestion-preflight.md) | Transient ingestion preview using publication preparation, with advisory cost and duplicate counts |
+| [0006](0006-local-persian-ocr.md) | Optional bounded local Persian OCR, original page provenance and blocking review of uncertain extraction |
 
 ## When and how to add one
 

@@ -12,6 +12,15 @@ debugger profile. Production commands must retain the real deployment settings;
 the migration CLI never silently falls back to development. Configuration failures
 report setting names without their values, before any database access.
 
+For local VS Code use, select **Chatbot: Check database schema** in Run and Debug
+and press F5. This profile reads the same root `.env` as the application debugger,
+so credentials need not be copied into a terminal. After stopping all application
+writers and preparing the verified backup below, select **Chatbot: Upgrade database
+schema**, press F5, and enter its absolute backup path and a MySQL administrator
+account/password when prompted. Run the check
+profile again before restarting **Chatbot: Local development**. These profiles
+explicitly select development mode; use deployment settings for production.
+
 ```powershell
 python -B backend/schema_migrations.py status
 python -B backend/schema_migrations.py upgrade
@@ -26,7 +35,7 @@ python -B backend/schema_migrations.py upgrade --backup C:/private-backups/chatb
 python -B backend/schema_migrations.py status
 ```
 
-Successful output includes `"schema_version": 5`, `"latest_version": 5`, empty
+Successful output includes `"schema_version": 6`, `"latest_version": 6`, empty
 `pending` and `incomplete` lists. An unversioned database reports version 0 without
 being modified. `status` is a read-only inspection command and exits successfully
 even when upgrades are pending; application startup requires the latest version
@@ -39,6 +48,55 @@ or tampered history fail both commands. No models are loaded by either command.
    standalone launchers and management commands. In Compose, use
    `docker compose stop chatbot`, leaving MySQL running. A migration advisory lock
    prevents simultaneous migration commands, not normal application writes.
+
+   For local development, the repository includes a backup helper. From the root:
+
+   ```powershell
+   python -B backend/backup_database.py --env-file .env --development --user root --ask-password
+   ```
+
+   Or select **Chatbot: Back up database** in VS Code Run and Debug, then press
+   F5. Both methods reuse the host, port and database from your local `.env`.
+   Use the backup/administrator account that can export this database (replace
+   `root` above if yours differs). Its password prompt is hidden. The VS Code
+   backup and upgrade profiles prompt for that account and a hidden password;
+   they do not change the restricted serving account or your `.env`. When the
+   configured account already has dump permissions, omit `--user/--ask-password`.
+   A successful application login does not imply export or ALTER privileges.
+   The helper discovers
+   `mysqldump` on PATH or in standard Windows MySQL Server/Workbench locations;
+   it never installs tools or asks for passwords in command arguments. It creates
+   a new private folder under `~/Local_chatbot_backups` for every run and prints
+   the absolute `backup.sql` path, byte count and SHA-256. On this Windows machine
+   the default parent is `%USERPROFILE%/Local_chatbot_backups`. Its manifest records
+   `restore_tested: false`; restoration is a separate operator check below.
+
+   Choose another directory or executable explicitly if needed:
+
+   ```powershell
+   python -B backend/backup_database.py --env-file .env --development --user root --ask-password --directory 'D:/private-backups' --mysqldump 'C:/Program Files/MySQL/MySQL Server 8.0/bin/mysqldump.exe'
+   ```
+
+   Backup directories must be outside the repository. A Windows ACL or POSIX
+   directory mode restricts each new backup folder to the current user. Passwords
+   use a temporary private MySQL option file, removed with client diagnostics on
+   exit; failed, empty, interrupted and timed-out dumps are removed instead of
+   published as SQL backups. The default dump timeout is 600 seconds; `--timeout`
+   accepts 1-3600. A hard OS kill can leave the private incomplete folder: do not
+   use it as a backup. Use a MySQL dump client compatible with the database server
+   and an account with the privileges described below. The script changes no
+   schema, runs no upgrade and does not verify restoration.
+
+   `--env-file` is explicit and applies registered application settings only to
+   the backup process; it does not export them into your terminal. Files support
+   single-line `KEY=value` entries, optional `export`, quotes and comments, with
+   literal values and no variable interpolation or multiline strings. Existing
+   process settings are overridden by that file; `--development` explicitly
+   selects local mode afterward. Production should use its deployment environment
+   and omit `--development`. After restore-testing, paste the printed `backup.sql`
+   path into the **Chatbot: Upgrade database schema** debugger prompt. Leaving
+   that prompt blank produces the `--backup: expected one argument` error.
+
 2. Use the MySQL client tools matching your server and a protected backup location
    outside the repository. For example (one command, password entered at the prompt):
 

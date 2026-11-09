@@ -1,5 +1,22 @@
 # Offline unit-test foundation
 
+## Local Persian OCR (F030)
+
+Run `python -B backend/tests/run_tests.py --pattern test_ocr.py -v` for confidence,
+page provenance, mixed PDFs, disabled OCR, uncertain-page rejection, image/output
+limits, capacity and child cancellation/timeout cleanup. These are offline doubles.
+API contracts cover optional extraction metadata and the Chromium/Chrome `OCR`
+journeys cover page-specific confidence, safe excerpts and blocked publication.
+
+`python -B backend/tests/ocr_smoke.py` exercises real local Tesseract on a generated
+image-only Persian PDF, publication and retrieval in isolated SQLite, and rejection
+of an uncertain scanned page without changing prior knowledge. It needs local
+`fas` data, PyMuPDF and a Persian-capable Arial/DejaVu font. It never loads
+embedding/generation models or connects to deployment services. See
+[OCR operations](../../docs/ocr.md) for setup, limitations and optional WSL testing.
+CI runs this separately with Ubuntu system packages; it is not offline discovery
+or proof of MySQL locking/real embedding quality.
+
 ## Ingestion preflight (F029)
 
 Run `python -B backend/tests/run_tests.py --pattern test_ingestion_preflight.py -v`

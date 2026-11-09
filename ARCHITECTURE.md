@@ -20,6 +20,7 @@ A local, Persian-language (RTL) RAG chatbot. Python/Flask, MySQL, local HuggingF
 ## 2. Stack
 
 Flask, Flask-Cors, flask-sock, simple-websocket, PyMySQL, numpy, torch, transformers (>=5.2,<6), PyMuPDF (`fitz`), faster-whisper, av.
+Optional scanned-PDF OCR uses a locally installed Tesseract 5 executable with Persian `fas` language data; it is disabled by default and adds no Python dependency.
 GPU profile: `requirements-cuda.txt` (cu118 index, torch/torchaudio 2.7.1+cu118, accelerate, bitsandbytes 0.47.0). Primary platform is Windows (`run_gpu.cmd`, `.venv\Scripts\python.exe`).
 Recorded F017 installation uses `scripts/dependencies.py install/verify --profile cpu|cu118` and native hash-pinned locks under `requirements/locks/`. Windows x64 CPython 3.13 and Linux x86-64 CPython 3.12 are the recorded targets; see `requirements/README.md` for recreation and upgrade/rollback. Bounded root requirement files remain resolver inputs, not release locks.
 `backend/STT/requirements.txt` is only for the standalone STT demo.
@@ -48,7 +49,7 @@ backend/
   user.py             User HTTP handlers: /, /health, /chat, /feedback; retrieval service adapter
   admin.py            Small admin route composer and standalone launcher
   admin_routes/       Independent auth, accounts, pages, knowledge, PDF, models, history and logs HTTP modules
-  services/           Request-independent ingestion, retrieval and model lifecycle services; lazy external adapters
+  services/           Request-independent ingestion, optional local OCR, retrieval and model lifecycle services; lazy external adapters
   controller.py       Runtime controller state (controller_state.json), memory/GPU helpers
   controller_api.py   Controller routes + hooks registered explicitly on supplied apps
   database.py         DB_CONFIG, get_conn, `logger` class, get_client_ip, hashing helpers (no schema DDL)
@@ -310,7 +311,7 @@ POST `/admin/api/upload/preflight` and `/admin/api/pdf/upload/preflight` accept 
 same bounded multipart file/replace fields as publication, with the corresponding
 upload permission, session, CSRF and shared upload rate limit. They run the same
 `IngestionService._prepare_qa/_prepare_pdf` validation, extraction and splitting
-as publication, followed by read-only hash queries. They never embed, load models,
+as publication, followed by read-only hash queries. They never embed or load text-generation/embedding models,
 create jobs, retain upload checkpoints or write searchable knowledge. Normal
 request audit metadata may still be recorded.
 
@@ -329,6 +330,38 @@ replace option before enabling publication. Changing either invalidates the repo
 late responses for older selections are ignored. Reports render as text. Preview
 is advisory and stores no approval token: publication still validates the original
 bytes and checks current duplicates. See [ADR 0005](docs/decisions/0005-ingestion-preflight.md).
+
+### 6.6.3 Optional local Persian OCR (F030)
+
+`PDF_OCR_ENABLED=1` enables `services.ocr.LocalOcr` during both PDF preflight and
+publication. Pages with fewer than `PDF_OCR_MIN_TEXT_CHARS` alphabetic characters
+(default 32), fewer than three distinct letters, or excessive Unicode replacement
+characters use local Tesseract `fas` OCR instead of their embedded text.
+Useful embedded text stays on the existing path. OCR uses a grayscale raster at
+150 DPI by default with sparse-text segmentation; page numbers remain the original one-based PDF pages through
+chunking, persistence and retrieval citations. No cloud calls or runtime downloads
+occur. Missing binaries/languages produce actionable page issues.
+
+Preflight's optional `extraction` includes every inspected page's method,
+character-weighted mean confidence, minimum word confidence, review flag and
+240-character excerpt. Mean confidence below the configured default 75, any word
+below 50, or unusable OCR requires review and blocks the entire import before
+embedding or publication, even for direct API clients. Re-scan/correct the source
+and preview again; there is no confidence bypass or silent partial acceptance.
+These engine scores are heuristics, not calibrated correctness probabilities.
+Successful durable job results retain source/confidence/page metadata without
+duplicating excerpts. Existing `pdf_chunks.page_start/page_end` preserve provenance;
+no schema migration is needed.
+
+One process-wide OCR slot bounds preview/worker concurrency. Limits: 20 OCR pages
+per file, 16 million rendered pixels per page, 2 MiB TSV reads, 30 seconds per
+page including slot waits (configurable 1-60), and 120 seconds OCR budget per
+import. Existing file/page/text/chunk limits still apply. Subprocess guards poll
+at most every 250 ms and kill/reap the owned child on cancellation/timeout, then
+remove temporary files. Native rasterization, process teardown and database calls
+retain the documented work-unit cancellation caveat. Retries re-extract under
+current settings; uncertain work cannot publish. See [OCR setup/review](docs/ocr.md)
+and [ADR 0006](docs/decisions/0006-local-persian-ocr.md).
 
 ### 6.7 Feedback (`user.py: feedback()`, POST `/feedback`)
 
@@ -481,6 +514,18 @@ interpreter/prompt paths are omitted entirely. There is no public diagnostics ro
 Use `--scope stt` or `--scope tts` to validate standalone demos without deployment
 credentials; the demos and the private speech worker share the same definitions.
 
+`backup_database.py` is an explicit operator CLI, separate from serving and schema
+migration. It reads typed database settings, optionally loads a local `--env-file`,
+and runs a separately installed `mysqldump` without shell/password arguments. Each
+dump is isolated in a private folder outside the repository; only successful,
+nonempty output becomes `backup.sql`, accompanied by a SHA-256 manifest. Failure,
+timeout and interruption remove incomplete output and temporary credentials.
+Restoration must be tested separately before passing the SQL file to migrations.
+The local VS Code backup/status/upgrade profiles share the serving profile's
+database location in `.env`; backup and upgrade prompt for a separate privileged
+account. The CLI also supports `--user NAME --ask-password` without changing the
+serving credentials. See [migration and backup operations](backend/migrations/README.md).
+
 `APP_ENV` takes precedence over legacy `ENVIRONMENT`, then `FLASK_ENV`. Missing
 values use declared defaults; explicit blank values fail except optional secrets
 in development and the empty proxy list. Invalid errors name the setting and
@@ -597,7 +642,7 @@ Each run prints an ignored `backend/tests/browser-artifacts/<id>` folder contain
 
 ## Continuous integration (F016)
 
-`.github/workflows/ci.yml` runs unprivileged GitHub-hosted CPU checks for all PRs, `main` pushes, merge groups and manual dispatch. Independent jobs run source checks; the full guarded offline suite twice on Ubuntu Python 3.12/3.13 and Windows Python 3.13; disposable MySQL integration twice; and Chromium journeys twice. Only lightweight test profiles and locked browser dependencies are installed, never CUDA/model requirements. Actions are SHA-pinned, permissions are read-only, checkout credentials are not persisted, and deployment secrets are not supplied. Browser diagnostics upload even on failure with seven-day retention.
+`.github/workflows/ci.yml` runs unprivileged GitHub-hosted CPU checks for all PRs, `main` pushes, merge groups and manual dispatch. Independent jobs run source checks; the full guarded offline suite twice on Ubuntu Python 3.12/3.13 and Windows Python 3.13; disposable MySQL integration twice; local Persian OCR acceptance; and Chromium journeys twice. The OCR job installs PyMuPDF, Tesseract and local `fas` language data; other jobs use lightweight test profiles and locked browser dependencies. No CUDA or text-model requirements are installed. Actions are SHA-pinned, permissions are read-only, checkout credentials are not persisted, and deployment secrets are not supplied. Browser diagnostics upload even on failure with seven-day retention.
 
 `backend/tests/check_source.py` uses Git's tracked/nonignored new file inventory, compiles Python without executing imports or writing bytecode, runs `node --check` on JavaScript, and applies `git diff --check` whitespace policy to proposed changes. F023 adds narrow AST checks for identical imports repeated within uninterrupted blocks and a separate unfiltered Git-index guard against tracked `__pycache__` contents or `.pyc`/`.pyo` files. Conditional branches and local scopes are independent; no general formatter, linter or type checker is configured. Its local base defaults to `HEAD`; CI uses the event's base SHA with full history. Missing tools, malformed source, invalid bases, tracked bytecode, repeated imports and whitespace errors fail closed. `test_ci_checks.py` checks these boundaries (including force-added bytecode in a temporary Git repository) plus regression-runner assertion/error/empty-discovery failure propagation.
 

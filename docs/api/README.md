@@ -3,7 +3,7 @@
 The checked-in `openapi.json` describes the supported chatbot UI and administrator
 HTTP APIs, their request/response JSON Schemas, parameters, media types, permissions,
 and voice WebSocket frames. Its `info.version` is the contract revision, currently
-`1.3.0`. Both applications advertise `API-Version: 1` on successes, errors,
+`1.4.0`. Both applications advertise `API-Version: 1` on successes, errors,
 redirects, and HEAD responses. This is a response marker, not a negotiation header;
 clients do not send it. Allowed UI origins can read it through CORS.
 
@@ -44,6 +44,32 @@ with different routes; their `/voice`, `/stream`, `/api/status` and
 
 ## Requests and transport
 
+### Scanned Persian PDF OCR (1.4, F030)
+
+When the server's `PDF_OCR_ENABLED` is true, PDF preflight and publication share
+the same optional local OCR fallback. No request field enables OCR or bypasses
+confidence checks. The existing multipart/auth/CSRF/permission contracts remain.
+An optional `extraction` property appears on PDF preview and successful import
+results, including durable job results. It contains `ocr_enabled: true`,
+`minimum_confidence`, `minimum_word_confidence` and `pages` (at most 200).
+Each page has one-based `page`, `method: embedded|ocr`, nullable `confidence`
+and `min_confidence` (0-100), and `needs_review`. Preview also includes a
+`text_sample` of at most 240 characters. Successful job/import results omit
+samples. Engine failures additionally identify a fixed `reason` code.
+
+Useful embedded text bypasses OCR. For OCR, a mean below the configured threshold,
+any word below 50, or unusable text blocks the whole import. Invalid previews
+remain HTTP 200 with `can_publish=false`, actionable page issues and extraction
+samples; direct publication fails validation before embeddings or knowledge writes.
+Correct/re-scan the source and preview again. No uncertain page becomes searchable.
+Confidence is an engine heuristic, not a probability of correctness. Successful
+chunks and retrieved citations retain their original PDF page numbers.
+
+Successful previews add `cost.ocr_pages` to the existing work estimate. OCR itself
+has already run during preview and runs again on publication/retry. The optional
+path obeys image, time, concurrency and per-file OCR limits in [OCR operations](../ocr.md).
+No cloud requests or automatic language downloads occur.
+
 ### Ingestion preflight (1.3, F029)
 
 POST `/admin/api/upload/preflight` or `/admin/api/pdf/upload/preflight` with the
@@ -51,7 +77,7 @@ same multipart `file`, `replace` and CSRF proof as an import. The respective
 `json_upload`/`pdf_upload` permission is required. Preview shares the upload
 rate budget (six attempts per client per five minutes), including publication
 and retries; it does not consume queue capacity. It extracts and validates the
-whole bounded file synchronously without embeddings, model loading, retained
+whole bounded file synchronously without embeddings, text-generation/embedding model loading, retained
 upload bytes, jobs or searchable writes. Request audit metadata may be written.
 
 HTTP 200 includes `valid`, `can_publish`, `counts`, `cost`, `samples`, `issues`
@@ -136,7 +162,7 @@ parts, and 128 KiB of in-memory form fields. JSON file imports allow one nonempt
 length 1-4096 and answer length 1-16000. All rows are checked before model work.
 PDF imports allow one nonempty `.pdf` file up to 50 MiB, 1-200 pages, at most
 500000 extracted characters and 256 chunks. Extension checks are case-insensitive.
-Scanned/no-text PDFs are rejected. Both upload routes accept optional form
+Scanned/no-text PDFs require the optional OCR path; unusable OCR still fails validation. Both upload routes accept optional form
 `replace=true|false|1|0|yes|no|on|off` (default `false`) and `csrf_token`; values are
 case-sensitive. Duplicate files/fields and unknown form fields are rejected.
 Missing/invalid extensions return 400; size/page/text/chunk limits return 413.

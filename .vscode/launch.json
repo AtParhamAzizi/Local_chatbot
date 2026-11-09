@@ -13,6 +13,67 @@
                 "APP_ENV": "development",
                 "APP_HOST": "127.0.0.1"
             }
+        },
+        {
+            "name": "Chatbot: Back up database",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/backup_database.py",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "APP_ENV": "development",
+                "DB_USER": "${input:migrationDatabaseUser}",
+                "DB_PASS": "${input:migrationDatabasePassword}"
+            }
+        },
+        {
+            "name": "Chatbot: Check database schema",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/schema_migrations.py",
+            "args": ["status"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "APP_ENV": "development"
+            }
+        },
+        {
+            "name": "Chatbot: Upgrade database schema",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/schema_migrations.py",
+            "args": ["upgrade", "--backup", "${input:migrationBackup}"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "APP_ENV": "development",
+                "DB_USER": "${input:migrationDatabaseUser}",
+                "DB_PASS": "${input:migrationDatabasePassword}"
+            }
+        }
+    ],
+    "inputs": [
+        {
+            "id": "migrationDatabaseUser",
+            "type": "promptString",
+            "description": "MySQL administrator/backup account (use your Workbench administrator, not the restricted application account)",
+            "default": "root"
+        },
+        {
+            "id": "migrationDatabasePassword",
+            "type": "promptString",
+            "description": "Password for the MySQL administrator/backup account",
+            "password": true
+        },
+        {
+            "id": "migrationBackup",
+            "type": "promptString",
+            "description": "Absolute path to your existing, verified pre-upgrade SQL backup"
         }
     ]
 }

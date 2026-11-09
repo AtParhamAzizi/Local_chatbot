@@ -1,6 +1,7 @@
 FROM python:3.12-slim-bookworm
 
 ARG INSTALL_PROFILE=cpu
+ARG INSTALL_OCR=0
 
 ENV VIRTUAL_ENV=/opt/venv \
     PATH="/opt/venv/bin:$PATH" \
@@ -15,6 +16,11 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get install --no-install-recommends -y ca-certificates libgomp1 libstdc++6 \
+    && case "$INSTALL_OCR" in \
+         1) apt-get install --no-install-recommends -y tesseract-ocr tesseract-ocr-fas ;; \
+         0) ;; \
+         *) echo 'INSTALL_OCR must be 0 or 1' >&2; exit 1 ;; \
+       esac \
     && rm -rf /var/lib/apt/lists/* \
     && python -m venv "$VIRTUAL_ENV" \
     && useradd --create-home --user-group --uid 10001 chatbot

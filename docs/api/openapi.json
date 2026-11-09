@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Local Chatbot API",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "description": "Stable v1 baseline for existing unversioned UI/admin routes. See README.md beside this document for authentication, compatibility and versioning rules. Demo STT/TTS servers and browser assets are excluded."
   },
   "x-api-major": "1",
@@ -2978,6 +2978,103 @@
       }
     },
     "schemas": {
+      "PdfExtraction": {
+        "type": "object",
+        "properties": {
+          "ocr_enabled": {
+            "const": true
+          },
+          "minimum_confidence": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "minimum_word_confidence": {
+            "const": 50
+          },
+          "pages": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/PdfExtractionPage"
+            }
+          }
+        },
+        "required": [
+          "ocr_enabled",
+          "minimum_confidence",
+          "minimum_word_confidence",
+          "pages"
+        ],
+        "additionalProperties": false
+      },
+      "PdfExtractionPage": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "embedded",
+              "ocr"
+            ]
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "min_confidence": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "needs_review": {
+            "type": "boolean"
+          },
+          "text_sample": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "ocr_unavailable",
+              "ocr_failed",
+              "ocr_timeout",
+              "ocr_image_limit",
+              "ocr_output_limit",
+              "ocr_page_limit"
+            ]
+          }
+        },
+        "required": [
+          "page",
+          "method",
+          "confidence",
+          "min_confidence",
+          "needs_review"
+        ],
+        "additionalProperties": false
+      },
       "IngestionPreflight": {
         "type": "object",
         "properties": {
@@ -3045,6 +3142,9 @@
           },
           "issues_truncated": {
             "type": "boolean"
+          },
+          "extraction": {
+            "$ref": "#/components/schemas/PdfExtraction"
           }
         },
         "required": [
@@ -3126,6 +3226,11 @@
       "IngestionPreflightCost": {
         "type": "object",
         "properties": {
+          "ocr_pages": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20
+          },
           "embedding_inputs": {
             "type": "integer",
             "minimum": 0
@@ -4185,6 +4290,9 @@
       "PdfImport": {
         "type": "object",
         "properties": {
+          "extraction": {
+            "$ref": "#/components/schemas/PdfExtraction"
+          },
           "success": {
             "const": true
           },

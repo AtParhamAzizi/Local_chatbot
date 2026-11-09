@@ -4,6 +4,9 @@ Date: 2026-11-09
 
 Status: Implemented
 
+Extended by [0006](0006-local-persian-ocr.md): optional PDF OCR may load local
+OCR language data during preparation; embedding/generation models remain unused by preview.
+
 ## Context
 
 F029 requires administrators to inspect duplicates, extracted content, chunk

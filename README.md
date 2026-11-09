@@ -548,6 +548,12 @@ publication button is enabled. API clients can POST multipart files to
 [preflight contract](docs/api/README.md#ingestion-preflight-13-f029). Estimates are
 advisory work counts; publication always revalidates and rechecks current duplicates.
 
+Scanned Persian PDFs can use optional local OCR. Install Tesseract 5 with `fas`
+and `eng` data, set `PDF_OCR_ENABLED=1`, and restart. Preflight shows extraction
+method, confidence and samples by original page; uncertain OCR blocks publication
+until the source is corrected. Containers additionally need `INSTALL_OCR=1` at
+build time. See [OCR setup, limits and review](docs/ocr.md). It is off by default.
+
 The complete route inventory is in the API contract. These access boundaries
 apply before the handlers:
 

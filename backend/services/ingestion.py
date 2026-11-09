@@ -12,6 +12,7 @@ from request_validation import (
 )
 from services import adapters
 from services.embedding_batches import staged_embeddings
+from services.ocr import LocalOcr, MAX_OCR_PAGES, MIN_WORD_CONFIDENCE, OCR_BUDGET_SECONDS, OcrError, useful_text
 from settings import setting_value
 
 
@@ -81,7 +82,7 @@ class IngestionService:
     def __init__(self, *, connect=adapters.connect_database, embed=adapters.embed_texts,
                  open_pdf=adapters.open_pdf, hash_question=adapters.hash_question,
                  hash_document=adapters.hash_document, audit=adapters.audit,
-                 clock=time.time, splitter=split_text, batch_size=None, progress=None):
+                 clock=time.time, splitter=split_text, batch_size=None, progress=None, ocr=None):
         self.connect = connect
         self.embed = embed
         self.open_pdf = open_pdf
@@ -94,6 +95,7 @@ class IngestionService:
         if isinstance(self.batch_size, bool) or not isinstance(self.batch_size, int) or not 1 <= self.batch_size <= 64:
             raise ValueError('batch_size must be an integer from 1 to 64')
         self.progress = progress
+        self.ocr = LocalOcr() if ocr is None else ocr
 
     def _report_embedding(self, source, completed, total):
         self.audit(f'{source} embedding progress: completed={completed}, total={total}')
@@ -246,7 +248,14 @@ class IngestionService:
         self._report('publishing', 'json', len(rows), len(rows), progress, guard)
         return inserted, updated, skipped
 
-    def _prepare_pdf(self, raw, *, publication_guard=None, progress=None):
+    def _prepare_pdf(self, raw, *, publication_guard=None, progress=None, extraction=None):
+        extraction = {} if extraction is None else extraction
+        if self.ocr.enabled:
+            extraction.update(ocr_enabled=True, minimum_confidence=self.ocr.minimum_confidence,
+                              minimum_word_confidence=MIN_WORD_CONFIDENCE, pages=[])
+        ocr_deadline = time.monotonic() + OCR_BUDGET_SECONDS
+        ocr_count = 0
+        review_issues = []
         if publication_guard is not None:
             publication_guard()
         try:
@@ -279,6 +288,35 @@ class IngestionService:
                 if total_text_chars > MAX_PDF_TEXT_CHARS:
                     raise PreparationLimit(f'Extracted text exceeds {MAX_PDF_TEXT_CHARS} characters. Split the PDF before this page.',
                                            page=page_number + 1)
+                if self.ocr.enabled:
+                    metadata = {'page': page_number + 1, 'method': 'embedded', 'confidence': None,
+                                'min_confidence': None, 'needs_review': False, 'text_sample': text[:240]}
+                    extraction['pages'].append(metadata)
+                    if not useful_text(text, self.ocr.minimum_text):
+                        metadata['method'] = 'ocr'
+                        ocr_count += 1
+                        original_size = len(text)
+                        try:
+                            if ocr_count > MAX_OCR_PAGES:
+                                raise OcrError('ocr_page_limit')
+                            recognized = self.ocr.extract(page, guard=publication_guard, deadline=ocr_deadline)
+                            text = recognized.text
+                            metadata.update(confidence=recognized.confidence, min_confidence=recognized.min_confidence,
+                                            text_sample=text[:240])
+                            if (not useful_text(text, self.ocr.minimum_text) or recognized.confidence is None
+                                    or recognized.confidence < self.ocr.minimum_confidence
+                                    or recognized.min_confidence is None or recognized.min_confidence < MIN_WORD_CONFIDENCE):
+                                metadata['needs_review'] = True
+                                review_issues.append({'page': page_number + 1,
+                                                      'message': 'Uncertain OCR. Review the extracted sample against this page, correct or re-scan the source, and preview again. Publication is blocked.'})
+                        except OcrError as error:
+                            metadata.update(needs_review=True, text_sample='', reason=error.code)
+                            review_issues.append({'page': page_number + 1, 'message': str(error)})
+                            text = ''
+                        total_text_chars += len(text) - original_size
+                        if total_text_chars > MAX_PDF_TEXT_CHARS:
+                            raise PreparationLimit(f'Extracted text exceeds {MAX_PDF_TEXT_CHARS} characters. Split the PDF before this page.',
+                                                   page=page_number + 1)
                 text = text.strip()
                 if text:
                     pages.append({
@@ -294,6 +332,8 @@ class IngestionService:
             raise IngestionError({'error': 'Unable to extract PDF text.'}, 400) from None
         finally:
             pdf.close()
+        if review_issues:
+            raise PreparationInvalid(review_issues[:20], truncated=len(review_issues) > 20)
         if not pages:
             raise PreparationInvalid([{'page': page_number, 'message': 'No extractable text. Apply OCR to this page before importing.'}
                                       for page_number in empty_pages[:20]], truncated=len(empty_pages) > 20)
@@ -329,7 +369,9 @@ class IngestionService:
     def ingest_pdf(self, raw, filename, *, replace=False, publication_guard=None, progress=None, publication=None):
         """Import bounded PDF bytes and publish the complete document atomically."""
         started = self.clock()
-        pdf_page_count, chunks, _ = self._prepare_pdf(raw, publication_guard=publication_guard, progress=progress)
+        extraction = {}
+        pdf_page_count, chunks, _ = self._prepare_pdf(raw, publication_guard=publication_guard, progress=progress,
+                                                       extraction=extraction)
         if publication_guard is not None:
             publication_guard()
         document_hash = self.hash_document(raw)
@@ -364,6 +406,10 @@ class IngestionService:
                 'embedding_dim': dim,
                 'duration_sec': round(self.clock() - started, 2),
             }
+            if extraction:
+                result['extraction'] = {**extraction, 'pages': [
+                    {key: value for key, value in page.items() if key != 'text_sample'} for page in extraction['pages']
+                ]}
             with self._pdf_publication(result, publication) as conn:
                 result['document_id'] = self._persist_pdf(
                     raw, filename, document_hash, pdf_page_count, chunks, existing, replace, vectors, dim,
@@ -378,6 +424,7 @@ class IngestionService:
             'replace': replace, 'counts': None, 'cost': None, 'samples': [],
             'issues': [], 'issues_truncated': False,
         }
+        extraction = {}
         try:
             if kind == 'json':
                 received, rows, record_numbers = self._prepare_qa(raw)
@@ -401,7 +448,9 @@ class IngestionService:
                 report['samples'] = [{'record': record_numbers[index], 'question': rows[index][0][:240],
                                       'answer': rows[index][1][:240]} for index in sample_indexes]
             elif kind == 'pdf':
-                page_count, chunks, empty_pages = self._prepare_pdf(raw)
+                page_count, chunks, empty_pages = self._prepare_pdf(raw, extraction=extraction)
+                if extraction:
+                    report['extraction'] = extraction
                 connection = self.connect()
                 try:
                     with connection.cursor() as cursor:
@@ -430,6 +479,8 @@ class IngestionService:
             else:
                 raise ValueError('Unsupported ingestion kind')
         except (InvalidRequest, RequestEntityTooLarge, IngestionError) as error:
+            if extraction:
+                report['extraction'] = extraction
             issues = getattr(error, 'issues', None)
             if issues is None:
                 message = error.description if isinstance(error, InvalidRequest) else 'No usable PDF content. Export a PDF with extractable text.'
@@ -443,6 +494,8 @@ class IngestionService:
             'embedding_inputs': len(inputs), 'embedding_batches': (len(inputs) + self.batch_size - 1) // self.batch_size,
             'input_characters': sum(map(len, inputs)), 'batch_size': self.batch_size,
         }
+        if extraction:
+            report['cost']['ocr_pages'] = sum(page['method'] == 'ocr' for page in extraction['pages'])
         return report
 
     def _persist_pdf(self, raw, filename, document_hash, page_count, chunks, existing, replace, vectors, dim,

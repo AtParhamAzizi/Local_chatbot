@@ -52,6 +52,14 @@
             if (report.cost) {
                 lines.push(`برآورد پردازش: ${report.cost.embedding_inputs} متن، ${report.cost.embedding_batches} دسته، ${report.cost.input_characters} نویسه`,
                     'زمان و مصرف منابع به مدل و سخت‌افزار بستگی دارد. این بررسی بردارسازی انجام نمی‌دهد.');
+                if (report.cost.ocr_pages !== undefined) lines.push(`صفحات پردازش‌شده با OCR محلی: ${report.cost.ocr_pages}`);
+            }
+            if (report.extraction) {
+                lines.push(`استخراج محلی OCR فعال است. حداقل اطمینان میانگین: ${report.extraction.minimum_confidence}٪؛ حداقل اطمینان هر واژه: ${report.extraction.minimum_word_confidence}٪.`);
+                for (const extracted of report.extraction.pages) {
+                    const method = extracted.method === 'ocr' ? 'OCR محلی' : 'متن PDF';
+                    lines.push(`صفحه ${extracted.page} — ${method} — اطمینان: ${extracted.confidence ?? '—'}٪ — کمترین اطمینان واژه: ${extracted.min_confidence ?? '—'}٪${extracted.needs_review ? ' — نیازمند بازبینی؛ انتشار متوقف است' : ''}\n${extracted.text_sample || ''}`);
+                }
             }
             for (const issue of report.issues) {
                 const location = issue.record ? `رکورد ${issue.record}` : issue.page ? `صفحه ${issue.page}` : 'فایل';

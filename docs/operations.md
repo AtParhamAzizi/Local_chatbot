@@ -73,7 +73,8 @@ There are at most 20 issues per report. Use the listed one-based record/page
 numbers to find errors and repeat preview after correction. Estimates count local
 embedding inputs, batches and characters. They do not predict seconds, GPU RAM
 or money; compare work counts against your hardware measurements. Existing JSON
-questions are still embedded even when skipped. No model is loaded by preview.
+questions are still embedded even when skipped. No embedding/generation model is loaded by preview;
+the optional [local Persian OCR path](ocr.md) loads local OCR language data when enabled.
 
 Preview is synchronous, transient and advisory; its database checks can become
 stale before publication, which validates again. It uses the existing upload

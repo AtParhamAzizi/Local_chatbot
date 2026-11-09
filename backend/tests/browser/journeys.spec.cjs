@@ -139,6 +139,32 @@ for (const kind of ['json', 'pdf']) {
     });
 }
 
+for (const confidence of [98, 54]) {
+    test(`OCR preflight exposes page confidence ${confidence} and blocks uncertain extraction`, async ({ page }) => {
+        await login(page);
+        const uncertain = confidence < 75;
+        const report = { ...preflightReport('pdf'), valid: !uncertain, can_publish: !uncertain,
+            extraction: { ocr_enabled: true, minimum_confidence: 75, minimum_word_confidence: 50,
+                pages: [{ page: 4, method: 'ocr', confidence, min_confidence: confidence,
+                    needs_review: uncertain, text_sample: '<img src=x onerror="window.ocrExecuted=true"> نمونه فارسی برای بازبینی' }] },
+            issues: uncertain ? [{ severity: 'error', page: 4, message: 'Review and re-scan page 4.' }] : [] };
+        await mockPreflight(page, 'pdf', report);
+        await page.addInitScript(() => { URL.createObjectURL = () => 'about:blank'; });
+        await page.goto(`${adminURL}/admin/admin_pdf.html`);
+        await page.locator('#fileInput').setInputFiles({ name: 'scan.pdf', buffer: Buffer.from('scan fixture') });
+        await page.locator('#preflightBtn').click();
+        await expect(page.locator('#preflightReport')).toContainText('صفحه 4');
+        await expect(page.locator('#preflightReport')).toContainText(`${confidence}٪`);
+        await expect(page.locator('#preflightReport')).toContainText('نمونه فارسی برای بازبینی');
+        await expect(page.locator('#preflightReport img')).toHaveCount(0);
+        expect(await page.evaluate(() => window.ocrExecuted)).toBeUndefined();
+        if (uncertain) {
+            await expect(page.locator('#uploadBtn')).toBeDisabled();
+            await expect(page.locator('#preflightReport')).toContainText('نیازمند بازبینی');
+        } else await expect(page.locator('#uploadBtn')).toBeEnabled();
+    });
+}
+
 test('preflight response for a previous selection cannot enable publication', async ({ page }) => {
     await login(page);
     let finishPreview;

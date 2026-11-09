@@ -286,6 +286,33 @@ class ApiContractTests(AbuseEndpointFixture, unittest.TestCase):
             embed.assert_not_called()
             connection.commit.assert_not_called()
 
+    def test_ocr_preview_review_and_published_provenance_contracts(self):
+        from services.ocr import OcrText
+
+        self.database_rows()
+        text = 'راهنمای خدمات مشتریان برای دریافت پاسخ با مرکز پشتیبانی تماس بگیرید'
+        engine = SimpleNamespace(enabled=True, minimum_text=32, minimum_confidence=75,
+                                 extract=Mock(return_value=OcrText(text, 98, 96)))
+        def document(**options):
+            pdf = Mock(page_count=1)
+            pdf.load_page.return_value.get_text.return_value = ''
+            return pdf
+
+        with patch.object(self.ingestion, 'ocr', engine), patch.object(self.ingestion, 'open_pdf', side_effect=document), \
+                patch.object(self.ingestion, 'embed', return_value=np.array([[1, 0]], dtype=np.float32)):
+            path = '/admin/api/pdf/upload/preflight'
+            for confidence, valid in ((98, True), (54, False)):
+                engine.extract.return_value = OcrText(text, confidence, confidence)
+                report = self.check(self.admin_open(path, 'POST', headers=self.headers,
+                                    data={'file': (io.BytesIO(b'pdf'), 'scan.pdf')}), path, 'POST')
+                self.assertEqual(report['can_publish'], valid)
+                self.assertEqual(report['extraction']['pages'][0]['needs_review'], not valid)
+            engine.extract.return_value = OcrText(text, 98, 96)
+            result = self.check(self.admin_open('/admin/api/pdf/upload', 'POST', headers=self.headers,
+                                data={'file': (io.BytesIO(b'pdf'), 'scan.pdf')}), '/admin/api/pdf/upload', 'POST')
+            self.assertEqual(result['extraction']['pages'][0]['page'], 1)
+            self.assertNotIn('text_sample', result['extraction']['pages'][0])
+
     def test_real_ingestion_success_payloads_and_document_deletion(self):
         self.database_rows()
         vector = np.array([[0.1, 0.2]], dtype=np.float32)
