@@ -23,7 +23,9 @@ MAX_PAGE = 10000
 MAX_BIGINT = 9223372036854775807
 UPLOAD_LIMITS = {
     '/admin/api/upload': MAX_JSON_UPLOAD_BYTES,
+    '/admin/api/upload/jobs': MAX_JSON_UPLOAD_BYTES,
     '/admin/api/pdf/upload': MAX_PDF_UPLOAD_BYTES,
+    '/admin/api/pdf/upload/jobs': MAX_PDF_UPLOAD_BYTES,
 }
 
 

@@ -73,6 +73,46 @@ async function login(page, username = 'browser-admin') {
     await expect(page.locator('#logoutButton')).toBeVisible();
 }
 
+for (const [kind, failed] of [['json', false], ['pdf', false], ['json', true]]) {
+    test(`background ${kind} upload ${failed ? 'failure' : 'completion'} restores controls`, async ({ page }) => {
+        await login(page);
+        const prefix = kind === 'json' ? '/admin/api/upload/jobs' : '/admin/api/pdf/upload/jobs';
+        const jobId = 'a'.repeat(32);
+        let polls = 0;
+        await page.route(`${adminURL}${prefix}**`, async route => {
+            if (route.request().method() === 'POST') {
+                expect(route.request().headers()['x-csrf-token']).toBeTruthy();
+                return route.fulfill({ status: 202, headers: { Location: `${prefix}/${jobId}` },
+                    json: { job_id: jobId, kind, status: 'queued' } });
+            }
+            polls += 1;
+            const status = polls === 1 ? 'running' : failed ? 'failed' : 'completed';
+            return route.fulfill({ json: { job_id: jobId, kind, status,
+                error: failed ? { code: 'invalid_request', error: 'The request is invalid.' } : null,
+                result: kind === 'json'
+                    ? { received: 1, inserted: 1, updated: 0, skipped: 0, embedded: 1, errors: [], duration_sec: 0.01 }
+                    : { filename: 'upload.pdf', page_count: 1, chunk_count: 1, embedded_chunks: 1, embedding_dim: 3, duration_sec: 0.01 },
+            } });
+        });
+        if (kind === 'pdf') {
+            await page.addInitScript(() => { URL.createObjectURL = () => 'about:blank'; });
+        }
+        await page.goto(`${adminURL}/admin/${kind === 'json' ? 'admin' : 'admin_pdf'}.html`);
+        await page.locator('#fileInput').setInputFiles({
+            name: `upload.${kind}`, mimeType: kind === 'json' ? 'application/json' : 'application/pdf',
+            buffer: Buffer.from(kind === 'json' ? '[{"question":"question","answer":"answer"}]' : '%PDF-1.4\n%%EOF'),
+        });
+        await expect(page.locator('#uploadBtn')).toBeEnabled();
+        await page.locator('#uploadBtn').click();
+        await expect(page.locator('#uploadBtn')).toBeDisabled();
+        await expect(page.locator('#uploadBtn')).toContainText(jobId);
+        await expect(page.locator('#result')).toHaveClass(failed ? /err/ : /ok/);
+        await expect(page.locator('#uploadBtn')).toBeEnabled();
+        if (failed) await expect(page.locator('#result')).toContainText('The request is invalid.');
+        expect(polls).toBe(2);
+    });
+}
+
 for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
     test(`RTL chat, keyboard and recommendations at ${viewport.width}px`, async ({ page, context }) => {
         await page.setViewportSize(viewport);

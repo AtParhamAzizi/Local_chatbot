@@ -37,6 +37,7 @@ backend/
   security.py         Explicit browser-origin guards/CORS, peer-validated forwarding, safe errors
   public_errors.py    Allowlisted public failure codes/messages shared by HTTP and voice
   retention.py        Bounded privacy cleanup, shared scheduled worker, and dry-run/apply CLI
+  ingestion_worker.py Database-elected bounded ingestion pool and explicit serving startup
   request_validation.py Strict request schemas, bounded JSON/form parsing and upload spooling
   abuse_controls.py   Bounded per-client sliding windows and concurrent-request admission
   chat_sessions.py    Server-issued anonymous chat cookies and message ownership hashes
@@ -119,8 +120,9 @@ The runtime initialization order is:
 1. `bootstrap.initialize_database()` calls `schema_migrations.require_current_schema()` using read-only metadata/ledger queries. Pending, incomplete, unknown or checksum-mismatched migrations stop startup before any model/worker/server work. No schema creation, ALTER or audit writes occur in this check. Local startup and the production worker preserve the trusted `MigrationError` guidance (including the backup requirement); arbitrary exception details remain suppressed.
 2. `controller._load_state()` loads persisted feature toggles after the schema check.
 3. `bootstrap.initialize_models()` calls the shared lifecycle service's `warmup()`: `get_embedder()` (interface.py, CPU), then `get_generator()` (generator.py, CUDA if available).
-4. `start_retention_worker(ui_app, admin_app)` starts one shared privacy-cleanup daemon after schema/model validation; its first sweep runs immediately, then hourly by default. No cleanup starts on import.
-5. Return both apps to the selected runtime. Development starts user serving in a daemon thread and admin serving on the main thread. Production serves both through the worker's shared thread pool. Both profiles default to `APP_HOST=127.0.0.1`; LAN exposure requires explicitly setting an interface address or wildcard. Debugger and reloader are disabled.
+4. `start_ingestion_worker(ui_app, admin_app)` starts a shared ingestion supervisor after schema/model validation. One database-elected pool processes durable jobs with bounded concurrency; standby pools retry election. No jobs run on import or factory assembly.
+5. `start_retention_worker(ui_app, admin_app)` starts one shared privacy-cleanup daemon after schema/model validation; its first sweep runs immediately, then hourly by default. No cleanup starts on import.
+6. Return both apps to the selected runtime. Development starts user serving in a daemon thread and admin serving on the main thread. Production serves both through the worker's shared thread pool. Both profiles default to `APP_HOST=127.0.0.1`; LAN exposure requires explicitly setting an interface address or wildcard. Debugger and reloader are disabled.
 
 The Whisper model is not loaded at startup. It loads lazily on the first `/voice/health` call or the controller `voice_load` action.
 `/tts/health` or the first synthesis independently starts `speech.SpeechService`'s
@@ -148,13 +150,15 @@ an already-prepared app; it does not implicitly start retention or initialize se
 | `admin-users` | id, username UNIQUE, password_hash, is_active, is_admin, permissions JSON, session_version, created_at, updated_at | Security changes increment session_version atomically |
 | `admin_sessions` | token_hash PRIMARY KEY, user_id FK, session_version, expires_at, last_seen_at | Opaque admin logins; Unix-second deadlines; user deletion cascades |
 | `schema_migrations` | version PRIMARY KEY, name, checksum, status, started_at, applied_at, backup_path, backup_sha256 | Ordered DDL ledger; never modified by startup or request handlers |
+| `ingestion_jobs` | job_id PRIMARY KEY, kind, filename, status, worker_id, result_json, error_code, created_at, started_at, finished_at | Durable queued/running/completed/failed/canceled states; terminal metadata retained |
+| `ingestion_job_payloads` | job_id FK, chunk_index, content MEDIUMBLOB; PRIMARY KEY(job_id, chunk_index) | Transactionally submitted upload bytes in 1 MiB chunks; removed at terminal transitions |
 
 Env: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`. All defaults and validation live in `settings.SETTING_REGISTRY`; `database.DB_CONFIG` adds the MySQL adapter's charset, `DictCursor` and `autocommit=True`. Development defaults are localhost, 3306, root, an empty password and `chatbot_db`; production requires explicit restricted-account credentials. `interface.py` has no separate database configuration. Use `database.get_conn()`; rows are accessed by column name.
 ### Explicit migrations (F020)
 
-Read `backend/migrations/README.md` before deployment. Run `python -B backend/schema_migrations.py status` for the recorded schema version (unversioned = 0, current = 4), pending/incomplete versions and latest supported version. Empty pre-created databases use `upgrade`; existing databases require stopped writers, a restore-tested pre-upgrade dump and `upgrade --backup PATH`. File existence/nonzero size and SHA-256 are checked/recorded, not backup validity; restore-testing remains an operator requirement. Startup and `setup_admin.py` only require the current ledger and never repair a schema opportunistically.
+Read `backend/migrations/README.md` before deployment. Run `python -B backend/schema_migrations.py status` for the recorded schema version (unversioned = 0, current = 5), pending/incomplete versions and latest supported version. Empty pre-created databases use `upgrade`; existing databases require stopped writers, a restore-tested pre-upgrade dump and `upgrade --backup PATH`. File existence/nonzero size and SHA-256 are checked/recorded, not backup validity; restore-testing remains an operator requirement. Startup and `setup_admin.py` only require the current ledger and never repair a schema opportunistically.
 
-Migrations create the original six tables (1), add account session versions and `admin_sessions` (2), widen legacy log messages (3), and add nullable anonymous ownership (4). Documented pre-ledger databases, including those already carrying these changes, are adopted using explicit migration-only table/column guards without rewriting records. Legacy ownership remains NULL; existing ownership, credentials, permissions, feedback and float32 embedding bytes stay intact. Unsupported legacy column layouts fail before DDL. This is not a repair tool for arbitrary manual schema/type/constraint changes.
+Migrations create the original six tables (1), add account session versions and `admin_sessions` (2), widen legacy log messages (3), add nullable anonymous ownership (4), and create durable ingestion jobs/payloads (5). Documented pre-ledger databases, including those already carrying these changes, are adopted using explicit migration-only table/column guards without rewriting records. Legacy ownership remains NULL; existing ownership, credentials, permissions, feedback and float32 embedding bytes stay intact. Unsupported legacy column layouts fail before DDL. This is not a repair tool for arbitrary manual schema/type/constraint changes.
 
 One database-scoped named lock excludes competing migration commands. Each version records running/applied/failed state, timestamps, checksum and backup identity; checksums/order/future versions fail closed. MySQL DDL commits implicitly, so interrupted work is not presented as transactionally rolled back. After inspecting/fixing failures, the documented `upgrade --resume --backup PATH` retries idempotent incomplete steps; ordinary upgrade refuses them. There is no unsafe downgrade command: restore a clean replacement database and matching old release if forward completion cannot be verified. Ordinary serving needs no CREATE/ALTER grants. Imports of the migration module are side-effect-free, including under missing deployment configuration.
 
@@ -208,9 +212,9 @@ Scoring:
 
 ### 6.5 JSON Q&A ingestion (`admin_routes/knowledge.py`, `services/ingestion.py`)
 
-POST `/admin/api/upload` accepts a multipart `file` (`.json`, UTF-8, max 20 MiB) containing 1-256 objects with exactly `{question, answer}`: nonblank strings of at most 4096 and 16000 characters respectively. The route bounds/parses multipart input, then calls `IngestionService.ingest_qa(raw, replace=...)`. Every row is validated before any embedding or persistence; one invalid row rejects the entire import with 400 rather than partially accepting it. Duplicate questions within valid files are dropped. Questions are embedded in bounded batches in their original order; only the question is embedded, not the answer. Rows whose `question_hash` already exists are skipped, or updated (answer + embedding) when the form field `replace` is true. Response: `{received, inserted, updated, skipped, embedded, duration_sec, errors}` (`errors` is empty on success).
+POST `/admin/api/upload/jobs` accepts a multipart `file` (`.json`, UTF-8, max 20 MiB) and returns 202 with a durable job ID. The worker calls `IngestionService.ingest_qa(raw, replace=...)`: it validates 1-256 objects with exactly `{question, answer}`, nonblank strings of at most 4096 and 16000 characters respectively, before embedding/persistence. One invalid row fails the entire job with `invalid_request`. Duplicate questions within valid files are dropped. Questions are embedded in bounded batches in their original order; only the question is embedded, not the answer. Existing `question_hash` rows are skipped or updated when `replace` is true. Completed job `result`: `{received, inserted, updated, skipped, embedded, duration_sec, errors}`. Legacy POST `/admin/api/upload` submits to the same queue and waits up to 240 seconds for its original result/status.
 
-Both import paths stage float32 vectors in a request-local, disk-backed temporary
+Both import paths stage float32 vectors in a job-local, disk-backed temporary
 file, releasing each array before the next model call. Each batch must return
 exactly one vector per input, with a positive, consistent dimension and finite
 values. All batches must succeed before knowledge writes or replacement begin;
@@ -229,15 +233,16 @@ text. For JSON, totals count unique validated questions, including existing DB
 records that may later be skipped; the final HTTP `embedded` field still counts
 inserts/updates only. A failed later batch leaves the last successful count and
 a safe failure log entry. Reaching `total` means embedding finished, not that
-publication succeeded. Upload HTTP responses remain synchronous; there is no
-job/polling/streaming API. See the [F025 checks](backend/tests/TESTING.md#embedding-micro-batches-f025)
+publication succeeded. The F026 job API below reports durable lifecycle state.
+See the [F025 checks](backend/tests/TESTING.md#embedding-micro-batches-f025)
 for the declared allocation and real-model memory budgets.
 Related: `admin_documents()` (`page`, `per_page` <= 100, `q` search), `admin_delete(doc_id)`, `admin_stats()` (`total_documents`, `embedded_documents`, `dim`).
 
 ### 6.6 PDF ingestion (`admin_routes/pdf.py`, `services/ingestion.py`)
 
-POST `/admin/api/pdf/upload` bounds/parses multipart input, then calls
-`IngestionService.ingest_pdf(raw, filename, replace=...)`:
+POST `/admin/api/pdf/upload/jobs` bounds/parses multipart input and persists a job
+before returning 202. The worker calls `IngestionService.ingest_pdf(raw, filename, replace=...)`.
+Legacy POST `/admin/api/pdf/upload` queues and waits up to 240 seconds for its original response:
 
 1. The upload is a multipart `file` (`.pdf`, max 50 MiB, non-empty, 1-200 pages). Page counts above the limit return 413 before extraction.
 2. Text is extracted per page with PyMuPDF (`get_text("text", sort=True)`), capped at 500000 total characters before trimming. Unreadable PDFs or PDFs with no extractable text (e.g. scans) return 400. Documents close even when extraction fails or hits a limit.
@@ -246,6 +251,36 @@ POST `/admin/api/pdf/upload` bounds/parses multipart input, then calls
 5. The code inserts `pdf_documents` (`processing`) and `pdf_chunks`, then marks the document `completed` (or `failed` with `error_message`).
 
 Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_id)` (chunks cascade), `admin_pdf_stats()`.
+
+### 6.6.1 Durable ingestion jobs (F026)
+
+`services.ingestion_jobs.IngestionJobs` submits/reads/cancels/executes jobs without
+Flask contexts; `services.job_store.MySQLJobStore` owns persistence. POST
+`/admin/api/upload/jobs` or `/admin/api/pdf/upload/jobs` returns
+`{job_id, kind, status: 'queued'}`, `Location`, and `Retry-After: 1` after committing
+metadata and chunked file bytes together. GET that Location returns lifecycle
+state, UTC timestamps, final `result` or safe `error`. DELETE cancels queued work
+idempotently; running/completed/failed jobs return 409. Reads/mutations require
+the corresponding upload grant, with CSRF on mutations. The admin pages submit
+and poll these endpoints; synchronous legacy paths wait on this same queue.
+
+`ingestion_worker.IngestionWorker` elects one pool per database using a dedicated
+connection-held named lock, then recovers interrupted state and claims queued
+jobs transactionally with `FOR UPDATE SKIP LOCKED`. `INGESTION_WORKERS=1` (1-4)
+bounds concurrent jobs; `INGESTION_QUEUE_CAPACITY=16` (1-256) caps queued plus
+running work; full/busy admission returns 503. `INGESTION_POLL_SECONDS=1`
+(0.05-30) controls idle polling/election retries. A lost lease prevents further
+claims; guards run between embedding batches and before knowledge publication.
+One shared supervisor starts explicitly after schema/models, never on import.
+
+Queued jobs and bytes survive restarts. On election/restart, abandoned running
+jobs become failed with `ingestion_interrupted`; terminal states stay terminal.
+They are not replayed because knowledge writes retain existing autocommit/PDF
+replacement semantics. Inspect knowledge before resubmission; checkpoints,
+running-job cancellation and atomic publication belong to F027/F028. Raw upload
+bytes use 1 MiB payload chunks with a SHA-256 integrity check and are deleted
+when the job completes/fails/is canceled; metadata/results remain. Legacy wait
+timeouts return 503 without canceling work. See `docs/operations.md` for sizing.
 
 ### 6.7 Feedback (`user.py: feedback()`, POST `/feedback`)
 
@@ -338,9 +373,13 @@ redirects to login. An authenticated but unauthorized operation returns 403.
 | GET, POST | `/admin/api/models` | `admin_models`, `admin_set_model` |
 | GET | `/admin/api/stats` | `admin_stats` |
 | POST | `/admin/api/upload` | `admin_upload` |
+| POST | `/admin/api/upload/jobs` | `admin_qa_submit_job` (202 + durable ID) |
+| GET, DELETE | `/admin/api/upload/jobs/<job_id>` | `admin_qa_job` (poll/cancel queued) |
 | GET | `/admin/api/documents` | `admin_documents` |
 | DELETE | `/admin/api/documents/<int:doc_id>` | `admin_delete` |
 | POST | `/admin/api/pdf/upload` | `admin_pdf_upload` |
+| POST | `/admin/api/pdf/upload/jobs` | `admin_pdf_submit_job` (202 + durable ID) |
+| GET, DELETE | `/admin/api/pdf/upload/jobs/<job_id>` | `admin_pdf_job` (poll/cancel queued) |
 | GET | `/admin/api/pdf/documents` | `admin_pdf_documents` |
 | DELETE | `/admin/api/pdf/documents/<int:doc_id>` | `admin_pdf_delete` |
 | GET | `/admin/api/pdf/stats` | `admin_pdf_stats` |

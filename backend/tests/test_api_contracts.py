@@ -134,7 +134,7 @@ class ApiContractTests(AbuseEndpointFixture, unittest.TestCase):
     def test_documented_operations_match_real_routes_permissions_and_legacy_inventory(self):
         for path, method, operation in self.contract.operations():
             app = self.admin_app if operation['x-service'] == 'admin' else self.ui_app
-            flask_path = re.sub(r'\{(\w+)\}', r'<int:\1>', path)
+            flask_path = re.sub(r'\{(\w+)\}', r'<int:\1>', path.replace('{job_id}', '<job_id>'))
             matches = [rule for rule in app.url_map.iter_rules()
                        if rule.rule == flask_path and method in rule.methods]
             self.assertEqual([rule.endpoint for rule in matches], [operation['x-endpoint']], path)
@@ -145,7 +145,7 @@ class ApiContractTests(AbuseEndpointFixture, unittest.TestCase):
                 self.assertEqual(operation['x-csrf-required'], method not in {'GET', 'HEAD', 'OPTIONS'})
                 self.assertEqual(operation['security'], [] if path == '/login' else [{'AdminSession': []}])
         documented_admin = {(path, method) for path, method, _ in self.contract.operations() if path.startswith('/admin/api/')}
-        actual_admin = {(re.sub(r'<int:(\w+)>', r'{\1}', rule.rule), method)
+        actual_admin = {(re.sub(r'<(?:int:)?(\w+)>', r'{\1}', rule.rule), method)
                         for rule in self.admin_app.url_map.iter_rules() if rule.rule.startswith('/admin/api/')
                         for method in rule.methods - {'HEAD', 'OPTIONS'}}
         self.assertEqual(documented_admin, actual_admin)
@@ -153,6 +153,24 @@ class ApiContractTests(AbuseEndpointFixture, unittest.TestCase):
             for method in methods:
                 self.assertTrue(any(rule.rule == path and rule.endpoint == endpoint and method in rule.methods
                                     for rule in self.admin_app.url_map.iter_rules()), (path, method))
+
+    def test_durable_ingestion_submission_polling_and_cancellation_contracts(self):
+        jobs = Mock()
+        job_id = 'a' * 32
+        with patch.dict(self.admin_app.extensions, {'ingestion_jobs': jobs}):
+            for kind, prefix in (('json', '/admin/api/upload/jobs'), ('pdf', '/admin/api/pdf/upload/jobs')):
+                accepted = {'job_id': job_id, 'kind': kind, 'status': 'queued'}
+                jobs.submit.return_value = accepted
+                job = {**accepted, 'filename': 'upload.' + kind, 'created_at': self.timestamp.isoformat(),
+                       'started_at': None, 'finished_at': None, 'result': None, 'error': None}
+                jobs.get.return_value = job
+                jobs.cancel.return_value = {**job, 'status': 'canceled', 'finished_at': self.timestamp.isoformat()}
+                response = self.admin_open(prefix, 'POST', headers=self.headers,
+                                           data={'file': (io.BytesIO(b'content'), 'upload.' + kind)})
+                self.check(response, prefix, 'POST', 202)
+                self.assertEqual(response.headers['Location'], prefix + '/' + job_id)
+                self.check(self.admin_open(prefix + '/' + job_id, headers=self.headers), prefix + '/{job_id}')
+                self.check(self.admin_open(prefix + '/' + job_id, 'DELETE', headers=self.headers), prefix + '/{job_id}', 'DELETE')
         legacy_ui = {'/': 'ui_index', '/index.html': 'ui_index_alias', '/health': 'health',
                      '/chat': 'chat', '/feedback': 'feedback', '/voice/health': 'voice_health',
                      '/voice/audio-worklet.js': 'voice_worklet', '/voice-stream': 'voice_stream',

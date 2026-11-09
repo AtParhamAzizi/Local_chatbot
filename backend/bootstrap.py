@@ -24,8 +24,10 @@ def initialize_runtime(ui_app, admin_app):
     from controller import _load_state
     from database import logger
     from retention import start_retention_worker
+    from ingestion_worker import start_ingestion_worker
 
     _load_state()
     initialize_models()
+    start_ingestion_worker(ui_app, admin_app)
     start_retention_worker(ui_app, admin_app)
     logger.logDrop('Database schema verified and local models initialized')

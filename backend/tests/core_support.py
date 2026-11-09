@@ -14,6 +14,28 @@ import numpy as np
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
+class LegacyIngestionJobs:
+    """Synchronous queue adapter for existing request validation/contract fixtures."""
+
+    def __init__(self, processor):
+        self.processor = processor
+        self.pending = {}
+
+    def submit(self, kind, raw, filename, *, replace=False, submitted_by=None):
+        import uuid
+
+        job_id = uuid.uuid4().hex
+        self.pending[job_id] = (kind, raw, filename, replace)
+        return {'job_id': job_id, 'kind': kind, 'status': 'queued'}
+
+    def wait(self, job_id, kind):
+        stored_kind, raw, filename, replace = self.pending.pop(job_id)
+        assert kind == stored_kind
+        if kind == 'json':
+            return self.processor.ingest_qa(raw, replace=replace)
+        return self.processor.ingest_pdf(raw, filename, replace=replace)
+
+
 def module_double(name, **attributes):
     module = types.ModuleType(name)
     module.__dict__.update(attributes)

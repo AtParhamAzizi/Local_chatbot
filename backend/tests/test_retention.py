@@ -303,9 +303,11 @@ class RetentionTests(unittest.TestCase):
         modules['schema_migrations'].MigrationError = RuntimeError
         expected_apps = (Flask('startup_user'), Flask('startup_admin'))
         with patch.dict(sys.modules, modules), patch.dict('os.environ', {'APP_ENV': 'test'}, clear=True), \
+                patch('ingestion_worker.start_ingestion_worker') as start_ingestion, \
                 patch.object(self.retention, 'start_retention_worker') as start, \
                 redirect_stdout(io.StringIO()):
             calls.attach_mock(start, 'start_retention_worker')
+            calls.attach_mock(start_ingestion, 'start_ingestion_worker')
             main = importlib.import_module('main')
             with patch.object(main, 'validate_settings'), patch.object(main, 'bind_host', return_value='127.0.0.1'), \
                     patch.object(main, 'create_apps', return_value=expected_apps):
@@ -313,6 +315,7 @@ class RetentionTests(unittest.TestCase):
         self.assertEqual(apps, expected_apps)
         self.assertEqual([call[0] for call in calls.mock_calls], [
             'require_current_schema', '_load_state', 'get_embedder', 'get_generator',
+            'start_ingestion_worker',
             'start_retention_worker',
         ])
 

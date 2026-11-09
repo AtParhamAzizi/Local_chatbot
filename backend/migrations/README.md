@@ -26,7 +26,7 @@ python -B backend/schema_migrations.py upgrade --backup C:/private-backups/chatb
 python -B backend/schema_migrations.py status
 ```
 
-Successful output includes `"schema_version": 4`, `"latest_version": 4`, empty
+Successful output includes `"schema_version": 5`, `"latest_version": 5`, empty
 `pending` and `incomplete` lists. An unversioned database reports version 0 without
 being modified. `status` is a read-only inspection command and exits successfully
 even when upgrades are pending; application startup requires the latest version
@@ -82,6 +82,7 @@ or tampered history fail both commands. No models are loaded by either command.
 | 2 | `002_admin_sessions.sql` | Adds missing `session_version` with default 1 and creates `admin_sessions`; existing hashes, permissions and session versions remain intact |
 | 3 | `003_log_message_text.sql` | Widens legacy CHAR/VARCHAR log messages to TEXT; existing TEXT/MEDIUMTEXT/LONGTEXT is left alone |
 | 4 | `004_chat_ownership.sql` | Adds missing nullable ASCII `owner_hash`; legacy messages remain unowned, existing ownership and feedback remain intact |
+| 5 | `005_ingestion_jobs.sql` | Creates durable ingestion job metadata and chunked upload payloads; existing knowledge is unchanged |
 
 The baseline accepts the documented legacy table columns, including databases
 that already received some or all earlier opportunistic changes. Missing tables

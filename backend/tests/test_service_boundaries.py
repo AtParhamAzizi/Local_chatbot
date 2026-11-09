@@ -17,12 +17,12 @@ from flask import Flask, has_app_context, has_request_context
 from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
 from admin_route_contract import ADMIN_ROUTES
-from core_support import BACKEND_DIR, OfflineCoreFixture, clear_admin_routes
+from core_support import BACKEND_DIR, LegacyIngestionJobs, OfflineCoreFixture, clear_admin_routes
 
 
 class RouteBoundaryTests(OfflineCoreFixture, unittest.TestCase):
     def test_each_administrator_responsibility_imports_and_registers_independently(self):
-        groups = ('auth', 'accounts', 'pages', 'knowledge', 'pdf', 'models', 'logs', 'history')
+        groups = ('auth', 'accounts', 'pages', 'knowledge', 'pdf', 'jobs', 'models', 'logs', 'history')
         for group in groups:
             with self.subTest(group=group):
                 clear_admin_routes()
@@ -66,6 +66,7 @@ class RouteBoundaryTests(OfflineCoreFixture, unittest.TestCase):
         lifecycle.catalog.return_value = {'active_model': 'test', 'models': []}
         lifecycle.select_model.return_value = 'test'
         app = application.create_admin_app(ingestion_service=ingestion, model_lifecycle=lifecycle)
+        app.extensions['ingestion_jobs'] = LegacyIngestionJobs(ingestion)
         auth = importlib.import_module('admin_routes.auth')
         client = app.test_client()
         account = {'id': 1, 'is_active': True, 'is_admin': True, 'permissions': []}

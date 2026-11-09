@@ -12,6 +12,7 @@ ERRORS = {
     'unsupported_media_type': (415, 'The request content type is not supported.'),
     'rate_limited': (429, 'Too many requests. Please try again later.'),
     'internal_error': (500, 'Request failed. Please try again.'),
+    'ingestion_interrupted': (500, 'Ingestion was interrupted. Check knowledge before submitting a new job.'),
     'service_unavailable': (503, 'The service is temporarily unavailable. Please try again.'),
     'voice_loading': (503, 'The voice model is loading. Please try again shortly.'),
     'voice_unavailable': (503, 'Voice transcription is temporarily unavailable.'),

@@ -21,7 +21,7 @@ from mysql_support import require_target
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-TABLES = ('admin_sessions', 'admin-users', 'pdf_chunks', 'pdf_documents',
+TABLES = ('ingestion_job_payloads', 'ingestion_jobs', 'admin_sessions', 'admin-users', 'pdf_chunks', 'pdf_documents',
           'qa_documents', 'chat_history', 'adminlogger')
 PASSWORD = 'integration-only-password'
 ANSWER = 'Deterministic integration reply'
@@ -96,6 +96,10 @@ class FlaskMySQLTests(unittest.TestCase):
         self.operator_id = self.accounts.create_user('test-editor', PASSWORD, permissions=['json_upload'])
         self.client = self.admin_app.test_client()
         self.owner = self.ui_app.test_client()
+        from ingestion_worker import IngestionWorker
+        self.ingestion_worker = IngestionWorker(self.admin_app.extensions['ingestion_jobs'], poll_seconds=0.01)
+        self.addCleanup(self.ingestion_worker.stop)
+        self.ingestion_worker.start()
 
     def tearDown(self):
         self.forbidden_model.assert_not_called()
@@ -152,6 +156,54 @@ class FlaskMySQLTests(unittest.TestCase):
             'file': (io.BytesIO(json.dumps(rows, ensure_ascii=False).encode('utf-8')), 'knowledge.json'),
             'replace': str(replace).lower(),
         })
+
+    def test_async_job_submission_survives_worker_restart_and_keeps_terminal_result(self):
+        from ingestion_worker import IngestionWorker
+        from services.ingestion_jobs import IngestionJobs
+        from services.job_store import MySQLJobStore
+
+        headers = self.login()
+        self.assertTrue(self.ingestion_worker.stop())
+        response = self.admin_request('/admin/api/upload/jobs', 'POST', headers=headers, data={
+            'file': (io.BytesIO(b'[{"question":"durable question","answer":"answer"}]'), 'durable.json'),
+        })
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json['status'], 'queued')
+        job_id = response.json['job_id']
+        location = response.headers['Location']
+        self.embed.assert_not_called()
+        self.assertEqual(self.count('ingestion_job_payloads'), 1)
+        restarted = IngestionJobs(self.admin_app.extensions['ingestion_service'], store=MySQLJobStore())
+        self.assertEqual(restarted.get(job_id, 'json')['status'], 'queued')
+        worker = IngestionWorker(restarted, poll_seconds=0.01)
+        self.addCleanup(worker.stop)
+        worker.start()
+        self.assertEqual(restarted.wait(job_id, 'json', timeout=5)['inserted'], 1)
+        self.assertTrue(worker.stop())
+        finished = self.admin_request(location, headers=headers).json
+        self.assertEqual(finished['status'], 'completed')
+        self.assertEqual(finished['result']['inserted'], 1)
+        self.assertEqual(self.count('ingestion_job_payloads'), 0)
+        self.assertEqual(IngestionJobs(Mock(), store=MySQLJobStore()).get(job_id, 'json'), finished)
+
+    def test_job_restart_recovery_and_queued_cancellation_are_durable(self):
+        from services.ingestion_jobs import IngestionJobs
+        from services.job_store import MySQLJobStore
+
+        headers = self.login()
+        self.assertTrue(self.ingestion_worker.stop())
+        jobs = self.admin_app.extensions['ingestion_jobs']
+        running = jobs.submit('json', b'[]', 'interrupted.json')['job_id']
+        self.assertEqual(jobs.store.claim('crashed-worker')['job_id'], running)
+        canceled = jobs.submit('pdf', b'pdf', 'canceled.pdf')['job_id']
+        response = self.admin_request('/admin/api/pdf/upload/jobs/' + canceled, 'DELETE', headers=headers)
+        self.assertEqual(response.json['status'], 'canceled')
+        restarted = IngestionJobs(Mock(), store=MySQLJobStore())
+        restarted.store.recover()
+        self.assertEqual(restarted.get(running, 'json')['error']['code'], 'ingestion_interrupted')
+        self.assertEqual(restarted.get(canceled, 'pdf')['status'], 'canceled')
+        self.assertEqual(self.count('ingestion_job_payloads'), 0)
+        self.embed.assert_not_called()
 
     def pdf_bytes(self):
         with pymupdf.open() as document:

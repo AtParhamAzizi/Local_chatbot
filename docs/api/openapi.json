@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Local Chatbot API",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Stable v1 baseline for existing unversioned UI/admin routes. See README.md beside this document for authentication, compatibility and versioning rules. Demo STT/TTS servers and browser assets are excluded."
   },
   "x-api-major": "1",
@@ -17,6 +17,7 @@
     "unsupported_media_type": 415,
     "rate_limited": 429,
     "internal_error": 500,
+    "ingestion_interrupted": 500,
     "service_unavailable": 503,
     "voice_loading": 503,
     "voice_unavailable": 503,
@@ -36,6 +37,452 @@
     "request_extensions": "Unknown JSON fields are rejected; clients must send only documented fields."
   },
   "paths": {
+    "/admin/api/upload/jobs": {
+      "post": {
+        "operationId": "admin_qa_submit_job",
+        "x-endpoint": "admin_qa_submit_job",
+        "x-service": "admin",
+        "x-csrf-required": true,
+        "x-permission": "json_upload",
+        "servers": [
+          {
+            "url": "http://localhost:8000",
+            "description": "Development only; replace with the deployed HTTPS origin."
+          }
+        ],
+        "security": [
+          {
+            "AdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Required for mutations; multipart forms also accept csrf_token."
+          }
+        ],
+        "summary": "Persist a json upload and return immediately; content validation, extraction and embedding run in the worker.",
+        "responses": {
+          "202": {
+            "description": "Durably accepted for background processing.",
+            "headers": {
+              "API-Version": {
+                "schema": {
+                  "const": "1"
+                }
+              },
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Poll or cancel this job at this relative URL."
+              },
+              "Retry-After": {
+                "schema": {
+                  "const": "1"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionAccepted"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "One nonempty .json file, at most 20971520 bytes.",
+                    "x-max-bytes": 20971520
+                  },
+                  "replace": {
+                    "type": "string",
+                    "enum": [
+                      "true",
+                      "false",
+                      "1",
+                      "0",
+                      "yes",
+                      "no",
+                      "on",
+                      "off"
+                    ],
+                    "default": "false"
+                  },
+                  "csrf_token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/api/upload/jobs/{job_id}": {
+      "get": {
+        "operationId": "admin_qa_job",
+        "x-endpoint": "admin_qa_job",
+        "x-service": "admin",
+        "x-csrf-required": false,
+        "x-permission": "json_upload",
+        "servers": [
+          {
+            "url": "http://localhost:8000",
+            "description": "Development only; replace with the deployed HTTPS origin."
+          }
+        ],
+        "security": [
+          {
+            "AdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "summary": "Read durable job state, safe error and final ingestion result.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "API-Version": {
+                "schema": {
+                  "const": "1"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJob"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "admin_qa_job_cancel",
+        "x-endpoint": "admin_qa_job",
+        "x-service": "admin",
+        "x-csrf-required": true,
+        "x-permission": "json_upload",
+        "servers": [
+          {
+            "url": "http://localhost:8000",
+            "description": "Development only; replace with the deployed HTTPS origin."
+          }
+        ],
+        "security": [
+          {
+            "AdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Required for mutations; multipart forms also accept csrf_token."
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "summary": "Cancel a queued job. Running or finished jobs return 409; canceling an already canceled job succeeds.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "API-Version": {
+                "schema": {
+                  "const": "1"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJob"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/admin/api/pdf/upload/jobs": {
+      "post": {
+        "operationId": "admin_pdf_submit_job",
+        "x-endpoint": "admin_pdf_submit_job",
+        "x-service": "admin",
+        "x-csrf-required": true,
+        "x-permission": "pdf_upload",
+        "servers": [
+          {
+            "url": "http://localhost:8000",
+            "description": "Development only; replace with the deployed HTTPS origin."
+          }
+        ],
+        "security": [
+          {
+            "AdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Required for mutations; multipart forms also accept csrf_token."
+          }
+        ],
+        "summary": "Persist a pdf upload and return immediately; content validation, extraction and embedding run in the worker.",
+        "responses": {
+          "202": {
+            "description": "Durably accepted for background processing.",
+            "headers": {
+              "API-Version": {
+                "schema": {
+                  "const": "1"
+                }
+              },
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Poll or cancel this job at this relative URL."
+              },
+              "Retry-After": {
+                "schema": {
+                  "const": "1"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionAccepted"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "One nonempty .pdf file, at most 52428800 bytes.",
+                    "x-max-bytes": 52428800
+                  },
+                  "replace": {
+                    "type": "string",
+                    "enum": [
+                      "true",
+                      "false",
+                      "1",
+                      "0",
+                      "yes",
+                      "no",
+                      "on",
+                      "off"
+                    ],
+                    "default": "false"
+                  },
+                  "csrf_token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/api/pdf/upload/jobs/{job_id}": {
+      "get": {
+        "operationId": "admin_pdf_job",
+        "x-endpoint": "admin_pdf_job",
+        "x-service": "admin",
+        "x-csrf-required": false,
+        "x-permission": "pdf_upload",
+        "servers": [
+          {
+            "url": "http://localhost:8000",
+            "description": "Development only; replace with the deployed HTTPS origin."
+          }
+        ],
+        "security": [
+          {
+            "AdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "summary": "Read durable job state, safe error and final ingestion result.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "API-Version": {
+                "schema": {
+                  "const": "1"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJob"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "admin_pdf_job_cancel",
+        "x-endpoint": "admin_pdf_job",
+        "x-service": "admin",
+        "x-csrf-required": true,
+        "x-permission": "pdf_upload",
+        "servers": [
+          {
+            "url": "http://localhost:8000",
+            "description": "Development only; replace with the deployed HTTPS origin."
+          }
+        ],
+        "security": [
+          {
+            "AdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Required for mutations; multipart forms also accept csrf_token."
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "summary": "Cancel a queued job. Running or finished jobs return 409; canceling an already canceled job succeeds.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "API-Version": {
+                "schema": {
+                  "const": "1"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJob"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "operationId": "health",
@@ -2189,6 +2636,122 @@
       }
     },
     "schemas": {
+      "IngestionAccepted": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "json",
+              "pdf"
+            ]
+          },
+          "status": {
+            "const": "queued"
+          }
+        },
+        "required": [
+          "job_id",
+          "kind",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "IngestionJob": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "json",
+              "pdf"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "canceled"
+            ]
+          },
+          "filename": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QaImport"
+              },
+              {
+                "$ref": "#/components/schemas/PdfImport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Error"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "job_id",
+          "kind",
+          "filename",
+          "status",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "result",
+          "error"
+        ],
+        "additionalProperties": false
+      },
       "Error": {
         "type": "object",
         "properties": {
@@ -2205,6 +2768,7 @@
               "unsupported_media_type",
               "rate_limited",
               "internal_error",
+              "ingestion_interrupted",
               "service_unavailable",
               "voice_loading",
               "voice_unavailable",

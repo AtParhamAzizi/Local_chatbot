@@ -43,4 +43,23 @@
         }
         return response;
     };
+
+    window.adminIngestion = async function (url, body, onStatus) {
+        let response = await window.adminFetch(url, { method: 'POST', body });
+        let job = await response.json();
+        if (!response.ok) throw new Error(job.error || `HTTP ${response.status}`);
+        const location = response.headers.get('Location');
+        if (!location) throw new Error('Missing ingestion job location.');
+        while (true) {
+            if (onStatus) onStatus(job);
+            if (job.status === 'completed') return job.result;
+            if (job.status === 'failed' || job.status === 'canceled') {
+                throw new Error(job.error?.error || 'Ingestion canceled.');
+            }
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            response = await window.adminFetch(location, { cache: 'no-store' });
+            job = await response.json();
+            if (!response.ok) throw new Error(job.error || `HTTP ${response.status}`);
+        }
+    };
 })();

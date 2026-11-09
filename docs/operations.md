@@ -53,9 +53,57 @@ behavior still apply once persistence begins.
 With audit retention enabled, authorized system-report operators can see
 `json/pdf embedding progress: completed=N, total=M` in admin logs during an
 upload. No input text appears in these progress entries. Final embedding counts
-do not establish successful publication; wait for the upload response. There is
-no job polling endpoint or automatic resume. Service consumers can receive the
+do not establish successful publication; poll the job until `completed`. Service consumers can receive the
 same counts using `IngestionService(progress=callback)` without a Flask context.
+
+## Durable ingestion jobs (F026)
+
+Apply migration 5 before deploying; follow the backup/stopped-writer procedure
+in the migration guide. Serving accounts need SELECT/INSERT/UPDATE/DELETE on
+`ingestion_jobs` and `ingestion_job_payloads`, without DDL privileges.
+Startup launches the ingestion supervisor only after schema/model validation.
+Application factories and imports start no workers.
+
+The admin pages submit JSON to `POST /admin/api/upload/jobs` and PDFs to
+`POST /admin/api/pdf/upload/jobs`. A successful **202** means the bounded file
+bytes and metadata committed to MySQL. Submission does no content extraction or
+embedding; file transfer and durable storage still take time. Poll the response's
+`Location` for `queued`, `running`, `completed`, `failed` or `canceled`, UTC
+timestamps, safe errors and the final `result`. Validation of JSON rows and PDF
+contents happens in the worker, so invalid contents are reported as failed jobs.
+Keep the job ID/Location when disconnecting; reconnect using the same authorized
+admin session or a fresh login. The upload page shows the ID and polls while open.
+DELETE that Location cancels queued jobs and frees their payload; repeated
+cancellation succeeds. Running/finished jobs return 409. JSON and PDF jobs require
+their respective upload grants; POST/DELETE also require CSRF.
+
+`INGESTION_WORKERS=1` bounds concurrent jobs (1-4). A MySQL connection-held named
+lock elects one pool per database; standby processes retry election. Claims use
+row locks and `SKIP LOCKED`. `INGESTION_POLL_SECONDS=1` controls idle polling
+(0.05-30). Lost lock connections stop further claims and are checked between
+embedding batches and before publication. Size RAM/model/staging capacity for
+the worker count **plus** simultaneous chat/speech work.
+
+`INGESTION_QUEUE_CAPACITY=16` caps queued plus running jobs (1-256); full or busy
+admission returns 503. Worst-case active payload storage is 50 MiB times that
+capacity, plus database overhead (800 MiB by default). Payloads use 1 MiB chunks
+to stay below ordinary MySQL packet limits. Raw bytes are removed on terminal
+transitions; job metadata/results persist, without automatic age deletion.
+Database backups/binlogs can retain those bytes and need normal protection.
+
+On restart/takeover, queued work remains queued and is processed. Previously
+running jobs become `failed` with code `ingestion_interrupted`, and their payloads
+are removed. Completed, failed and canceled states remain unchanged. Jobs are
+not automatically replayed: current knowledge publication can have partial
+autocommitted writes, including PDF replacement. Inspect knowledge before
+resubmitting interrupted work. Check safe worker logs, database connectivity,
+disk space and job errors when a queue stops advancing. Graceful shutdown drains
+active work while holding the pool lock; abrupt termination follows recovery
+above. Checkpoints, running-job cancellation and atomic replacements remain F027/F028.
+
+Legacy upload endpoints use the same queue but wait up to 240 seconds. A 503
+timeout does not cancel durable work; use asynchronous submission for clients
+that need a job ID and reliable polling across HTTP disconnects.
 
 ## Provision and start
 

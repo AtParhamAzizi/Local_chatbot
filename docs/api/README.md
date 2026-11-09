@@ -44,6 +44,32 @@ with different routes; their `/voice`, `/stream`, `/api/status` and
 
 ## Requests and transport
 
+### Background upload submissions (1.1, F026)
+
+Use `POST /admin/api/upload/jobs` for JSON and `POST /admin/api/pdf/upload/jobs`
+for PDF with the same bounded multipart fields and authorization as the legacy
+upload paths. **202** returns `{job_id, kind, status: "queued"}`, a relative
+`Location` and `Retry-After: 1`. Extraction, content validation and embedding
+run after submission. Poll `GET Location` for `queued|running|completed|failed|canceled`,
+UTC timestamps, `result` (the legacy import result on completion), and `error`
+(an allowlisted `{code, error}` on failure). Polling returns 200 even when the
+job failed; inspect `status`. Unknown/malformed/wrong-kind IDs return 404.
+
+`DELETE Location` cancels only queued jobs (200); cancellation is idempotent,
+and running/completed/failed jobs return 409. Mutations require CSRF. JSON jobs
+require `json_upload`, PDF jobs `pdf_upload`, including reads and cancellation;
+any account with that grant may manage its kind's jobs. Unknown query fields
+are rejected. Queue admission returns 503 when full/busy. There is no implicit
+deduplication of submissions; keep the returned ID rather than retry a confirmed
+submission. A lost submission response has no idempotency guarantee.
+
+State and queued payloads persist in MySQL. After service restart, queued jobs
+continue; interrupted running jobs fail with `ingestion_interrupted`. Inspect
+knowledge before resubmission because publication may have partial writes.
+Completed/failed/canceled jobs stay terminal. Legacy `/admin/api/upload` and
+`/admin/api/pdf/upload` retain synchronous response schemas while using the same
+worker queue; they wait at most 240 seconds, with 503 on timeout and work still queued/running.
+
 Send UTF-8 JSON objects with `Content-Type: application/json` for JSON mutations.
 JSON-compatible `application/*+json` types are also accepted. Wrong media types
 return 415. Malformed UTF-8/JSON, duplicate object keys, non-finite numbers, unknown

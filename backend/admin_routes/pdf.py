@@ -175,7 +175,9 @@ def admin_pdf_stats():
 def admin_pdf_upload():
     raw, filename, replace = read_upload({'.pdf'}, MAX_PDF_UPLOAD_BYTES)
     try:
-        return jsonify(current_app.extensions['ingestion_service'].ingest_pdf(raw, filename, replace=replace))
+        jobs = current_app.extensions['ingestion_jobs']
+        job = jobs.submit('pdf', raw, filename, replace=replace, submitted_by=g.admin_user['id'])
+        return jsonify(jobs.wait(job['job_id'], 'pdf'))
     except IngestionError as error:
         return jsonify(error.payload), error.status
 

@@ -8,6 +8,7 @@
             "program": "${workspaceFolder}/backend/main.py",
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.env",
             "env": {
                 "APP_ENV": "development",
                 "APP_HOST": "127.0.0.1"

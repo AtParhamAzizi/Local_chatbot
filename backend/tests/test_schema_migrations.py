@@ -72,9 +72,9 @@ class MigrationTests(unittest.TestCase):
 
     def test_empty_schema_records_all_versions_and_reports_current(self):
         report = self.run_upgrade()
-        self.assertEqual(report, {'schema_version': 4, 'latest_version': 4, 'pending': [], 'incomplete': []})
-        self.assertEqual(self.apply.call_count, 4)
-        self.assertEqual([record['status'] for record in self.store.records.values()], ['applied'] * 4)
+        self.assertEqual(report, {'schema_version': 5, 'latest_version': 5, 'pending': [], 'incomplete': []})
+        self.assertEqual(self.apply.call_count, 5)
+        self.assertEqual([record['status'] for record in self.store.records.values()], ['applied'] * 5)
         self.assertTrue(all(record['backup_sha256'] is None for record in self.store.records.values()))
         self.store.connection.autocommit.assert_called_once_with(True)
         self.store.connection.close.assert_called_once()
@@ -123,14 +123,14 @@ class MigrationTests(unittest.TestCase):
             self.run_upgrade(resume=True)
         self.apply.side_effect = self.store.apply
         report = self.run_upgrade(resume=True, backup=self.backup)
-        self.assertEqual(report['schema_version'], 4)
-        self.assertEqual([call.args[0].version for call in self.apply.call_args_list], [1, 2, 2, 3, 4])
+        self.assertEqual(report['schema_version'], 5)
+        self.assertEqual([call.args[0].version for call in self.apply.call_args_list], [1, 2, 2, 3, 4, 5])
         self.assertTrue(any('RELEASE_LOCK' in query for query, parameters in self.store.queries))
 
     def test_process_interruption_leaves_running_record_and_cannot_serve(self):
         self.run_upgrade()
-        self.store.records[4]['status'] = 'running'
-        with self.assertRaisesRegex(self.migrations.MigrationError, 'version 3'):
+        self.store.records[5]['status'] = 'running'
+        with self.assertRaisesRegex(self.migrations.MigrationError, 'version 4'):
             self.migrations.require_current_schema(connect=self.connect)
         with self.assertRaises(self.migrations.MigrationError):
             self.run_upgrade(backup=self.backup)
@@ -141,7 +141,7 @@ class MigrationTests(unittest.TestCase):
                 self.run_upgrade()
             self.store.queries.clear()
             status = self.migrations.schema_status(connect=self.connect)
-            self.assertEqual(status['schema_version'], 4 if initialized else 0)
+            self.assertEqual(status['schema_version'], 5 if initialized else 0)
             if initialized:
                 self.assertEqual(self.migrations.require_current_schema(connect=self.connect), status)
             else:
@@ -183,6 +183,21 @@ class MigrationTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 self.migrations.require_current_schema()
         connect.assert_called_once_with(**database.DB_CONFIG)
+        database.logger.logDrop.assert_not_called()
+
+    def test_known_mysql_connection_errors_report_safe_configuration_guidance(self):
+        import pymysql
+
+        database = module_double('database', DB_CONFIG={'password': 'private-connection-password'}, logger=Mock())
+        for number, expected in ((1044, 'account grants'), (1045, 'DB_USER and DB_PASS'),
+                                 (1049, 'DB_NAME'), (2003, 'DB_HOST and DB_PORT')):
+            with self.subTest(number=number), patch.dict(sys.modules, {'database': database}), \
+                    patch('pymysql.connect', side_effect=pymysql.OperationalError(number, 'private database failure')):
+                with self.assertRaises(self.migrations.MigrationError) as raised:
+                    self.migrations.connect_database()
+                self.assertIn(expected, str(raised.exception))
+                self.assertIn(str(number), str(raised.exception))
+                self.assertNotIn('private', str(raised.exception))
         database.logger.logDrop.assert_not_called()
 
     def test_startup_checks_schema_before_any_other_runtime_work(self):
@@ -241,6 +256,8 @@ class MigrationDDLTests(unittest.TestCase):
 
     def test_column_steps_are_idempotent_and_never_rewrite_records(self):
         for migration in self.migrations.MIGRATIONS[1:]:
+            if not migration.column:
+                continue
             for existing in (None, {'Type': 'text'}):
                 if migration.widen_text and existing is None:
                     continue

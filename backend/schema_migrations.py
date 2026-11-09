@@ -57,6 +57,7 @@ MIGRATIONS = (
     Migration(2, 'admin_sessions', 'admin-users', 'session_version'),
     Migration(3, 'log_message_text', 'adminlogger', 'message', True),
     Migration(4, 'chat_ownership', 'chat_history', 'owner_hash'),
+    Migration(5, 'ingestion_jobs'),
 )
 LATEST_VERSION = MIGRATIONS[-1].version
 REQUIRED_COLUMNS = {
@@ -88,7 +89,20 @@ def connect_database():
     import pymysql
     from database import DB_CONFIG
 
-    return pymysql.connect(**DB_CONFIG)
+    try:
+        return pymysql.connect(**DB_CONFIG)
+    except pymysql.OperationalError as error:
+        number = error.args[0] if error.args else None
+        guidance = {
+            1044: 'MySQL denied database access (1044). Check DB_NAME and the configured account grants.',
+            1045: ('MySQL rejected the login (1045). Check DB_USER and DB_PASS in the launch environment. '
+                   'Local VS Code debugging reads .env; terminal commands need exported environment variables.'),
+            1049: 'The configured MySQL database does not exist (1049). Create it explicitly or correct DB_NAME.',
+            2003: 'Cannot connect to MySQL (2003). Start the database service and check DB_HOST and DB_PORT.',
+        }
+        if number in guidance:
+            raise MigrationError(guidance[number]) from None
+        raise
 
 
 def _tables(cursor):

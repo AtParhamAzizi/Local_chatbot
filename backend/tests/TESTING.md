@@ -55,6 +55,22 @@ those belong in separately provisioned integration suites.
 
 ## Factory and startup boundaries (F018)
 
+`test_ingestion_jobs.py` (F026) runs the production MySQL job store's statements
+through a disk-backed SQLite adapter, translating MySQL time/lock syntax. It
+checks durable queued and terminal states across fresh service/store instances,
+interrupted-running recovery, payload chunk/checksum handling, bounded admission,
+queued cancellation, safe failures, bounded worker concurrency and standby
+takeover, plus real Flask submission/polling/auth/CSRF without model work during
+submission. This is offline protocol evidence, not MySQL syntax certification.
+The disposable MySQL suite covers actual migrations, payload persistence and
+background ingestion using real SQL/PDF extraction and deterministic embeddings.
+Run the focused offline cases with `--pattern test_ingestion_jobs.py --repeat 2`.
+Browser journeys named `background ... upload` check queued/running status and
+ID display, completion, safe failure and restored controls using mocked job HTTP
+responses. The PDF case doubles preview blob creation to keep Chrome's private
+viewer resources outside the browser fixture. These cases test the real upload
+pages and shared polling/CSRF helper; they do not certify database durability.
+
 `test_settings.py` checks invalid input for every F021 registry setting, all numeric
 range endpoints, choice/boolean parsing, alias/path precedence, production and
 cross-setting requirements, immutable definitions, standalone speech scopes, and

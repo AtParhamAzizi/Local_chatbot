@@ -40,10 +40,14 @@ Every POST/PATCH/DELETE requires CSRF proof before handlers or side effects.
 | GET | `/admin/api/stats` | `qa.stats` | `json_upload` |
 | GET | `/admin/api/documents` | `qa.list` | `json_upload` |
 | POST | `/admin/api/upload` | `qa.upload` | `json_upload` |
+| POST | `/admin/api/upload/jobs` | `qa.upload` | `json_upload` |
+| GET / DELETE | `/admin/api/upload/jobs/<job_id>` | `qa.jobs` / `qa.cancel_job` | `json_upload` |
 | DELETE | `/admin/api/documents/<id>` | `qa.delete` | `json_upload` |
 | GET | `/admin/api/pdf/stats` | `pdf.stats` | `pdf_upload` |
 | GET | `/admin/api/pdf/documents` | `pdf.list` | `pdf_upload` |
 | POST | `/admin/api/pdf/upload` | `pdf.upload` | `pdf_upload` |
+| POST | `/admin/api/pdf/upload/jobs` | `pdf.upload` | `pdf_upload` |
+| GET / DELETE | `/admin/api/pdf/upload/jobs/<job_id>` | `pdf.jobs` / `pdf.cancel_job` | `pdf_upload` |
 | DELETE | `/admin/api/pdf/documents/<id>` | `pdf.delete` | `pdf_upload` |
 | GET / POST | `/admin/api/models` | `models.list` / `models.select` | `models` |
 | GET | `/admin/api/chat/sessions` | `chats.sessions` | `chats` |

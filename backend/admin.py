@@ -2,9 +2,9 @@
 
 
 def register_admin_routes(app):
-    from admin_routes import accounts, auth, history, knowledge, logs, models, pages, pdf
+    from admin_routes import accounts, auth, history, jobs, knowledge, logs, models, pages, pdf
 
-    for routes in (auth, accounts, pages, models, knowledge, pdf, logs, history):
+    for routes in (auth, accounts, pages, models, knowledge, pdf, jobs, logs, history):
         routes.register_routes(app)
 
 

@@ -144,7 +144,9 @@ $('#uploadBtn').addEventListener('click', async () => {
   fd.append('replace', $('#replaceDupes').checked ? 'true' : 'false');
 
   try {
-    const r = await api('/admin/api/upload', { method: 'POST', body: fd });
+    const r = await adminIngestion('/admin/api/upload/jobs', fd, job => {
+      btn.textContent = `${job.status} (${job.job_id})`;
+    });
     showResult('ok',
       `✅ پردازش با موفقیت انجام شد (${r.duration_sec} ثانیه)`,
       [

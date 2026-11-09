@@ -88,19 +88,24 @@ class IngestionService:
             self.progress({'stage': 'embedding', 'source': source, 'completed': completed, 'total': total})
 
     @contextmanager
-    def _embeddings(self, records, *, text_for, source):
+    def _embeddings(self, records, *, text_for, source, publication_guard=None):
+        def report(completed, total):
+            if publication_guard is not None:
+                publication_guard()
+            self._report_embedding(source, completed, total)
+
         with ExitStack() as resources:
             try:
                 result = resources.enter_context(staged_embeddings(
                     records, embed=self.embed, batch_size=self.batch_size, text_for=text_for,
-                    report=lambda completed, total: self._report_embedding(source, completed, total),
+                    report=report,
                 ))
             except Exception:
                 self.audit(f'{source} embedding failed', warninglevel=3)
                 raise IngestionError({'error': 'Request failed.'}, 500) from None
             yield result
 
-    def ingest_qa(self, raw, *, replace=False):
+    def ingest_qa(self, raw, *, replace=False, publication_guard=None):
         """Import UTF-8 JSON bytes; reject every invalid row before embedding/writes."""
         self.audit('Received a knowledge-base JSON upload')
         started = self.clock()
@@ -122,7 +127,10 @@ class IngestionService:
             seen.add(question_hash)
             rows.append((question, answer, question_hash))
 
-        with self._embeddings(rows, text_for=lambda row: row[0], source='json') as (vectors, dim):
+        with self._embeddings(rows, text_for=lambda row: row[0], source='json',
+                              publication_guard=publication_guard) as (vectors, dim):
+            if publication_guard is not None:
+                publication_guard()
             inserted, updated, skipped = self._persist_qa(rows, vectors, dim, replace)
         self.audit(f'JSON import completed: inserted={inserted}, updated={updated}, skipped={skipped}')
         return {
@@ -168,7 +176,7 @@ class IngestionService:
             conn.close()
         return inserted, updated, skipped
 
-    def ingest_pdf(self, raw, filename, *, replace=False):
+    def ingest_pdf(self, raw, filename, *, replace=False, publication_guard=None):
         """Import bounded PDF bytes; preserve page metadata and legacy failure state."""
         started = self.clock()
 
@@ -255,7 +263,10 @@ class IngestionService:
                 'success': False, 'duplicate': True, 'message': 'This PDF has already been uploaded.',
                 'document_id': existing['id'], 'filename': existing['filename'], 'status': existing['status'],
             }, 409) from None
-        with self._embeddings(chunks, text_for=lambda chunk: chunk['content'], source='pdf') as (vectors, dim):
+        with self._embeddings(chunks, text_for=lambda chunk: chunk['content'], source='pdf',
+                              publication_guard=publication_guard) as (vectors, dim):
+            if publication_guard is not None:
+                publication_guard()
             document_id = self._persist_pdf(
                 raw, filename, document_hash, pdf_page_count, chunks, existing, replace, vectors, dim,
             )

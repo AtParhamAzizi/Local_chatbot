@@ -342,12 +342,9 @@ $('#uploadBtn')
             try {
 
                 const r =
-                    await api(
-                        '/admin/api/pdf/upload',
-                        {
-                            method: 'POST',
-                            body: fd
-                        }
+                    await adminIngestion(
+                        '/admin/api/pdf/upload/jobs', fd,
+                        job => { btn.textContent = `${job.status} (${job.job_id})`; }
                     );
 
 

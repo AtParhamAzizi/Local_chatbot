@@ -99,9 +99,11 @@ def admin_delete(doc_id):
 @limit_requests('upload')
 @logger.operation
 def admin_upload():
-    raw, _, replace = read_upload({'.json'}, MAX_JSON_UPLOAD_BYTES)
+    raw, filename, replace = read_upload({'.json'}, MAX_JSON_UPLOAD_BYTES)
     try:
-        return jsonify(current_app.extensions['ingestion_service'].ingest_qa(raw, replace=replace))
+        jobs = current_app.extensions['ingestion_jobs']
+        job = jobs.submit('json', raw, filename, replace=replace, submitted_by=g.admin_user['id'])
+        return jsonify(jobs.wait(job['job_id'], 'json'))
     except IngestionError as error:
         return jsonify(error.payload), error.status
 

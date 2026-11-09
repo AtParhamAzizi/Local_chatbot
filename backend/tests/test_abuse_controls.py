@@ -174,6 +174,8 @@ class AbuseEndpointFixture:
         cls.admin_app = application.create_admin_app()
         cls.ui_app = application.create_ui_app()
         cls.ingestion = cls.admin_app.extensions['ingestion_service']
+        from core_support import LegacyIngestionJobs
+        cls.admin_app.extensions['ingestion_jobs'] = LegacyIngestionJobs(cls.ingestion)
         cls.lifecycle = cls.admin_app.extensions['model_lifecycle']
 
     def setUp(self):

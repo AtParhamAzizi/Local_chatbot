@@ -23,7 +23,7 @@ def create_ui_app(*, retrieval_service=None, speech_service=None):
     return app
 
 
-def create_admin_app(*, ingestion_service=None, model_lifecycle=None):
+def create_admin_app(*, ingestion_service=None, ingestion_jobs=None, model_lifecycle=None):
     from settings import admin_session_config, session_secret, validate_settings
     validate_settings()
 
@@ -31,6 +31,7 @@ def create_admin_app(*, ingestion_service=None, model_lifecycle=None):
     from admin import register_admin_routes
     from security import configure_security
     from services.ingestion import IngestionService
+    from services.ingestion_jobs import IngestionJobs
     from services.lifecycle import model_lifecycle as shared_lifecycle
 
     app = Flask('admin', static_folder=None)
@@ -38,6 +39,7 @@ def create_admin_app(*, ingestion_service=None, model_lifecycle=None):
     app.config.update(admin_session_config())
     configure_security(app, service='admin')
     app.extensions['ingestion_service'] = IngestionService() if ingestion_service is None else ingestion_service
+    app.extensions['ingestion_jobs'] = IngestionJobs(app.extensions['ingestion_service']) if ingestion_jobs is None else ingestion_jobs
     app.extensions['model_lifecycle'] = shared_lifecycle if model_lifecycle is None else model_lifecycle
     register_admin_routes(app)
     return app

@@ -11,7 +11,7 @@ and database dumps out of diagnostics shared with others.
    model work. `--diagnostics` shows only approved public settings. Native Python
    does not read `.env`, and VS Code launch settings do not configure a terminal.
 2. `python -B backend/schema_migrations.py status` checks the configured DB and
-   ledger without loading models. Current means version 4 with empty `pending`
+   ledger without loading models. Current means version 5 with empty `pending`
    and `incomplete`, not merely a zero exit code.
 3. Inspect startup/service logs and GET `/health` on the user origin. Startup
    warms text models before binding either port. A running `/health` route only
@@ -34,6 +34,7 @@ separate `.venv-tests` equivalents for offline tests.
 | Installer refuses the environment | It accepts fresh environments only. Create another environment with the recorded Python/architecture and select one CPU/cu118 profile; do not install over the current application or test environment. |
 | Hash/inventory, optional audio imports or `WinError 127` | Recreate the matching locked profile; keep unrelated TorchAudio/torchvision/qwen-tts packages elsewhere. Use [dependency verification and rollback](../requirements/README.md); do not blanket-upgrade Torch/Transformers. |
 | DB connection/access denied | Check host, port, account host grant and database in the launch context. Use migration credentials only for upgrade, serving credentials for setup/serving. The app does not create databases or MySQL accounts. |
+| Startup reports MySQL login rejected (1045) | MySQL is reachable but rejected authentication. The local debugger reads the ignored root `.env`; set `DB_USER`, `DB_PASS` and `DB_NAME` there, then restart debugging. Without overrides, development uses `root` with an empty password. Never commit real credentials. Native terminal commands instead need these variables exported in that terminal. |
 | Schema pending, interrupted, future or checksum-mismatched | Stop all writers and follow the [migration recovery procedure](../backend/migrations/README.md). Existing data needs a restore-tested backup; do not edit released SQL, erase the ledger or force a version to applied. |
 | Ports remain closed after starting | Inspect configuration/schema/model startup first; both text models must load before serving. Also check for port conflicts, including the standalone STT/TTS demos. |
 | Compose model mount is missing | Create the host `backend/model/` and `backend/modelgen/` directories with complete downloads before starting. The bind mounts disable automatic host-directory creation. |

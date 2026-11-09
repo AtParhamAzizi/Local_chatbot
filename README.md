@@ -237,7 +237,7 @@ commands, including administrator setup, logs, and shutdown.
    See `backend/migrations/README.md` for backup, restore and interruption recovery.
    Startup only checks the recorded schema version; it never creates/alters tables.
 
-   Confirm `status` reports `schema_version: 4`, `latest_version: 4`, and empty
+   Confirm `status` reports `schema_version: 5`, `latest_version: 5`, and empty
    `pending`/`incomplete` lists. A zero exit from `status` alone does not mean the
    schema is current. Then switch back to the serving account, keeping the same
    host, port, database and application profile. In PowerShell:
@@ -665,6 +665,9 @@ In addition to the deployment/session/retention tables, the registry validates:
 | --- | --- |
 | `GEN_DEVICE`, `GEN_QUANTIZATION`, `GEN_MODEL_ID` | Declared choices; explicit `cpu` with `4bit` is rejected |
 | `EMBEDDING_BATCH_SIZE` | Integer, 1-64; default 8 inputs per JSON/PDF embedding call; restart after changing |
+| `INGESTION_WORKERS` | Integer, 1-4; default 1 background ingestion worker; restart after changing |
+| `INGESTION_QUEUE_CAPACITY` | Integer, 1-256; default 16 queued plus running jobs; full queues return 503 |
+| `INGESTION_POLL_SECONDS` | Number, 0.05-30; default 1 second between queue/election polls |
 | `GEN_MODEL`, `QWEN35_GENERATOR_PATH`, `QWEN_GENERATOR_PATH`, `QWEN_EMBEDDING_PATH` | Nonblank paths; relative to `backend/`; dedicated generator paths override `GEN_MODEL` |
 | `STT_MODEL` | Nonblank model identifier or CTranslate2 directory |
 | `STT_DEVICE`, `STT_COMPUTE_TYPE`, `STT_LANGUAGE` | Declared device/precision choices and Whisper language codes (`auto` detects language) |
@@ -713,8 +716,21 @@ must be writable and have space for the vector staging file. See
 The service's optional `progress=` callback receives embedding counts at zero
 and after each staged batch; the existing admin log also records partial counts
 without input text. These counts describe embedding, before publication. JSON
-totals include existing records that the database phase may skip. Uploads still
-return their existing synchronous responses; this adds no background job API.
+totals include existing records that the database phase may skip.
+
+The admin upload pages use durable background jobs (F026). POST multipart files
+to `/admin/api/upload/jobs` (JSON) or `/admin/api/pdf/upload/jobs` (PDF). Submission
+returns **202** `{job_id, kind, status: 'queued'}` after committing the upload to
+MySQL, with a `Location` for GET polling or DELETE queued cancellation. Extraction
+and embedding run in the bounded worker pool. Job states and uploads survive a
+service restart; interrupted running jobs become failed with `ingestion_interrupted`,
+while queued jobs continue. Check existing knowledge before resubmitting interrupted
+work because publication retains its existing autocommit behavior. Raw payloads
+are deleted on completion, failure or cancellation; final job metadata remains.
+The original `/admin/api/upload` and `/admin/api/pdf/upload` paths submit to the
+same queue and wait up to 240 seconds for their legacy response. Prefer job
+submission to avoid occupying an HTTP thread or timing out. See
+[job operations](docs/operations.md#durable-ingestion-jobs-f026) for recovery and sizing.
 
 `services.retrieval.RetrievalService.retrieve(query, limit=6)` owns embedding,
 QA/PDF search and threshold/ranking. `services.lifecycle.ModelLifecycleService`
