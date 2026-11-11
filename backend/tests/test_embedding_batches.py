@@ -44,6 +44,9 @@ class RecordingDatabase:
     def fetchone(self):
         return self.existing
 
+    def fetchall(self):
+        return []
+
     def close(self):
         self.closes += 1
 

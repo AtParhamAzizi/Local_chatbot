@@ -20,6 +20,7 @@ class PreflightServiceTests(OfflineCoreFixture, unittest.TestCase):
         self.connection = MagicMock()
         self.cursor = self.connection.cursor.return_value.__enter__.return_value
         self.cursor.fetchall.return_value = []
+        self.existing_hashes = []
         self.cursor.fetchone.return_value = None
         self.cursor.execute.side_effect = self.only_select
         self.embed = Mock(side_effect=AssertionError('Preflight must not embed'))
@@ -31,6 +32,10 @@ class PreflightServiceTests(OfflineCoreFixture, unittest.TestCase):
 
     def only_select(self, statement, parameters):
         self.assertTrue(statement.startswith('SELECT '), statement)
+        if statement.startswith('SELECT id, question FROM qa_documents'):
+            self.cursor.fetchall.return_value = []
+        elif statement.startswith('SELECT question_hash FROM qa_documents'):
+            self.cursor.fetchall.return_value = self.existing_hashes
 
     def tearDown(self):
         super().tearDown()
@@ -54,7 +59,7 @@ class PreflightServiceTests(OfflineCoreFixture, unittest.TestCase):
                    {'question': 'first', 'answer': 'ignored'},
                    {'question': 'middle', 'answer': 'middle answer'},
                    {'question': 'last', 'answer': 'last answer'}]
-        self.cursor.fetchall.return_value = [{'question_hash': self.service.hash_question('first')}]
+        self.existing_hashes = [{'question_hash': self.service.hash_question('first')}]
         report = self.qa(records)
         self.assertTrue(report['valid'])
         self.assertTrue(report['can_publish'])

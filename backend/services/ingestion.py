@@ -15,6 +15,7 @@ from services.embedding_batches import staged_embeddings
 from services.ocr import LocalOcr, MAX_OCR_PAGES, MIN_WORD_CONFIDENCE, OCR_BUDGET_SECONDS, OcrError, useful_text
 from services.pdf_layout import LayoutPage, extract_page, extract_tables, finish_document
 from settings import setting_value
+from persian_text import normalize_persian
 
 
 PDF_CHUNK_SIZE = 900
@@ -146,7 +147,8 @@ class IngestionService:
         with ExitStack() as resources:
             try:
                 result = resources.enter_context(staged_embeddings(
-                    records, embed=self.embed, batch_size=self.batch_size, text_for=text_for,
+                    records, embed=self.embed, batch_size=self.batch_size,
+                    text_for=lambda record: normalize_persian(text_for(record)),
                     report=report,
                 ))
             except Exception:
@@ -178,6 +180,8 @@ class IngestionService:
                 for field, maximum in (('question', MAX_MESSAGE_CHARS), ('answer', MAX_ANSWER_CHARS)):
                     try:
                         validated[field] = text(maximum, 1)(item.get(field), field)
+                        if field == 'question' and not normalize_persian(validated[field]):
+                            raise InvalidRequest('The question must contain searchable text, not only formatting characters.')
                     except InvalidRequest as error:
                         record_issues.append({'field': field, 'message': error.description})
                 item = validated
@@ -188,7 +192,7 @@ class IngestionService:
             if record_issues:
                 continue
             question, answer = item['question'], item['answer']
-            question_hash = self.hash_question(question)
+            question_hash = self.hash_question(normalize_persian(question))
             if question_hash in seen:
                 continue
             seen.add(question_hash)
@@ -219,12 +223,17 @@ class IngestionService:
 
     def _persist_qa(self, rows, vectors, dim, replace, conn, progress, guard):
         inserted = updated = skipped = 0
+        legacy_matches = None
         self._report('publishing', 'json', 0, len(rows), progress, guard)
         with conn.cursor() as cur:
             for index, ((question, answer, question_hash), blob) in enumerate(zip(rows, vectors)):
                 self._report('publishing', 'json', index, len(rows), progress, guard)
                 cur.execute("SELECT id FROM qa_documents WHERE question_hash = %s", (question_hash,))
                 existing = cur.fetchone()
+                if existing is None:
+                    if legacy_matches is None:
+                        legacy_matches = self._legacy_qa_matches(cur, {row[2] for row in rows}, guard)
+                    existing = legacy_matches.get(question_hash)
                 if existing:
                     if replace:
                         cur.execute(
@@ -248,6 +257,31 @@ class IngestionService:
                 inserted += 1
         self._report('publishing', 'json', len(rows), len(rows), progress, guard)
         return inserted, updated, skipped
+
+    def _legacy_qa_matches(self, cursor, keys, guard=None):
+        """Match pre-F033 hashes without rewriting original questions or keys.
+
+        Read at most 256 rows per batch, walking backwards so concurrent appends
+        cannot extend the scan. Prefer the newest legacy alias deterministically;
+        an indexed canonical-key match takes precedence at the caller.
+        """
+        matches = {}
+        upper = (1 << 63) - 1
+        while keys - matches.keys():
+            if guard is not None:
+                guard()
+            cursor.execute('SELECT id, question FROM qa_documents WHERE id <= %s ORDER BY id DESC LIMIT 256', (upper,))
+            records = cursor.fetchall()
+            if not records:
+                break
+            for record in records:
+                key = self.hash_question(normalize_persian(record['question']))
+                if key in keys and key not in matches:
+                    matches[key] = {'id': record['id']}
+            upper = records[-1]['id'] - 1
+            if len(records) < 256:
+                break
+        return matches
 
     def _prepare_pdf(self, raw, *, publication_guard=None, progress=None, extraction=None):
         extraction = {} if extraction is None else extraction
@@ -365,6 +399,8 @@ class IngestionService:
                 overlap=PDF_CHUNK_OVERLAP
             )
             for content in page_chunks:
+                if not normalize_persian(content):
+                    continue
                 if len(chunks) >= MAX_PDF_CHUNKS:
                     raise PreparationLimit(f'Chunk count exceeds {MAX_PDF_CHUNKS}. Split the PDF before this page.', page=page['page'])
                 chunks.append({
@@ -449,7 +485,10 @@ class IngestionService:
                         placeholders = ','.join(['%s'] * len(rows))
                         cursor.execute(f'SELECT question_hash FROM qa_documents WHERE question_hash IN ({placeholders})',
                                        tuple(row[2] for row in rows))
-                        existing = len(cursor.fetchall())
+                        keys = {row[2] for row in rows}
+                        found = {record['question_hash'] for record in cursor.fetchall()} & keys
+                        found.update(self._legacy_qa_matches(cursor, keys - found))
+                        existing = len(found)
                 finally:
                     connection.close()
                 inputs = [row[0] for row in rows]
@@ -507,7 +546,7 @@ class IngestionService:
         report['can_publish'] = not any(issue['severity'] == 'error' for issue in report['issues'])
         report['cost'] = {
             'embedding_inputs': len(inputs), 'embedding_batches': (len(inputs) + self.batch_size - 1) // self.batch_size,
-            'input_characters': sum(map(len, inputs)), 'batch_size': self.batch_size,
+            'input_characters': sum(len(normalize_persian(value)) for value in inputs), 'batch_size': self.batch_size,
         }
         if extraction:
             report['cost']['ocr_pages'] = sum(page['method'] == 'ocr' for page in extraction['pages'])

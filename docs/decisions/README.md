@@ -19,6 +19,7 @@ unrecorded historical team approval or new feature delivery.
 | [0004](0004-ingestion-publication-and-retries.md) | Atomic knowledge/job publication, cooperative cancellation and saved-upload retries |
 | [0005](0005-ingestion-preflight.md) | Transient ingestion preview using publication preparation, with advisory cost and duplicate counts |
 | [0006](0006-local-persian-ocr.md) | Optional bounded local Persian OCR, original page provenance and blocking review of uncertain extraction |
+| [0007](0007-shared-persian-normalization.md) | Shared Persian comparison/model copies with original text and legacy Q&A keys preserved |
 
 ## When and how to add one
 

@@ -108,3 +108,6 @@ class JobCursor:
             if row.get(column):
                 row[column] = datetime.fromisoformat(row[column])
         return row
+
+    def fetchall(self):
+        return [dict(row) for row in self.raw.fetchall()]

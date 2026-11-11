@@ -10,6 +10,7 @@ from settings import ADMIN_PORT, UI_PORT
 from request_validation import MAX_JSON_UPLOAD_BYTES as MAX_UPLOAD_BYTES
 from transformers import AutoTokenizer, AutoModel
 from model_registry import get_active_model_id, get_model_definition
+from persian_text import normalize_persian
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -103,7 +104,7 @@ def embed_texts(texts):
 
     tokenizer, model = get_embedder()
     batch = tokenizer(
-        texts,
+        [normalize_persian(value) for value in texts],
         padding=True,
         truncation=True,
         max_length=MAX_SEQ_LEN,

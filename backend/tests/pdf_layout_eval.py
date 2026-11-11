@@ -67,6 +67,7 @@ def main():
     from ocr_fixture import PdfDatabase
     from pdf_layout_fixture import corpus
     from services.ingestion import IngestionService
+    from persian_text import normalize_persian
 
     def forbidden(*args, **kwargs):
         raise AssertionError('Layout evaluation cannot use deployment services or networks')
@@ -100,7 +101,7 @@ def main():
             result = service.ingest_pdf(case.raw, case.name + '.pdf')
             assert result['chunk_count'] == len(chunks)
             embedded = [value for call in embed.call_args_list for value in call.args[0]]
-            assert embedded == actual, 'Embedded text differs from preparation'
+            assert embedded == [normalize_persian(value) for value in actual], 'Embedding copies differ from shared normalization'
             embed.reset_mock()
             connection = database.connect()
             try:

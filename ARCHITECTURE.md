@@ -58,6 +58,7 @@ backend/
   interface.py        Embedding model (load/embed) + retrieval constants; shared ports/upload limit aliases
   generator.py        Generation LLM (load/generate), SYSTEM_PROMPT, sampling params
   searchForAnswer.py  Vector search over qa_documents / pdf_chunks + build_context
+  persian_text.py     Shared fa-v1 normalization copies for embeddings, lexical terms and Q&A keys
   model_registry.py   Model catalog + persisted active-model selection
   voice.py            Whisper STT on the user app (/voice/health, /voice/audio-worklet.js, WS /voice-stream)
   speech.py           Public /tts/health and /tts/synthesize; lazy private worker and bounded synthesis
@@ -143,7 +144,7 @@ an already-prepared app; it does not implicitly start retention or initialize se
 
 | Table | Key columns | Notes |
 | --- | --- | --- |
-| `qa_documents` | id, question, answer, `question_hash` UNIQUE, `embedding` LONGBLOB, `embedding_dim`, created_at, updated_at | Dedup via `hash_question()` (sha256 of stripped question) |
+| `qa_documents` | id, question, answer, `question_hash` UNIQUE, `embedding` LONGBLOB, `embedding_dim`, created_at, updated_at | New keys use `hash_question()` (SHA-256 of shared Persian-normalized copies); legacy keys/originals are retained |
 | `pdf_documents` | id, filename, `document_hash` UNIQUE, file_size, page_count, chunk_count, embedded_chunk_count, embedding_dim, `status` ENUM(processing, completed, failed), error_message | Dedup via `sha256_bytes()` of the file |
 | `pdf_chunks` | id, document_id FK (ON DELETE CASCADE), chunk_index, page_start, page_end, content LONGTEXT, embedding, embedding_dim; UNIQUE(document_id, chunk_index) | Only chunks of `completed` docs are searched |
 | `chat_history` | id, user_id, owner_hash NULL, ip_address, user_message, bot_response, `feedback` ENUM(like, dislike) NULL, feedback_at, created_at | One row per `/chat`; `id` is returned as `message_id`; legacy rows retain NULL ownership |
@@ -181,7 +182,7 @@ One database-scoped named lock excludes competing migration commands. Each versi
 
 Scoring:
 - QA: `_cosine_score(qvec, blob, embedding_dim)`. Rows with a dimension mismatch or zero norm are skipped.
-- PDF: `0.82 * semantic + 0.18 * _lexical_overlap(query, content)`. `_terms` maps Arabic yeh/kaf to Persian forms and casefolds. Overlap = shared terms / query terms.
+- PDF: `0.82 * semantic + 0.18 * _lexical_overlap(query, content)`. `_terms` uses shared Persian normalization plus Unicode casefolding. Overlap = shared terms / query terms; punctuation separates terms.
 
 ### 6.2 Generation (`generator.py`)
 
@@ -200,6 +201,43 @@ Scoring:
 - Constants: `ADMIN_PORT=8000`, `UI_PORT=5000`, `MAX_UPLOAD_BYTES=20MB`, `ALLOWED_EXT={'.json'}`, `MIN_SCORE=0.35`, `MAX_SEQ_LEN=512`, `ADMIN_DIR=backend/admin`.
 - Search skips stored embeddings with a different dimension. Re-ingest data after changing the embedding model.
 - Uploads call this adapter through `services/embedding_batches.py`: `EMBEDDING_BATCH_SIZE` (default 8, integer 1-64) bounds each actual model invocation. Query embedding still uses one input. The tokenizer's 512-token limit remains unchanged.
+
+### 6.3.1 Shared Persian normalization (F033)
+
+`persian_text.normalize_persian()` produces idempotent `fa-v1` comparison/model
+copies: NFKC (including PDF presentation forms), Arabic yeh/alef maksura/kaf to
+Persian forms, Persian/Arabic-Indic digits to ASCII, whitespace and ZWNJ/ZWSP to
+single spaces. Tatweel, optional Arabic vowel marks and selected joining/bidi
+format controls are removed. Hamza/alef letters, punctuation, letter case and
+explicit word boundaries remain distinct; absent spaces are not guessed.
+
+Ingestion's bounded embedding batches and `RetrievalService` normalize before
+their injected embedding adapters; public `interface.embed_texts` also normalizes
+before tokenization. Lexical terms share the same function and retain the
+previous casefold/unique-term behavior. `database.hash_question` hashes normalized
+UTF-8; within-file dedup retains the first original question/answer and source
+record number. Preflight estimates normalized embedding characters, while its
+samples show originals. Format-only questions fail validation before model/DB
+work; format-only queries return no hits without embedding/search.
+
+Indexed `question_hash` matches are preferred. For missing keys, preflight and
+publication scan existing `(id, question)` rows in descending batches of 256,
+normalizing only comparison copies. The backwards keyset prevents concurrent
+appends from extending the scan; guards run between publication batches. This
+recognizes legacy raw hashes without a migration or startup rewrite. When only
+legacy aliases exist, the newest matching ID is selected; existing duplicates
+are retained and count as one matching input class. Replacement updates that
+row's answer/vector, keeping its question, key and ID. New canonical keys retain
+the existing unique constraint and publication transaction. Misses can require a
+full corpus scan; there is no persistent normalization index yet.
+
+Q&A/PDF display fields, retrieval/generation context, chat history, filenames,
+page citations, upload bytes and PDF byte hashes do not receive these normalized
+copies. Existing validation trimming and PDF extraction/chunk cleanup still
+apply. Existing embeddings are not rewritten: explicitly replace/re-import
+knowledge to refresh vectors under the new preprocessing. Embedding identity
+metadata remains F034 work. See [policy and verification](docs/persian-normalization.md)
+and [ADR 0007](docs/decisions/0007-shared-persian-normalization.md).
 
 ### 6.4 Model selection (`model_registry.py`)
 

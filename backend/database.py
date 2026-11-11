@@ -8,6 +8,7 @@ from flask import request
 import pymysql.cursors
 from settings import database_config, redact_secrets, retention_settings, safe_error_message
 from public_errors import public_error
+from persian_text import normalize_persian
 
 
 DB_CONFIG = {
@@ -138,7 +139,7 @@ def get_client_ip():
 
 
 def hash_question(q: str) -> str:
-    return hashlib.sha256(q.strip().encode('utf-8')).hexdigest()
+    return hashlib.sha256(normalize_persian(q).encode('utf-8')).hexdigest()
 
 
 #Hash of documents

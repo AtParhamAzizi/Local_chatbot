@@ -1,5 +1,24 @@
 # Offline unit-test foundation
 
+## Shared Persian normalization (F033)
+
+Run `python -B backend/tests/run_tests.py --pattern test_persian_text.py -v`.
+Authored Arabic/Persian, presentation-form, digit, half-space, whitespace and
+formatting variants must share hashes, lexical terms and embedding inputs.
+Negative controls preserve different numbers, hamza/alef, punctuation, case and
+joined words. The suite checks idempotence and the public tokenizer boundary.
+
+An isolated SQLite knowledge store exercises actual ingestion, read-only preview,
+same-file/existing/legacy deduplication, explicit replacement, bounded legacy
+lookup cancellation, unchanged originals, QA/PDF ranking, page provenance and
+HTTP chat history/generation. Embeddings are deterministic doubles that hash
+their exact inputs; tests establish preprocessing/ranking consistency, not real
+model quality. The real-PDF layout evaluator also checks normalized model copies
+against original stored content. MySQL's disposable suite contains a legacy-key
+preview/import/replacement/chat regression. Docker was unavailable during local
+F033 validation, so that added integration case remains unexecuted locally.
+See [policy and rollout](../../docs/persian-normalization.md).
+
 ## PDF layout extraction (F031)
 
 Run `python -B backend/tests/run_tests.py --pattern test_pdf_layout.py -v` for
@@ -101,9 +120,8 @@ python -B -m unittest discover -s backend/tests -v
 `test_core_units.py` covers:
 
 - Question/document SHA-256 and salted PBKDF2 password hashes.
-- Current Persian lexical normalization: Arabic yeh/kaf mapping, Unicode
-  case-folding, unique terms and empty inputs. It does not introduce the broader
-  shared normalization pipeline planned in F033.
+- Shared Persian lexical normalization, Unicode case-folding, unique terms and
+  empty inputs; `test_persian_text.py` covers the complete F033 pipeline.
 - PDF extraction noise, bounded chunks, overlap and natural text boundaries.
 - Cosine scores, incompatible/zero embeddings, lexical overlap, PDF weighting,
   ranking/top-k, source metadata and connection cleanup using in-memory rows.

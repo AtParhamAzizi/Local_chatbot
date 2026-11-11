@@ -1,6 +1,6 @@
 import numpy as np
-import re
 from database import get_conn, logger
+from persian_text import persian_terms
 
 
 def _cosine_score(qvec, blob, embedding_dim):
@@ -20,8 +20,7 @@ def _cosine_score(qvec, blob, embedding_dim):
 
 
 def _terms(value):
-    value = (value or '').replace('\u064a', '\u06cc').replace('\u0643', '\u06a9')
-    return set(re.findall(r"[\w\u0600-\u06ff]{2,}", value.casefold()))
+    return persian_terms(value)
 
 
 def _lexical_overlap(query, content):

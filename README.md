@@ -562,6 +562,13 @@ the same PDF to adopt the new extraction. Preview complex layouts before importi
 borderless tables and unusual layouts still need review. See
 [PDF layout behavior and evaluation](docs/pdf-layout.md).
 
+Persian retrieval and Q&A deduplication share one normalization policy. Arabic
+yeh/kaf variants, Persian/Arabic digits, whitespace and half-spaces use equivalent
+comparison/model inputs; original questions, answers, PDF text and page citations
+remain available for display. Preview also recognizes equivalent existing
+questions with legacy hashes. Replace/re-import knowledge to refresh older
+embeddings with the new preprocessing. See [normalization policy and limits](docs/persian-normalization.md).
+
 The complete route inventory is in the API contract. These access boundaries
 apply before the handlers:
 

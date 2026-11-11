@@ -61,8 +61,9 @@ binary fixtures are committed; MuPDF's bundled fonts render the Persian samples.
 The baseline freezes the former `get_text('text', sort=True)` and whitespace /
 soft-hyphen cleanup. Each fixture page fits one production chunk, so the new
 measurements use actual prepared chunk content without overlap artifacts. The
-evaluator also checks preflight samples, every embedded input, persisted chunk
-text and original page numbers using a fresh SQLite database and deterministic
+evaluator also checks preflight samples, every embedded input against the shared
+Persian-normalized copy (F033), persisted original chunk text and page numbers
+using a fresh SQLite database and deterministic
 embedding adapter. Network calls and inherited deployment configuration are
 blocked; no real models or MySQL services are used.
 

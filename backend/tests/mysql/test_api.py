@@ -376,6 +376,48 @@ class FlaskMySQLTests(unittest.TestCase):
         self.assertEqual(listing.json['total'], 1)
         self.assertTrue(listing.json['items'][0]['has_embedding'])
 
+    def test_persian_variants_match_legacy_qa_without_rewriting_originals(self):
+        headers = self.login()
+        original_question = 'ثبت\u200cنام كاربري ١٢٣؟'
+        variant = 'ثبت نام کاربری ۱۲۳؟'
+        old_hash = hashlib.sha256(original_question.encode()).hexdigest()
+        self.sql('INSERT INTO qa_documents (question, answer, question_hash, embedding, embedding_dim) '
+                 'VALUES (%s, %s, %s, %s, %s)',
+                 (original_question, 'پاسخ اصلی ۱۲۳', old_hash, np.array([1, 0, 0], dtype=np.float32).tobytes(), 3))
+        before = self.sql('SELECT * FROM qa_documents')
+        records = [{'question': variant, 'answer': 'پاسخ جایگزین ١٢٣'},
+                   {'question': 'ثبت\u200bنام\tكاربري 123؟', 'answer': 'Ignored duplicate'}]
+        preview = self.admin_request('/admin/api/upload/preflight', 'POST', headers=headers, data={
+            'file': (io.BytesIO(json.dumps(records, ensure_ascii=False).encode()), 'variants.json'),
+        })
+        self.assertEqual(preview.status_code, 200)
+        self.assertEqual((preview.json['counts']['duplicates_in_file'], preview.json['counts']['duplicates_existing']), (1, 1))
+        self.assertEqual(preview.json['samples'][0]['question'], variant)
+        self.assertEqual(self.sql('SELECT * FROM qa_documents'), before)
+        self.embed.assert_not_called()
+        response = self.upload_json(records, headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual((response.json['skipped'], response.json['inserted']), (1, 0))
+        self.assertEqual(self.sql('SELECT * FROM qa_documents'), before)
+        self.embed.assert_called_once_with(['ثبت نام کاربری 123؟'])
+        response = self.upload_json(records, headers, replace=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json['updated'], 1)
+        after = self.sql('SELECT * FROM qa_documents')[0]
+        for field in ('id', 'question', 'question_hash', 'created_at'):
+            self.assertEqual(after[field], before[0][field])
+        self.assertEqual(after['answer'], records[0]['answer'])
+        self.assertEqual(self.count('qa_documents'), 1)
+        self.embed.reset_mock()
+        first = self.chat(message=original_question)
+        second = self.chat(message=variant)
+        self.assertEqual(first.json['sources'], second.json['sources'])
+        self.assertEqual(first.json['score'], second.json['score'])
+        self.assertEqual([call.args[0] for call in self.embed.call_args_list], [['ثبت نام کاربری 123؟']] * 2)
+        self.assertEqual([row['user_message'] for row in self.sql('SELECT user_message FROM chat_history ORDER BY id')],
+                         [original_question, variant])
+        self.assertEqual(self.generate.call_args.args[1][0]['question'], original_question)
+
     def test_invalid_uploads_do_not_embed_or_partially_persist(self):
         headers = self.login()
         for raw, filename in (

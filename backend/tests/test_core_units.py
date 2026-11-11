@@ -15,11 +15,11 @@ class HashingTests(OfflineCoreFixture, unittest.TestCase):
         self.assertEqual(self.database.hash_question('abc'),
                          'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
 
-    def test_question_hash_trims_edges_but_preserves_internal_text(self):
+    def test_question_hash_normalizes_whitespace_but_preserves_case(self):
         question = '\u0633\u0644\u0627\u0645 \u062f\u0646\u06cc\u0627'
         expected = hashlib.sha256(question.encode('utf-8')).hexdigest()
         self.assertEqual(self.database.hash_question('\n\t ' + question + ' \r\n'), expected)
-        self.assertNotEqual(self.database.hash_question(question.replace(' ', '  ')), expected)
+        self.assertEqual(self.database.hash_question(question.replace(' ', '  ')), expected)
         self.assertNotEqual(self.database.hash_question('ABC'), self.database.hash_question('abc'))
 
     def test_document_hash_preserves_every_byte(self):

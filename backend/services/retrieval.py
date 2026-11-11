@@ -3,6 +3,7 @@
 import numpy as np
 
 from services import adapters
+from persian_text import normalize_persian
 
 
 class RetrievalService:
@@ -14,6 +15,9 @@ class RetrievalService:
         self.min_score = min_score
 
     def retrieve(self, query, limit=6):
+        query = normalize_persian(query)
+        if not query:
+            return []
         vector = np.asarray(self.embed([query])[0], dtype=np.float32)
         qa_results = self.search_qa(vector, k=5)
         pdf_results = self.search_pdf(vector, k=8, query=query)
