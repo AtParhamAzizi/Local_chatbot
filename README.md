@@ -554,6 +554,14 @@ method, confidence and samples by original page; uncertain OCR blocks publicatio
 until the source is corrected. Containers additionally need `INSTALL_OCR=1` at
 build time. See [OCR setup, limits and review](docs/ocr.md). It is off by default.
 
+Embedded-text PDFs use layout-aware extraction in both preview and publication:
+columns follow their reading direction, headings and ruled table cells retain
+structure, and recurring margin headers/page counters are suppressed. Page
+citations keep their original numbers. Existing documents need replacement with
+the same PDF to adopt the new extraction. Preview complex layouts before importing;
+borderless tables and unusual layouts still need review. See
+[PDF layout behavior and evaluation](docs/pdf-layout.md).
+
 The complete route inventory is in the API contract. These access boundaries
 apply before the handlers:
 

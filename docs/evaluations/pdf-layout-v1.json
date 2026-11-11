@@ -1,0 +1,340 @@
+{
+  "corpus_version": 1,
+  "pymupdf": "1.28.2",
+  "documents": 11,
+  "pages": 13,
+  "totals": {
+    "baseline": {
+      "content_errors": 16,
+      "structure_errors": 16,
+      "reading_order_errors": 41,
+      "content_checks": 88,
+      "structure_checks": 16,
+      "reading_order_checks": 326,
+      "reading_order_evaluated": 298
+    },
+    "layout": {
+      "content_errors": 0,
+      "structure_errors": 0,
+      "reading_order_errors": 0,
+      "content_checks": 88,
+      "structure_checks": 16,
+      "reading_order_checks": 326,
+      "reading_order_evaluated": 326
+    }
+  },
+  "cases": [
+    {
+      "case": "single-column-control",
+      "pages": 1,
+      "baseline": {
+        "content_errors": 0,
+        "structure_errors": 0,
+        "reading_order_errors": 0,
+        "content_checks": 4,
+        "structure_checks": 0,
+        "reading_order_checks": 6,
+        "reading_order_evaluated": 6
+      },
+      "layout": {
+        "content_errors": 0,
+        "structure_errors": 0,
+        "reading_order_errors": 0,
+        "content_checks": 4,
+        "structure_checks": 0,
+        "reading_order_checks": 6,
+        "reading_order_evaluated": 6
+      },
+      "baseline_text": [
+        "Welcome to the regional service centre.\n\nPlease bring your account reference.\n\nThe team will confirm your appointment.\n\nKeep this receipt for your records."
+      ],
+      "layout_text": [
+        "Welcome to the regional service centre.\n\nPlease bring your account reference.\n\nThe team will confirm your appointment.\n\nKeep this receipt for your records."
+      ]
+    },
+    {
+      "case": "two-columns",
+      "pages": 1,
+      "baseline": {
+        "content_errors": 0,
+        "structure_errors": 0,
+        "reading_order_errors": 3,
+        "content_checks": 6,
+        "structure_checks": 0,
+        "reading_order_checks": 15,
+        "reading_order_evaluated": 15
+      },
+      "layout": {
+        "content_errors": 0,
+        "structure_errors": 0,
+        "reading_order_errors": 0,
+        "content_checks": 6,
+        "structure_checks": 0,
+        "reading_order_checks": 15,
+        "reading_order_evaluated": 15
+      },
+      "baseline_text": [
+        "West opening instructions. Central opening instructions.\nWest supporting details. Central supporting details.\nWest closing request. Central closing request."
+      ],
+      "layout_text": [
+        "West opening instructions.\n\nWest supporting details.\n\nWest closing request.\n\nCentral opening instructions.\n\nCentral supporting details.\n\nCentral closing request."
+      ]
+    },
+    {
+      "case": "three-columns",
+      "pages": 1,
+      "baseline": {
+        "content_errors": 0,
+        "structure_errors": 0,
+        "reading_order_errors": 9,
+        "content_checks": 9,
+        "structure_checks": 0,
+        "reading_order_checks": 36,
+        "reading_order_evaluated": 36
+      },
+      "layout": {
+        "content_errors": 0,
+        "structure_errors": 0,
+        "reading_order_errors": 0,
+        "content_checks": 9,
+        "structure_checks": 0,
+        "reading_order_checks": 36,
+        "reading_order_evaluated": 36
+      },
+      "baseline_text": [
+        "West opening instructions. Central opening instructions. East opening instructions.\nWest supporting details. Central supporting details. East supporting details.\nWest closing request. Central closing request. East closing request."
+      ],
+      "layout_text": [
+        "West opening instructions.\n\nWest supporting details.\n\nWest closing request.\n\nCentral opening instructions.\n\nCentral supporting details.\n\nCentral closing request.\n\nEast opening instructions.\n\nEast supporting details.\n\nEast closing request."
+      ]
+    },
+    {
+      "case": "spanning-headings-and-bands",
+      "pages": 1,
+      "baseline": {
+        "content_errors": 0,
+        "structure_errors": 2,
+        "reading_order_errors": 6,
+        "content_checks": 14,
+        "structure_checks": 2,
+        "reading_order_checks": 91,
+        "reading_order_evaluated": 91
+      },
+      "layout": {
+        "content_errors": 0,
+        "structure_errors": 0,
+        "reading_order_errors": 0,
+        "content_checks": 14,
+        "structure_checks": 2,
+        "reading_order_checks": 91,
+        "reading_order_evaluated": 91
+      },
+      "baseline_text": [
+        "Service manual and regional support procedures\n\nFirst office receives the request. Second office reviews the receipt.\nFirst office checks the account. Second office confirms the date.\nFirst office issues a receipt. Second office closes the case.\n\nPart two: follow-up requests and required documents\n\nLater requests need a reference. Final review starts with records.\nLater requests include the date. Final review checks the response.\nLater requests finish here. Final review completes the file."
+      ],
+      "layout_text": [
+        "# Service manual and regional support procedures\n\nFirst office receives the request.\n\nFirst office checks the account.\n\nFirst office issues a receipt.\n\nSecond office reviews the receipt.\n\nSecond office confirms the date.\n\nSecond office closes the case.\n\n## Part two: follow-up requests and required documents\n\nLater requests need a reference.\n\nLater requests include the date.\n\nLater requests finish here.\n\nFinal review starts with records.\n\nFinal review checks the response.\n\nFinal review completes the file."
+      ]
+    },
+    {
+      "case": "persian-rtl-columns",
+      "pages": 1,
+      "baseline": {
+        "content_errors": 6,
+        "structure_errors": 0,
+        "reading_order_errors": 0,
+        "content_checks": 6,
+        "structure_checks": 0,
+        "reading_order_checks": 15,
+        "reading_order_evaluated": 0
+      },
+      "layout": {
+        "content_errors": 0,
+        "structure_errors": 0,
+        "reading_order_errors": 0,
+        "content_checks": 6,
+        "structure_checks": 0,
+        "reading_order_checks": 15,
+        "reading_order_evaluated": 15
+      },
+      "baseline_text": [
+        "ﺩﺭﺧﻮﺍﺳﺖ ﺛﺒﺖ ﺭﺍﻫﻨﻤﺎﯼ ﻣﺸﺘﺮﯾﺎﻥ ﺧﺪﻣﺎﺕ ﺭﺍﻫﻨﻤﺎﯼ\nﻣﺸﺘﺮﯾﺎﻥ ﻣﺪﺍﺭﮎ ﺑﺮﺭﺳﯽ ﻣﺸﺘﺮﯾﺎﻥ ﭘﺸﺘﯿﺒﺎﻧﯽ ﺩﺭﺧﻮﺍﺳﺖ\n 456 ﭼﭗ ﺳﺘﻮﻥ ﭘﺎﯾﺎﻥ ۱۲۳ ﺭﺍﺳﺖ ﺳﺘﻮﻥ ﭘﺎﯾﺎﻥ"
+      ],
+      "layout_text": [
+        "ﺭﺍﻫﻨﻤﺎﯼ ﺧﺪﻣﺎﺕ ﻣﺸﺘﺮﯾﺎﻥ\n\nﺩﺭﺧﻮﺍﺳﺖ ﭘﺸﺘﯿﺒﺎﻧﯽ ﻣﺸﺘﺮﯾﺎﻥ\n\nﭘﺎﯾﺎﻥ ﺳﺘﻮﻥ ﺭﺍﺳﺖ ۱۲۳\n\nﺭﺍﻫﻨﻤﺎﯼ ﺛﺒﺖ ﺩﺭﺧﻮﺍﺳﺖ\n\nﺑﺮﺭﺳﯽ ﻣﺪﺍﺭﮎ ﻣﺸﺘﺮﯾﺎﻥ\n\nﭘﺎﯾﺎﻥ ﺳﺘﻮﻥ ﭼﭗ 456"
+      ]
+    },
+    {
+      "case": "ruled-table",
+      "pages": 1,
+      "baseline": {
+        "content_errors": 0,
+        "structure_errors": 3,
+        "reading_order_errors": 0,
+        "content_checks": 11,
+        "structure_checks": 3,
+        "reading_order_checks": 55,
+        "reading_order_evaluated": 55
+      },
+      "layout": {
+        "content_errors": 0,
+        "structure_errors": 0,
+        "reading_order_errors": 0,
+        "content_checks": 11,
+        "structure_checks": 3,
+        "reading_order_checks": 55,
+        "reading_order_evaluated": 55
+      },
+      "baseline_text": [
+        "Current service charges are listed below.\n\n Service Region Fee\n\n Delivery North 120\n\n Collection South 80\n\nContact the local office for exemptions."
+      ],
+      "layout_text": [
+        "Current service charges are listed below.\n\n| Service | Region | Fee |\n| Delivery | North | 120 |\n| Collection | South | 80 |\n\nContact the local office for exemptions."
+      ]
+    },
+    {
+      "case": "persian-rtl-table",
+      "pages": 1,
+      "baseline": {
+        "content_errors": 4,
+        "structure_errors": 2,
+        "reading_order_errors": 0,
+        "content_checks": 4,
+        "structure_checks": 2,
+        "reading_order_checks": 6,
+        "reading_order_evaluated": 0
+      },
+      "layout": {
+        "content_errors": 0,
+        "structure_errors": 0,
+        "reading_order_errors": 0,
+        "content_checks": 4,
+        "structure_checks": 2,
+        "reading_order_checks": 6,
+        "reading_order_evaluated": 6
+      },
+      "baseline_text": [
+        "ﻣﺸﺘﺮﯾﺎﻥ ﺧﺪﻣﺎﺕ ﺩﺭﺧﻮﺍﺳﺖ ﺭﺍﻫﻨﻤﺎﯼ\n ۱۲۳ ﭘﺸﺘﯿﺒﺎﻧﯽ 456 ﻧﺎﻡ ﺛﺒﺖ"
+      ],
+      "layout_text": [
+        "| ﺭﺍﻫﻨﻤﺎﯼ ﺩﺭﺧﻮﺍﺳﺖ | ﺧﺪﻣﺎﺕ ﻣﺸﺘﺮﯾﺎﻥ |\n| ﺛﺒﺖ ﻧﺎﻡ 456 | ﭘﺸﺘﯿﺒﺎﻧﯽ ۱۲۳ |"
+      ]
+    },
+    {
+      "case": "table-beside-prose",
+      "pages": 1,
+      "baseline": {
+        "content_errors": 0,
+        "structure_errors": 3,
+        "reading_order_errors": 23,
+        "content_checks": 13,
+        "structure_checks": 3,
+        "reading_order_checks": 78,
+        "reading_order_evaluated": 78
+      },
+      "layout": {
+        "content_errors": 0,
+        "structure_errors": 0,
+        "reading_order_errors": 0,
+        "content_checks": 13,
+        "structure_checks": 3,
+        "reading_order_checks": 78,
+        "reading_order_evaluated": 78
+      },
+      "baseline_text": [
+        "Available delivery plans. Applications begin at reception.\n\n Provide your delivery address.\n Type Days\n Confirm the contact number.\n Basic 3\n\n An adviser verifies the request. Express 1\n\n An adviser sends confirmation.\nChoose the plan that suits you."
+      ],
+      "layout_text": [
+        "Available delivery plans.\n\n| Type | Days |\n| Basic | 3 |\n| Express | 1 |\n\nChoose the plan that suits you.\n\nApplications begin at reception.\n\nProvide your delivery address.\n\nConfirm the contact number.\n\nAn adviser verifies the request.\n\nAn adviser sends confirmation."
+      ]
+    },
+    {
+      "case": "recurring-margins-and-unique-note",
+      "pages": 3,
+      "baseline": {
+        "content_errors": 6,
+        "structure_errors": 3,
+        "reading_order_errors": 0,
+        "content_checks": 13,
+        "structure_checks": 3,
+        "reading_order_checks": 12,
+        "reading_order_evaluated": 5
+      },
+      "layout": {
+        "content_errors": 0,
+        "structure_errors": 0,
+        "reading_order_errors": 0,
+        "content_checks": 13,
+        "structure_checks": 3,
+        "reading_order_checks": 12,
+        "reading_order_evaluated": 12
+      },
+      "baseline_text": [
+        "Regional support handbook\n\nOffice procedure 1\n\nProcedure 1 requires a current account reference and the completed request form.\n\nRegional support handbook\n\n Page 1 of 3",
+        "Regional support handbook\n\nOffice procedure 2\n\nProcedure 2 requires a current account reference and the completed request form.\n\nRegional support handbook\n\nUnique legal note applies to this office only.\n\n Page 2 of 3",
+        "Regional support handbook\n\nOffice procedure 3\n\nProcedure 3 requires a current account reference and the completed request form.\n\nRegional support handbook\n\n Page 3 of 3"
+      ],
+      "layout_text": [
+        "## Office procedure 1\n\nProcedure 1 requires a current account reference and the completed request form.\n\nRegional support handbook",
+        "## Office procedure 2\n\nProcedure 2 requires a current account reference and the completed request form.\n\nRegional support handbook\n\nUnique legal note applies to this office only.",
+        "## Office procedure 3\n\nProcedure 3 requires a current account reference and the completed request form.\n\nRegional support handbook"
+      ]
+    },
+    {
+      "case": "bold-section-headings",
+      "pages": 1,
+      "baseline": {
+        "content_errors": 0,
+        "structure_errors": 2,
+        "reading_order_errors": 0,
+        "content_checks": 4,
+        "structure_checks": 2,
+        "reading_order_checks": 6,
+        "reading_order_evaluated": 6
+      },
+      "layout": {
+        "content_errors": 0,
+        "structure_errors": 0,
+        "reading_order_errors": 0,
+        "content_checks": 4,
+        "structure_checks": 2,
+        "reading_order_checks": 6,
+        "reading_order_evaluated": 6
+      },
+      "baseline_text": [
+        "Proof of address\n\nBring a recent utility statement showing your name and your current home address.\n\nAccepted documents\n\nA current bank statement or an official council letter can also be accepted."
+      ],
+      "layout_text": [
+        "## Proof of address\n\nBring a recent utility statement showing your name and your current home address.\n\n## Accepted documents\n\nA current bank statement or an official council letter can also be accepted."
+      ]
+    },
+    {
+      "case": "indented-list-control",
+      "pages": 1,
+      "baseline": {
+        "content_errors": 0,
+        "structure_errors": 1,
+        "reading_order_errors": 0,
+        "content_checks": 4,
+        "structure_checks": 1,
+        "reading_order_checks": 6,
+        "reading_order_evaluated": 6
+      },
+      "layout": {
+        "content_errors": 0,
+        "structure_errors": 0,
+        "reading_order_errors": 0,
+        "content_checks": 4,
+        "structure_checks": 1,
+        "reading_order_checks": 6,
+        "reading_order_evaluated": 6
+      },
+      "baseline_text": [
+        "Appointment checklist\n\n Bring your account reference.\n\n Bring a signed consent form.\n\n Ask the adviser about the next steps."
+      ],
+      "layout_text": [
+        "# Appointment checklist\n\nBring your account reference.\n\nBring a signed consent form.\n\nAsk the adviser about the next steps."
+      ]
+    }
+  ]
+}

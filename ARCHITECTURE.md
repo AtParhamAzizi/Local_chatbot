@@ -246,7 +246,7 @@ before returning 202. The worker calls `IngestionService.ingest_pdf(raw, filenam
 Legacy POST `/admin/api/pdf/upload` queues and waits up to 240 seconds for its original response:
 
 1. The upload is a multipart `file` (`.pdf`, max 50 MiB, non-empty, 1-200 pages). Page counts above the limit return 413 before extraction.
-2. Text is extracted per page with PyMuPDF (`get_text("text", sort=True)`), capped at 500000 total characters before trimming. Unreadable PDFs or PDFs with no extractable text (e.g. scans) return 400. Documents close even when extraction fails or hits a limit.
+2. `services/pdf_layout.py` reads PyMuPDF character/font geometry without raster payloads. It orders columns within bands separated by spanning material (rightmost first for predominantly Persian/Arabic text), marks headings, preserves ruled table rows/cells, and removes supported recurring margin lines. Original text is capped at 500000 total characters before suppression; rendered structure has the same cap. Unreadable PDFs or PDFs with no extractable text (e.g. scans without OCR) return 400. Documents close even when extraction fails or hits a limit.
 3. `split_text(text, chunk_size, overlap)` runs per page with `PDF_CHUNK_SIZE=900` and `PDF_CHUNK_OVERLAP=160`. It removes soft hyphens and hyphenated line breaks, collapses whitespace, and prefers paragraph, line and sentence breaks. Chunks never span pages (`page_start == page_end`).
 4. At most 256 chunks are accepted. Text/chunk overages return 413 before model work or document changes. After validation, dedup uses `sha256_bytes`: a duplicate returns 409 unless `replace` is true. Chunks use the bounded staging pipeline above; input order, chunk indices and page metadata are preserved across batch boundaries.
 5. One transaction replaces/inserts `pdf_documents` and its chunks, marks the document completed, records the successful job result and deletes upload bytes. Failure or cancellation rolls everything back, keeping any previous document searchable.
@@ -362,6 +362,39 @@ remove temporary files. Native rasterization, process teardown and database call
 retain the documented work-unit cancellation caveat. Retries re-extract under
 current settings; uncertain work cannot publish. See [OCR setup/review](docs/ocr.md)
 and [ADR 0006](docs/decisions/0006-local-persian-ocr.md).
+
+### 6.6.4 Layout-aware embedded PDF extraction (F031)
+
+Preparation uses `get_text('rawdict')` with images disabled. Character geometry
+separates PDF lines/spans that cross a gutter or cell boundary. Column traversal
+uses supported horizontal gutters, with spanning headings/tables separating
+vertical bands; Unicode strong direction selects left-first or right-first
+columns without reversing text or numbers. Font size/boldness identifies short
+headings. Original PDF block boundaries and paragraph line breaks survive into
+the existing character-based splitter.
+
+Ruled tables use `find_tables(strategy='lines_strict')`, copied while the page is
+live, with recognition/cell copying serialized for older supported PyMuPDF
+versions. Cells prefer original logical character order, including Persian mixed
+with numbers; predominantly RTL tables emit rightmost cells first. Rows use pipe
+delimiters with escaped literal pipes and explicit empty cells, without inventing
+a header. Table text replaces the covered source lines, avoiding duplicates.
+Detection failure retains the original text. Borderless tables are not inferred.
+
+A document pass removes short, body-sized text in the top 7% / bottom 8% only
+when it recurs on at least two and 60% of all pages. Changing numeric page
+counters in English/Persian are recognized. Matching body text and unique notes
+remain. OCR eligibility and source quotas are checked before this suppression;
+OCR output retains its existing plain-text/confidence path. Guards run between
+pages in both document passes. Preflight and publication share the same content;
+existing chunk page indices, quotas and atomic publication remain authoritative.
+
+The real-PyMuPDF evaluation generates a public mixed-layout corpus and compares
+with the frozen flattened baseline, then checks preview/embedding/SQLite storage
+agreement. CI runs it in the existing provisioned OCR job. See
+[behavior, measured results and limitations](docs/pdf-layout.md) and
+[evaluation record](docs/evaluations/pdf-layout-v1.json). This does not implement
+F032 tokenizer budgets or guarantee arbitrary magazine/table/rotated layouts.
 
 ### 6.7 Feedback (`user.py: feedback()`, POST `/feedback`)
 

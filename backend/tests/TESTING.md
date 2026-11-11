@@ -1,5 +1,23 @@
 # Offline unit-test foundation
 
+## PDF layout extraction (F031)
+
+Run `python -B backend/tests/run_tests.py --pattern test_pdf_layout.py -v` for
+column/RTL order, spanning sections, headings, recurring margins versus unique
+notes, cross-cell spans, table fallback/concurrency, cancellation, quotas and
+page-preserving structured chunks. These tests use geometry doubles and need
+only the lightweight offline dependencies.
+
+Run `python -B backend/tests/pdf_layout_eval.py --output REPORT.json` in an
+environment with the offline dependencies plus `PyMuPDF>=1.24,<2`. This separate
+acceptance evaluator generates 11 PDFs / 13 pages and runs real extraction,
+preview and isolated SQLite publication with deterministic embeddings. It fails
+on content loss, per-document extraction regression, remaining reading-order
+errors or failure to improve both structure and order over the frozen flattened
+baseline. Missing PDF dependencies fail explicitly. No services, private data,
+font downloads or model weights are needed. The existing OCR CI job runs it.
+See [corpus, metrics and recorded results](../../docs/pdf-layout.md).
+
 ## Local Persian OCR (F030)
 
 Run `python -B backend/tests/run_tests.py --pattern test_ocr.py -v` for confidence,

@@ -13,6 +13,7 @@ from request_validation import (
 from services import adapters
 from services.embedding_batches import staged_embeddings
 from services.ocr import LocalOcr, MAX_OCR_PAGES, MIN_WORD_CONFIDENCE, OCR_BUDGET_SECONDS, OcrError, useful_text
+from services.pdf_layout import LayoutPage, extract_page, extract_tables, finish_document
 from settings import setting_value
 
 
@@ -271,7 +272,7 @@ class IngestionService:
             raise IngestionError({
                 'error': 'فایل PDF هیچ صفحه‌ای ندارد'
             }, 400) from None
-        pages, empty_pages = [], []
+        pages, empty_pages, layouts = [], [], []
         total_text_chars = 0
         try:
             self._report('extraction', 'pdf', 0, pdf.page_count, progress, publication_guard)
@@ -280,11 +281,12 @@ class IngestionService:
                     publication_guard()
                 try:
                     page = pdf.load_page(page_number)
-                    text = page.get_text("text", sort=True)
+                    layout = extract_page(page)
+                    text = layout.plain_text
                 except Exception:
                     raise PreparationInvalid([{'page': page_number + 1,
                                                'message': 'Text extraction failed. Re-export this page as a readable PDF.'}]) from None
-                total_text_chars += len(text)
+                total_text_chars += layout.source_chars
                 if total_text_chars > MAX_PDF_TEXT_CHARS:
                     raise PreparationLimit(f'Extracted text exceeds {MAX_PDF_TEXT_CHARS} characters. Split the PDF before this page.',
                                            page=page_number + 1)
@@ -317,14 +319,11 @@ class IngestionService:
                         if total_text_chars > MAX_PDF_TEXT_CHARS:
                             raise PreparationLimit(f'Extracted text exceeds {MAX_PDF_TEXT_CHARS} characters. Split the PDF before this page.',
                                                    page=page_number + 1)
-                text = text.strip()
-                if text:
-                    pages.append({
-                        'page': page_number + 1,
-                        'text': text
-                    })
-                else:
-                    empty_pages.append(page_number + 1)
+                        # OCR currently exposes plain text, without reliable cell geometry.
+                        layout = LayoutPage(0, 0, plain_text=text, source_chars=len(text))
+                if layout.width:
+                    extract_tables(page, layout)
+                layouts.append(layout)
                 self._report('extraction', 'pdf', page_number + 1, pdf.page_count, progress, publication_guard)
         except (RequestEntityTooLarge, PreparationInvalid):
             raise
@@ -334,6 +333,22 @@ class IngestionService:
             pdf.close()
         if review_issues:
             raise PreparationInvalid(review_issues[:20], truncated=len(review_issues) > 20)
+        finish_document(layouts, guard=publication_guard)
+        structured_chars = 0
+        for page_number, layout in enumerate(layouts, 1):
+            if publication_guard is not None:
+                publication_guard()
+            text = layout.text.strip()
+            structured_chars += len(text)
+            if structured_chars > MAX_PDF_TEXT_CHARS:
+                raise PreparationLimit(f'Extracted text exceeds {MAX_PDF_TEXT_CHARS} characters. Split the PDF before this page.',
+                                       page=page_number)
+            if extraction and extraction['pages'][page_number - 1]['method'] == 'embedded':
+                extraction['pages'][page_number - 1]['text_sample'] = text[:240]
+            if text:
+                pages.append({'page': page_number, 'text': text})
+            else:
+                empty_pages.append(page_number)
         if not pages:
             raise PreparationInvalid([{'page': page_number, 'message': 'No extractable text. Apply OCR to this page before importing.'}
                                       for page_number in empty_pages[:20]], truncated=len(empty_pages) > 20)
