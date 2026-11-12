@@ -1,20 +1,23 @@
 import numpy as np
 from database import get_conn, logger
 from persian_text import persian_terms
+from embedding_profile import EmbeddingProfile, compatible_profile
 
 
 def _cosine_score(qvec, blob, embedding_dim):
     """Decode and score a stored normalized embedding safely."""
     if not blob:
         return None
+    if len(blob) % np.dtype(np.float32).itemsize:
+        return None
     vec = np.frombuffer(blob, dtype=np.float32)
-    if embedding_dim and vec.size != int(embedding_dim):
+    if not embedding_dim or vec.size != int(embedding_dim):
         return None
     if vec.size != qvec.size:
         return None
     q_norm = float(np.linalg.norm(qvec))
     v_norm = float(np.linalg.norm(vec))
-    if q_norm == 0 or v_norm == 0:
+    if not np.isfinite(vec).all() or not np.isfinite(qvec).all() or not np.isfinite(q_norm + v_norm) or q_norm == 0 or v_norm == 0:
         return None
     return float(np.dot(qvec, vec) / (q_norm * v_norm))
 
@@ -32,12 +35,13 @@ def _lexical_overlap(query, content):
 
 
 @logger.operation
-def _search_qa(qvec: np.ndarray, k: int = 5):
+def _search_qa(qvec: np.ndarray, k: int = 5, *, profile=None):
+    _require_query_profile(qvec, profile)
     conn = get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT id, question, answer, embedding, embedding_dim
+                SELECT id, question, answer, embedding, embedding_dim, embedding_profile
                 FROM qa_documents
                 WHERE embedding IS NOT NULL
             """)
@@ -47,6 +51,8 @@ def _search_qa(qvec: np.ndarray, k: int = 5):
 
     results = []
     for r in rows:
+        if not compatible_profile(r.get('embedding_profile'), profile) or r['embedding_dim'] != profile.dimension:
+            continue
         score = _cosine_score(qvec, r["embedding"], r["embedding_dim"])
         if score is None:
             continue
@@ -67,7 +73,8 @@ def _search_qa(qvec: np.ndarray, k: int = 5):
 
 
 @logger.operation
-def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = ''):
+def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None):
+    _require_query_profile(qvec, profile)
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -80,7 +87,10 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = ''):
                     c.page_end,
                     c.content,
                     c.embedding,
-                    c.embedding_dim
+                    c.embedding_dim,
+                    c.embedding_profile,
+                    d.embedding_profile AS document_embedding_profile,
+                    d.embedding_dim AS document_embedding_dim
                 FROM pdf_chunks AS c
                 INNER JOIN pdf_documents AS d ON d.id = c.document_id
                 WHERE c.embedding IS NOT NULL
@@ -92,6 +102,10 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = ''):
 
     results = []
     for r in rows:
+        if (not compatible_profile(r.get('embedding_profile'), profile)
+                or not compatible_profile(r.get('document_embedding_profile'), profile)
+                or r['embedding_dim'] != profile.dimension or r.get('document_embedding_dim') != profile.dimension):
+            continue
         semantic_score = _cosine_score(qvec, r["embedding"], r["embedding_dim"])
         if semantic_score is None:
             continue
@@ -113,6 +127,13 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = ''):
 
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:k]
+
+
+def _require_query_profile(qvec, profile):
+    if not isinstance(profile, EmbeddingProfile):
+        raise ValueError('A query embedding profile is required')
+    if qvec.ndim != 1 or qvec.size != profile.dimension or not np.isfinite(qvec).all():
+        raise ValueError('Query vector disagrees with its profile')
 
 
 

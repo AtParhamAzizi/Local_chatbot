@@ -18,6 +18,7 @@ import pymupdf
 from pymysql.err import OperationalError
 
 from mysql_support import require_target
+from embedding_fixtures import profile, with_profile
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -53,7 +54,7 @@ class FlaskMySQLTests(unittest.TestCase):
             'interface': module_double(
                 'interface', BASE_DIR=str(BACKEND_DIR), ADMIN_DIR=str(BACKEND_DIR / 'admin'),
                 ADMIN_PORT=8000, UI_PORT=5000, MIN_SCORE=0.35, ALLOWED_EXT={'.json'},
-                embed_texts=cls.embed, embedding_dim=lambda: 3,
+                embed_batch=with_profile(cls.embed), embed_texts=cls.embed, embedding_dim=lambda: 3,
                 set_embedding_model=cls.forbidden_model, get_embedder=cls.forbidden_model,
             ),
             'generator': module_double('generator', generate_reply=cls.generate,
@@ -417,6 +418,40 @@ class FlaskMySQLTests(unittest.TestCase):
         self.assertEqual([row['user_message'] for row in self.sql('SELECT user_message FROM chat_history ORDER BY id')],
                          [original_question, variant])
         self.assertEqual(self.generate.call_args.args[1][0]['question'], original_question)
+
+    def test_equal_dimension_profiles_are_never_mixed_by_real_mysql_retrieval(self):
+        from embedding_profile import EmbeddingBatch, EmbeddingProfile
+        from searchForAnswer import _search_qa, _search_pdf
+
+        headers = self.login()
+        first, second = profile(), profile(revision='different-local-weights')
+        selected = first
+
+        def embed(texts):
+            return EmbeddingBatch(self.embed(texts), selected)
+
+        with patch.object(sys.modules['interface'], 'embed_batch', side_effect=embed):
+            self.assertEqual(self.upload_json([{'question': 'question A', 'answer': 'answer A'}], headers).status_code, 200)
+            raw = self.pdf_bytes()
+            self.assertEqual(self.upload_pdf(raw, headers).status_code, 200)
+            selected = second
+            self.assertEqual(self.chat().json['sources'], [])
+            self.assertEqual(self.upload_json([{'question': 'question B', 'answer': 'answer B'}], headers).status_code, 200)
+            query = np.array([1, 0, 0], dtype=np.float32)
+            self.assertEqual([hit['question'] for hit in _search_qa(query, profile=first)], ['question A'])
+            self.assertEqual([hit['question'] for hit in _search_qa(query, profile=second)], ['question B'])
+            self.assertEqual(len(_search_pdf(query, profile=first)), 2)
+            self.assertEqual(_search_pdf(query, profile=second), [])
+            self.assertEqual(self.upload_pdf(raw, headers, replace=True).status_code, 200)
+            self.assertEqual(_search_pdf(query, profile=first), [])
+            self.assertEqual(len(_search_pdf(query, profile=second)), 2)
+            hits = self.chat().json['sources']
+            self.assertEqual(len(hits), 3)
+            for table in ('qa_documents', 'pdf_documents', 'pdf_chunks'):
+                for row in self.sql(f'SELECT embedding_profile, embedding_dim FROM {table}'):
+                    saved = EmbeddingProfile.from_json(row['embedding_profile'])
+                    self.assertEqual(saved.dimension, row['embedding_dim'])
+                    self.assertIn(saved, (first, second))
 
     def test_invalid_uploads_do_not_embed_or_partially_persist(self):
         headers = self.login()

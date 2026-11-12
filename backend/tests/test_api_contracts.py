@@ -5,6 +5,7 @@ import io
 import json
 import re
 import unittest
+from embedding_fixtures import profiled
 from concurrent.futures import Future
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -299,7 +300,7 @@ class ApiContractTests(AbuseEndpointFixture, unittest.TestCase):
             return pdf
 
         with patch.object(self.ingestion, 'ocr', engine), patch.object(self.ingestion, 'open_pdf', side_effect=document), \
-                patch.object(self.ingestion, 'embed', return_value=np.array([[1, 0]], dtype=np.float32)):
+                patch.object(self.ingestion, 'embed', return_value=profiled(np.array([[1, 0]], dtype=np.float32))):
             path = '/admin/api/pdf/upload/preflight'
             for confidence, valid in ((98, True), (54, False)):
                 engine.extract.return_value = OcrText(text, confidence, confidence)
@@ -316,7 +317,7 @@ class ApiContractTests(AbuseEndpointFixture, unittest.TestCase):
     def test_real_ingestion_success_payloads_and_document_deletion(self):
         self.database_rows()
         vector = np.array([[0.1, 0.2]], dtype=np.float32)
-        with patch.object(self.ingestion, 'embed', return_value=vector):
+        with patch.object(self.ingestion, 'embed', return_value=profiled(vector)):
             records = [{'question': 'question', 'answer': 'answer'}]
             self.contract.assert_schema(records, self.contract.document['components']['schemas']['QaFile'])
             self.check(self.admin_open('/admin/api/upload', 'POST', headers=self.headers,

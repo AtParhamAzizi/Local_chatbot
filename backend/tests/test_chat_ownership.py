@@ -88,7 +88,7 @@ class ChatOwnershipTests(unittest.TestCase):
         cls.forbidden_model = Mock(side_effect=AssertionError('Real model access is forbidden'))
         doubles = {
             'interface': module_double('interface', BASE_DIR=str(BACKEND_DIR), UI_PORT=5000,
-                                       MIN_SCORE=0.35, embed_texts=cls.forbidden_model),
+                                       MIN_SCORE=0.35, embed_batch=cls.forbidden_model, embed_texts=cls.forbidden_model),
             'generator': module_double('generator', generate_reply=cls.forbidden_model),
             'searchForAnswer': module_double('searchForAnswer', _search_pdf=cls.forbidden_model,
                                              _search_qa=cls.forbidden_model, build_context=cls.forbidden_model),

@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
+from embedding_fixtures import with_profile
 from werkzeug.exceptions import BadRequest
 
 from core_support import OfflineCoreFixture
@@ -145,7 +146,7 @@ class OcrIngestionTests(OfflineCoreFixture, unittest.TestCase):
         self.cursor = self.connection.cursor.return_value.__enter__.return_value
         self.cursor.fetchone.return_value = None
         self.embed = Mock(side_effect=lambda texts: np.ones((len(texts), 2), dtype=np.float32))
-        self.service = self.module.IngestionService(connect=Mock(return_value=self.connection), embed=self.embed,
+        self.service = self.module.IngestionService(connect=Mock(return_value=self.connection), embed=with_profile(self.embed),
                                                    open_pdf=Mock(), hash_document=lambda raw: 'hash', audit=Mock(),
                                                    ocr=self.engine)
 

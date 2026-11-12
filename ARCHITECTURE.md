@@ -59,6 +59,7 @@ backend/
   generator.py        Generation LLM (load/generate), SYSTEM_PROMPT, sampling params
   searchForAnswer.py  Vector search over qa_documents / pdf_chunks + build_context
   persian_text.py     Shared fa-v1 normalization copies for embeddings, lexical terms and Q&A keys
+  embedding_profile.py Immutable embedding metadata, canonical identities and profiled batch validation
   model_registry.py   Model catalog + persisted active-model selection
   voice.py            Whisper STT on the user app (/voice/health, /voice/audio-worklet.js, WS /voice-stream)
   speech.py           Public /tts/health and /tts/synthesize; lazy private worker and bounded synthesis
@@ -144,9 +145,9 @@ an already-prepared app; it does not implicitly start retention or initialize se
 
 | Table | Key columns | Notes |
 | --- | --- | --- |
-| `qa_documents` | id, question, answer, `question_hash` UNIQUE, `embedding` LONGBLOB, `embedding_dim`, created_at, updated_at | New keys use `hash_question()` (SHA-256 of shared Persian-normalized copies); legacy keys/originals are retained |
-| `pdf_documents` | id, filename, `document_hash` UNIQUE, file_size, page_count, chunk_count, embedded_chunk_count, embedding_dim, `status` ENUM(processing, completed, failed), error_message | Dedup via `sha256_bytes()` of the file |
-| `pdf_chunks` | id, document_id FK (ON DELETE CASCADE), chunk_index, page_start, page_end, content LONGTEXT, embedding, embedding_dim; UNIQUE(document_id, chunk_index) | Only chunks of `completed` docs are searched |
+| `qa_documents` | id, question, answer, `question_hash` UNIQUE, `embedding` LONGBLOB, `embedding_dim`, embedding_profile JSON NULL, created_at, updated_at | New keys use shared Persian normalization; legacy keys/originals are retained; search requires a matching embedding profile |
+| `pdf_documents` | id, filename, `document_hash` UNIQUE, file_size, page_count, chunk_count, embedded_chunk_count, embedding_dim, embedding_profile JSON NULL, `status` ENUM(processing, completed, failed), error_message | Dedup via `sha256_bytes()` of the file |
+| `pdf_chunks` | id, document_id FK (ON DELETE CASCADE), chunk_index, page_start, page_end, content LONGTEXT, embedding, embedding_dim, embedding_profile JSON NULL; UNIQUE(document_id, chunk_index) | Only completed documents with matching document/chunk/query profiles are searched |
 | `chat_history` | id, user_id, owner_hash NULL, ip_address, user_message, bot_response, `feedback` ENUM(like, dislike) NULL, feedback_at, created_at | One row per `/chat`; `id` is returned as `message_id`; legacy rows retain NULL ownership |
 | `adminlogger` | id, `_level` (source file), `_from` (function), message TEXT, `warninglevel` (1 info, 2 warning, 3 failed), created_at | Written by `logger` |
 | `admin-users` | id, username UNIQUE, password_hash, is_active, is_admin, permissions JSON, session_version, created_at, updated_at | Security changes increment session_version atomically |
@@ -158,9 +159,9 @@ an already-prepared app; it does not implicitly start retention or initialize se
 Env: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`. All defaults and validation live in `settings.SETTING_REGISTRY`; `database.DB_CONFIG` adds the MySQL adapter's charset, `DictCursor` and `autocommit=True`. Development defaults are localhost, 3306, root, an empty password and `chatbot_db`; production requires explicit restricted-account credentials. `interface.py` has no separate database configuration. Use `database.get_conn()`; rows are accessed by column name.
 ### Explicit migrations (F020)
 
-Read `backend/migrations/README.md` before deployment. Run `python -B backend/schema_migrations.py status` for the recorded schema version (unversioned = 0, current = 6), pending/incomplete versions and latest supported version. Empty pre-created databases use `upgrade`; existing databases require stopped writers, a restore-tested pre-upgrade dump and `upgrade --backup PATH`. File existence/nonzero size and SHA-256 are checked/recorded, not backup validity; restore-testing remains an operator requirement. Startup and `setup_admin.py` only require the current ledger and never repair a schema opportunistically.
+Read `backend/migrations/README.md` before deployment. Run `python -B backend/schema_migrations.py status` for the recorded schema version (unversioned = 0, current = 9), pending/incomplete versions and latest supported version. Empty pre-created databases use `upgrade`; existing databases require stopped writers, a restore-tested pre-upgrade dump and `upgrade --backup PATH`. File existence/nonzero size and SHA-256 are checked/recorded, not backup validity; restore-testing remains an operator requirement. Startup and `setup_admin.py` only require the current ledger and never repair a schema opportunistically.
 
-Migrations create the original six tables (1), add account session versions and `admin_sessions` (2), widen legacy log messages (3), add nullable anonymous ownership (4), create durable ingestion jobs/payloads (5), and add durable job progress (6). Documented pre-ledger databases, including those already carrying these changes, are adopted using explicit migration-only table/column guards without rewriting records. Legacy ownership remains NULL; existing ownership, credentials, permissions, feedback and float32 embedding bytes stay intact. Unsupported legacy column layouts fail before DDL. This is not a repair tool for arbitrary manual schema/type/constraint changes.
+Migrations create the original six tables (1), add account session versions and `admin_sessions` (2), widen legacy log messages (3), add nullable anonymous ownership (4), create durable ingestion jobs/payloads (5), add durable job progress (6), and add nullable embedding profiles to Q&A/PDF documents/chunks (7–9). Documented pre-ledger databases, including those already carrying these changes, are adopted using explicit migration-only table/column guards without rewriting records. Legacy ownership/profiles remain NULL; existing ownership, credentials, permissions, feedback and float32 embedding bytes stay intact. Unsupported legacy column layouts fail before DDL. This is not a repair tool for arbitrary manual schema/type/constraint changes.
 
 One database-scoped named lock excludes competing migration commands. Each version records running/applied/failed state, timestamps, checksum and backup identity; checksums/order/future versions fail closed. MySQL DDL commits implicitly, so interrupted work is not presented as transactionally rolled back. After inspecting/fixing failures, the documented `upgrade --resume --backup PATH` retries idempotent incomplete steps; ordinary upgrade refuses them. There is no unsafe downgrade command: restore a clean replacement database and matching old release if forward completion cannot be verified. Ordinary serving needs no CREATE/ALTER grants. Imports of the migration module are side-effect-free, including under missing deployment configuration.
 
@@ -171,8 +172,8 @@ One database-scoped named lock excludes competing migration commands. Each versi
 0. `controller_gate` (before_request) returns 503 when chat is disabled in the controller. The chat admission decorator rejects excess per-IP traffic with 429 and retry guidance before parsing the message or running retrieval/generation.
 1. Read JSON `{message}` and `get_client_ip()` (uses only middleware-validated `request.remote_addr`). An empty message returns 400. `chat_sessions.chat_owner_hash(create=True)` establishes or reuses a signed anonymous chat session; the server derives the public `user_id` from its ownership hash. An optional legacy `user_id` string (at most 64 characters) is accepted but ignored; invalid field types still fail validation.
 2. `_retrieve_top(query, k=6)` delegates to `RetrievalService.retrieve(query, limit=6)` (an exception here returns 500):
-   - `embed_texts([query])` gives qvec (float32).
-   - `_search_qa(qvec, k=5)` and `_search_pdf(qvec, k=8, query=query)` from searchForAnswer.py.
+   - `embed_batch([query])` gives float32 vectors and their immutable embedding profile.
+   - `_search_qa(qvec, k=5, profile=profile)` and `_search_pdf(qvec, k=8, query=query, profile=profile)` from searchForAnswer.py require that profile before scoring.
    - Keep `score >= MIN_SCORE` (0.35), sort descending, take the top k.
 3. No hits: fixed Persian fallback reply (phone 1649), logged as WARNING.
    Hits: `generate_reply(message, hits[:6])`. If generation raises, the reply falls back to `hits[0]['answer']` or `['content']`, then to the fallback text.
@@ -181,7 +182,7 @@ One database-scoped named lock excludes competing migration commands. Each versi
 6. Response: `{message_id, feedback_enabled, reply, recommended_questions, score, sources:[{type, filename, pages, score}]}`.
 
 Scoring:
-- QA: `_cosine_score(qvec, blob, embedding_dim)`. Rows with a dimension mismatch or zero norm are skipped.
+- QA: complete profile equality precedes `_cosine_score(qvec, blob, embedding_dim)`. Unknown/incompatible profiles, invalid BLOBs, dimension mismatches, nonfinite values and zero norms are skipped.
 - PDF: `0.82 * semantic + 0.18 * _lexical_overlap(query, content)`. `_terms` uses shared Persian normalization plus Unicode casefolding. Overlap = shared terms / query terms; punctuation separates terms.
 
 ### 6.2 Generation (`generator.py`)
@@ -195,11 +196,11 @@ Scoring:
 
 ### 6.3 Embeddings (`interface.py`)
 
-- Functions: `get_embedder()`, `_load_model()`, `embedding_dim()`, `_model_hidden_size()` (also checks `config.text_config`), `embed_texts(texts)` (`@torch.no_grad`), `set_embedding_model(model_id)`, `_sync_model_selection()`.
+- Functions: `get_embedder()`, `_load_model()`, `embedding_dim()`, `_model_hidden_size()` (also checks `config.text_config`), `embed_batch(texts)` (`@torch.no_grad`, vectors + profile), `embed_texts(texts)` (array-only convenience), `set_embedding_model(model_id)`, `_sync_model_selection()`.
 - Loading: `AutoModel`, float32, CPU, tokenizer `padding_side='left'`. Pooling takes the last token, then L2-normalizes. Inputs are truncated at `MAX_SEQ_LEN=512`.
 - Default model: `Qwen3-Embedding-0.6B` in `backend/model/Qwen3-Embedding-0.6B/`.
 - Constants: `ADMIN_PORT=8000`, `UI_PORT=5000`, `MAX_UPLOAD_BYTES=20MB`, `ALLOWED_EXT={'.json'}`, `MIN_SCORE=0.35`, `MAX_SEQ_LEN=512`, `ADMIN_DIR=backend/admin`.
-- Search skips stored embeddings with a different dimension. Re-ingest data after changing the embedding model.
+- Search requires full profile equality, including equal dimensions. Legacy unknown vectors are retained but excluded until explicitly re-imported with replacement enabled.
 - Uploads call this adapter through `services/embedding_batches.py`: `EMBEDDING_BATCH_SIZE` (default 8, integer 1-64) bounds each actual model invocation. Query embedding still uses one input. The tokenizer's 512-token limit remains unchanged.
 
 ### 6.3.1 Shared Persian normalization (F033)
@@ -235,9 +236,42 @@ Q&A/PDF display fields, retrieval/generation context, chat history, filenames,
 page citations, upload bytes and PDF byte hashes do not receive these normalized
 copies. Existing validation trimming and PDF extraction/chunk cleanup still
 apply. Existing embeddings are not rewritten: explicitly replace/re-import
-knowledge to refresh vectors under the new preprocessing. Embedding identity
-metadata remains F034 work. See [policy and verification](docs/persian-normalization.md)
+knowledge to refresh vectors under the new preprocessing. F034's profile below
+records that policy with each new vector. See [policy and verification](docs/persian-normalization.md)
 and [ADR 0007](docs/decisions/0007-shared-persian-normalization.md).
+
+### 6.3.2 Embedding identity and compatibility (F034)
+
+`embedding_profile.EmbeddingProfile` records versioned model identity, a SHA-256
+revision of actual local artifacts, tokenizer/pooling configuration, Persian
+normalization version, dimension, runtime implementation/dependency versions and
+float32 storage type. Canonical JSON makes equality independent of database JSON
+key ordering. Snapshot identity hashes relative filenames/bytes of weights,
+configs, tokenizers, vocabularies, templates and custom loader code; relocation
+does not change it. Files must remain immutable while loaded. Hashing streams
+once per load and checks the file inventory/stat manifest before publishing resources.
+
+`interface.embed_batch` holds the shared reentrant model lock through
+load/inference/profile capture. Selection/unload cannot relabel in-flight output.
+Profiles are cached/reset with the loaded model; generator catalog IDs do not
+enter embedding identity. Both existing generators share the same embedding
+catalog identity. The array-only `embed_texts` convenience is not used by indexed
+services. Injected ingestion/retrieval embedders must also return `EmbeddingBatch`.
+
+Staging checks the complete profile across all batches and validates shape,
+dimension, finite values and nonzero vectors before publication. Q&A vectors and
+PDF document/chunk metadata commit together. A profile switch between batches
+fails before writes; a switch afterwards cannot change staged metadata. Queries
+pass their captured profile through both searches, which reject missing,
+malformed, unknown-version or incompatible profiles before cosine/lexical work.
+PDF document/chunk dimensions and profiles must both match the query.
+
+Migrations 7–9 add nullable JSON fields without assigning profiles to old vectors.
+Different profiles may coexist in storage, but searches only compare matching
+profiles. Refresh legacy/incompatible knowledge through explicit replacement
+imports; ordinary dedup leaves it intact. Model/dependency changes do not trigger
+automatic reindex. See [profile policy/upgrade](docs/embedding-profiles.md) and
+[ADR 0008](docs/decisions/0008-embedding-compatibility-profiles.md).
 
 ### 6.4 Model selection (`model_registry.py`)
 
@@ -255,8 +289,9 @@ POST `/admin/api/upload/jobs` accepts a multipart `file` (`.json`, UTF-8, max 20
 
 Both import paths stage float32 vectors in a job-local, disk-backed temporary
 file, releasing each array before the next model call. Each batch must return
-exactly one vector per input, with a positive, consistent dimension and finite
-values. All batches must succeed before knowledge writes or replacement begin;
+exactly one vector per input, with a positive, consistent dimension, finite
+values, nonzero vectors and the same complete embedding profile. All batches
+must succeed before knowledge writes or replacement begin;
 persistence reads one BLOB at a time in input order. Staging closes on success,
 model failure, connection failure or persistence failure. The temporary directory
 must be writable, with space for `input_count * embedding_dimension * 4` bytes

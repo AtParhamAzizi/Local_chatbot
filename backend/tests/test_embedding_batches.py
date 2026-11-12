@@ -13,6 +13,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from core_support import BACKEND_DIR
+from embedding_fixtures import with_profile
 
 
 class RecordingDatabase:
@@ -85,12 +86,14 @@ class EmbeddingBatchTests(unittest.TestCase):
         return np.array([[int(text.split()[0]), 0.5] for text in texts], dtype=np.float32)
 
     def service(self, **options):
-        return self.ingestion.IngestionService(**{
+        configured = {
             'connect': self.database.connect, 'embed': self.embed,
             'hash_question': lambda text: hashlib.sha256(text.encode()).hexdigest(),
             'hash_document': lambda raw: hashlib.sha256(raw).hexdigest(),
             'audit': self.audit, 'progress': self.events.append, **options,
-        })
+        }
+        configured['embed'] = with_profile(configured['embed'])
+        return self.ingestion.IngestionService(**configured)
 
     def raw_json(self, count):
         return json.dumps([{'question': f'{i} question', 'answer': f'answer {i}'} for i in range(count)]).encode()

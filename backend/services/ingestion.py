@@ -81,7 +81,7 @@ def split_text(text, chunk_size=1200, overlap=200):
 class IngestionService:
     """Validate, embed and persist uploads using explicitly replaceable adapters."""
 
-    def __init__(self, *, connect=adapters.connect_database, embed=adapters.embed_texts,
+    def __init__(self, *, connect=adapters.connect_database, embed=adapters.embed_batch,
                  open_pdf=adapters.open_pdf, hash_question=adapters.hash_question,
                  hash_document=adapters.hash_document, audit=adapters.audit,
                  clock=time.time, splitter=split_text, batch_size=None, progress=None, ocr=None):
@@ -210,18 +210,19 @@ class IngestionService:
         received, rows, _ = self._prepare_qa(raw, publication_guard=publication_guard, progress=progress)
 
         with self._embeddings(rows, text_for=lambda row: row[0], source='json',
-                              publication_guard=publication_guard, progress=progress) as (vectors, dim):
+                              publication_guard=publication_guard, progress=progress) as (vectors, profile):
             if publication_guard is not None:
                 publication_guard()
             result = {'received': received, 'errors': []}
             with self._publication(result, publication) as conn:
-                inserted, updated, skipped = self._persist_qa(rows, vectors, dim, replace, conn, progress, publication_guard)
+                inserted, updated, skipped = self._persist_qa(rows, vectors, profile, replace, conn, progress, publication_guard)
                 result.update(inserted=inserted, updated=updated, skipped=skipped,
                               embedded=inserted + updated, duration_sec=round(self.clock() - started, 2))
         self.audit(f'JSON import completed: inserted={inserted}, updated={updated}, skipped={skipped}')
         return result
 
-    def _persist_qa(self, rows, vectors, dim, replace, conn, progress, guard):
+    def _persist_qa(self, rows, vectors, profile, replace, conn, progress, guard):
+        dim, metadata = profile.dimension, profile.to_json()
         inserted = updated = skipped = 0
         legacy_matches = None
         self._report('publishing', 'json', 0, len(rows), progress, guard)
@@ -238,9 +239,9 @@ class IngestionService:
                     if replace:
                         cur.execute(
                             "UPDATE qa_documents "
-                            "   SET answer=%s, embedding=%s, embedding_dim=%s "
+                            "   SET answer=%s, embedding=%s, embedding_dim=%s, embedding_profile=%s "
                             " WHERE id=%s",
-                            (answer, blob, dim, existing['id'])
+                            (answer, blob, dim, metadata, existing['id'])
                         )
                         self.audit(f"Updated knowledge-base record id={existing['id']}, embedding_dim={dim}")
                         updated += 1
@@ -249,9 +250,9 @@ class IngestionService:
                     continue
                 cur.execute(
                     "INSERT INTO qa_documents "
-                    "  (question, answer, question_hash, embedding, embedding_dim) "
-                    "VALUES (%s, %s, %s, %s, %s)",
-                    (question, answer, question_hash, blob, dim)
+                    "  (question, answer, question_hash, embedding, embedding_dim, embedding_profile) "
+                    "VALUES (%s, %s, %s, %s, %s, %s)",
+                    (question, answer, question_hash, blob, dim, metadata)
                 )
                 self.audit(f'Inserted knowledge-base record id={cur.lastrowid}, embedding_dim={dim}')
                 inserted += 1
@@ -444,7 +445,7 @@ class IngestionService:
                 'document_id': existing['id'], 'filename': existing['filename'], 'status': existing['status'],
             }, 409) from None
         with self._embeddings(chunks, text_for=lambda chunk: chunk['content'], source='pdf',
-                              publication_guard=publication_guard, progress=progress) as (vectors, dim):
+                              publication_guard=publication_guard, progress=progress) as (vectors, profile):
             if publication_guard is not None:
                 publication_guard()
             result = {
@@ -454,7 +455,7 @@ class IngestionService:
                 'page_count': pdf_page_count,
                 'chunk_count': len(chunks),
                 'embedded_chunks': len(chunks),
-                'embedding_dim': dim,
+                'embedding_dim': profile.dimension,
                 'duration_sec': round(self.clock() - started, 2),
             }
             if extraction:
@@ -463,7 +464,7 @@ class IngestionService:
                 ]}
             with self._pdf_publication(result, publication) as conn:
                 result['document_id'] = self._persist_pdf(
-                    raw, filename, document_hash, pdf_page_count, chunks, existing, replace, vectors, dim,
+                    raw, filename, document_hash, pdf_page_count, chunks, existing, replace, vectors, profile,
                     conn, progress, publication_guard,
                 )
         return result
@@ -552,8 +553,9 @@ class IngestionService:
             report['cost']['ocr_pages'] = sum(page['method'] == 'ocr' for page in extraction['pages'])
         return report
 
-    def _persist_pdf(self, raw, filename, document_hash, page_count, chunks, existing, replace, vectors, dim,
+    def _persist_pdf(self, raw, filename, document_hash, page_count, chunks, existing, replace, vectors, profile,
                      conn, progress, guard):
+        dim, metadata = profile.dimension, profile.to_json()
         document_id = None
         self._report('publishing', 'pdf', 0, len(chunks), progress, guard)
         with conn.cursor() as cur:
@@ -577,9 +579,10 @@ class IngestionService:
                     chunk_count,
                     embedded_chunk_count,
                     embedding_dim,
-                    status
+                    status,
+                    embedding_profile
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     filename,
@@ -589,7 +592,8 @@ class IngestionService:
                     len(chunks),
                     0,
                     dim,
-                    'processing'
+                    'processing',
+                    metadata
                 )
             )
             document_id = cur.lastrowid
@@ -606,9 +610,10 @@ class IngestionService:
                         page_end,
                         content,
                         embedding,
-                        embedding_dim
+                        embedding_dim,
+                        embedding_profile
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         document_id,
@@ -617,7 +622,8 @@ class IngestionService:
                         chunk['page_end'],
                         chunk['content'],
                         blob,
-                        dim
+                        dim,
+                        metadata
                     )
                 )
             # ---------------------------------------------

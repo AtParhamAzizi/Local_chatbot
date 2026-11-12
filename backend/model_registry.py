@@ -12,11 +12,13 @@ MODEL_DEFINITIONS = {
     DEFAULT_MODEL_ID: {
         'label': 'Qwen3.5-2B',
         'embedding_path': QWEN_EMBEDDING_PATH,
+        'embedding_model_id': 'Qwen/Qwen3-Embedding-0.6B',
         'generator_path': setting_value('QWEN35_GENERATOR_PATH'),
     },
     MODEL_IDS[1]: {
         'label': 'Qwen3-4B',
         'embedding_path': QWEN_EMBEDDING_PATH,
+        'embedding_model_id': 'Qwen/Qwen3-Embedding-0.6B',
         'generator_path': setting_value('QWEN_GENERATOR_PATH'),
     },
 }

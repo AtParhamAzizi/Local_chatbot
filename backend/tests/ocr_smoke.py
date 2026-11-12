@@ -23,6 +23,7 @@ def main():
     options = parser.parse_args()
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     import numpy as np
+    from embedding_fixtures import profile, with_profile
     import pymupdf
     from werkzeug.exceptions import BadRequest
 
@@ -58,7 +59,7 @@ def main():
 
         engine = LocalOcr(process_factory=process_factory)
         embed = Mock(side_effect=lambda texts: np.tile(np.array([1, 0], dtype=np.float32), (len(texts), 1)))
-        service = IngestionService(connect=database.connect, embed=embed, open_pdf=pymupdf.open,
+        service = IngestionService(connect=database.connect, embed=with_profile(embed), open_pdf=pymupdf.open,
                                    hash_document=lambda raw: hashlib.sha256(raw).hexdigest(), audit=lambda *args, **kwargs: None,
                                    ocr=engine)
         raw = scanned_pdf(font_path=options.font)
@@ -75,7 +76,7 @@ def main():
         fake_database.logger = types.SimpleNamespace(operation=lambda function: function)
         with patch.dict(sys.modules, {'database': fake_database}):
             scoring = importlib.import_module('searchForAnswer')
-            hits = scoring._search_pdf(np.array([1, 0], dtype=np.float32), query='مشتریان')
+            hits = scoring._search_pdf(np.array([1, 0], dtype=np.float32), query='مشتریان', profile=profile(2))
         assert hits and hits[0]['page_start'] == 1 and 'مشتریان' in hits[0]['content'], 'OCR knowledge must be searchable with page provenance'
         before = [(hit['content'], hit['page_start']) for hit in hits]
         embed.reset_mock()
@@ -89,7 +90,7 @@ def main():
         else:
             raise AssertionError('Uncertain OCR must block publication')
         embed.assert_not_called()
-        assert before == [(hit['content'], hit['page_start']) for hit in scoring._search_pdf(np.array([1, 0], dtype=np.float32), query='مشتریان')]
+        assert before == [(hit['content'], hit['page_start']) for hit in scoring._search_pdf(np.array([1, 0], dtype=np.float32), query='مشتریان', profile=profile(2))]
         print(json.dumps({'case': 'synthetic Persian image-only PDF', 'pages': result['page_count'],
                           'chunks': result['chunk_count'], 'search_hit_page': hits[0]['page_start'],
                           'review_pages': [page['page'] for page in review['extraction']['pages'] if page['needs_review']],

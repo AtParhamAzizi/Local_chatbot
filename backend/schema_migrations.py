@@ -59,6 +59,9 @@ MIGRATIONS = (
     Migration(4, 'chat_ownership', 'chat_history', 'owner_hash'),
     Migration(5, 'ingestion_jobs'),
     Migration(6, 'ingestion_progress', 'ingestion_jobs', 'progress_json'),
+    Migration(7, 'qa_embedding_profile', 'qa_documents', 'embedding_profile'),
+    Migration(8, 'pdf_embedding_profile', 'pdf_documents', 'embedding_profile'),
+    Migration(9, 'chunk_embedding_profile', 'pdf_chunks', 'embedding_profile'),
 )
 LATEST_VERSION = MIGRATIONS[-1].version
 REQUIRED_COLUMNS = {

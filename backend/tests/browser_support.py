@@ -56,7 +56,7 @@ class BrowserApps:
                 'interface': module_double(
                     'interface', BASE_DIR=str(BACKEND_DIR), ADMIN_DIR=str(BACKEND_DIR / 'admin'),
                     ADMIN_PORT=8000, UI_PORT=5000, MIN_SCORE=0.35, ALLOWED_EXT={'.json'},
-                    embed_texts=self.forbidden, embedding_dim=self.forbidden,
+                    embed_batch=self.forbidden, embed_texts=self.forbidden, embedding_dim=self.forbidden,
                     set_embedding_model=self.forbidden,
                 ),
                 'generator': module_double('generator', generate_reply=Mock(return_value=REPLY),

@@ -237,7 +237,7 @@ commands, including administrator setup, logs, and shutdown.
    See `backend/migrations/README.md` for backup, restore and interruption recovery.
    Startup only checks the recorded schema version; it never creates/alters tables.
 
-   Confirm `status` reports `schema_version: 6`, `latest_version: 6`, and empty
+   Confirm `status` reports `schema_version: 9`, `latest_version: 9`, and empty
    `pending`/`incomplete` lists. A zero exit from `status` alone does not mean the
    schema is current. Then switch back to the serving account, keeping the same
    host, port, database and application profile. In PowerShell:
@@ -292,8 +292,11 @@ commands, including administrator setup, logs, and shutdown.
    in both directories; it does not verify complete weights or sufficient memory.
    A successful selection persists the ID and clears the loaded text models;
    the next use loads them. No re-embedding happens automatically. Re-ingest
-   knowledge when changing the embedding model, including an equal-dimension
-   replacement. Qwen3-4B defaults to `backend/modelgen/` and shares the embedder.
+   knowledge with replacement enabled when changing the embedding profile.
+   Search rejects incompatible profiles even when dimensions match. Migrations
+   7–9 retain old vectors with unknown profiles; refresh them explicitly before
+   expecting them in chat results. Qwen3-4B defaults to `backend/modelgen/` and
+   shares the embedder. See [embedding identity and upgrades](docs/embedding-profiles.md).
 
 5. The Flask user app serves its assets directly from `frontend/`. No copying is required; changes to the chat interface and feedback controls are served from that directory.
 

@@ -62,6 +62,7 @@ def main():
     options = parser.parse_args()
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     import numpy as np
+    from embedding_fixtures import with_profile
     import pymupdf
 
     from ocr_fixture import PdfDatabase
@@ -82,7 +83,7 @@ def main():
             patch.object(socket.socket, 'connect', forbidden):
         database = PdfDatabase(Path(directory) / 'knowledge.sqlite')
         embed = Mock(side_effect=lambda texts: np.ones((len(texts), 2), dtype=np.float32))
-        service = IngestionService(connect=database.connect, embed=embed, open_pdf=pymupdf.open,
+        service = IngestionService(connect=database.connect, embed=with_profile(embed), open_pdf=pymupdf.open,
                                    hash_document=lambda raw: hashlib.sha256(raw).hexdigest(),
                                    audit=lambda *args, **kwargs: None, ocr=SimpleNamespace(enabled=False))
         for case in corpus():

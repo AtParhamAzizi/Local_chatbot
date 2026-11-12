@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, Mock, patch
 from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
 from core_support import OfflineCoreFixture
+from embedding_fixtures import with_profile
 from test_abuse_controls import AbuseEndpointFixture
 
 
@@ -25,7 +26,7 @@ class PreflightServiceTests(OfflineCoreFixture, unittest.TestCase):
         self.cursor.execute.side_effect = self.only_select
         self.embed = Mock(side_effect=AssertionError('Preflight must not embed'))
         self.service = service_module.IngestionService(
-            connect=Mock(return_value=self.connection), embed=self.embed, open_pdf=Mock(),
+            connect=Mock(return_value=self.connection), embed=with_profile(self.embed), open_pdf=Mock(),
             hash_question=lambda value: hashlib.sha256(value.strip().encode()).hexdigest(),
             hash_document=lambda value: hashlib.sha256(value).hexdigest(), audit=Mock(), batch_size=2,
         )

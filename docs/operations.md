@@ -280,7 +280,13 @@ Changing `.env` does not rotate passwords in an existing MySQL volume.
 A recognized saved model ID outranks `GEN_MODEL_ID`; unavailable requests fall
 back to the first config-present catalog entry. Authorized selection resets
 loaded text models and reloads lazily. Re-ingest all knowledge after changing
-the embedder, even when vector dimensions match. Preserve the old environment
+the embedding profile, including model artifacts, tokenizer/pooling,
+normalization or runtime dependencies. Equal dimensions cannot bypass profile
+checks. Migration 7–9 leaves legacy profiles NULL and search excludes them until
+explicit re-import with replacement enabled. Generator-only selection with
+unchanged embedding artifacts/configuration stays compatible. Keep model files
+immutable while loaded; full content hashing adds disk I/O at model load, not at
+each query. See [profile recovery/inspection](embedding-profiles.md). Preserve the old environment
 until the replacement passes dependency and application acceptance checks.
 
 Monitor service-manager logs, public error codes, authorized System Logs and

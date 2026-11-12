@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from core_support import OfflineCoreFixture
+from embedding_fixtures import with_profile
 
 
 def line(text, x=40, y=100, width=210, size=11, bold=False):
@@ -162,7 +163,7 @@ class LayoutIngestionTests(OfflineCoreFixture, unittest.TestCase):
         self.embed = Mock(side_effect=AssertionError('Preparation cannot embed'))
         self.connect = Mock(side_effect=AssertionError('Preparation cannot connect'))
         self.open_pdf = Mock()
-        self.service = self.module.IngestionService(open_pdf=self.open_pdf, embed=self.embed, connect=self.connect,
+        self.service = self.module.IngestionService(open_pdf=self.open_pdf, embed=with_profile(self.embed), connect=self.connect,
                                                    ocr=SimpleNamespace(enabled=False), audit=Mock())
 
     def document(self, pages):

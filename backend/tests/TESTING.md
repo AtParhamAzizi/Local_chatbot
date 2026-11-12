@@ -1,5 +1,29 @@
 # Offline unit-test foundation
 
+## Embedding identity and compatibility (F034)
+
+Run `python -B backend/tests/run_tests.py --pattern test_embedding_profiles.py -v`.
+Tests use explicit immutable profiles and same-dimension deterministic vectors
+against real SQLite publication/search SQL. They require profile isolation in
+Q&A, PDF and combined retrieval, reject all identity-field differences and
+unknown/malformed metadata before scoring, and check document/chunk agreement.
+Legacy vectors stay unchanged until explicit replacement. A profile switch
+between batches must fail before publication. Artifact-content changes,
+relocation, loader capture, in-flight selection and nullable/resumable migrations
+are covered without model imports/weights or database/network access.
+
+`embedding_fixtures.py` supplies profiles only to offline doubles. Production
+services require `EmbeddingBatch` and reject bare arrays; tests do not add a
+production compatibility fallback. Existing F025 memory/release checks and F033
+original-text/provenance regressions also exercise the new batch contract. The
+real-PyMuPDF layout evaluator uses explicitly profiled deterministic embeddings.
+
+Run `python -B backend/tests/run_mysql_tests.py --repeat 2` for real JSON metadata
+roundtrips, profile-isolated search/replacement and migrated legacy NULL profiles.
+It requires the disposable Docker database; local F034 execution was blocked by
+the unavailable Docker daemon. These checks certify compatibility enforcement,
+not real embedding quality. See [profile operations](../../docs/embedding-profiles.md).
+
 ## Shared Persian normalization (F033)
 
 Run `python -B backend/tests/run_tests.py --pattern test_persian_text.py -v`.

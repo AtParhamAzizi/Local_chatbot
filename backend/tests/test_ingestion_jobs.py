@@ -11,6 +11,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 from core_support import OfflineCoreFixture
+from embedding_fixtures import with_profile
 from job_support import JobDatabase
 
 
@@ -148,7 +149,7 @@ class IngestionJobTests(OfflineCoreFixture, unittest.TestCase):
 
         publish = Mock(side_effect=AssertionError('Canceled work must not publish'))
         self.jobs.processor = importlib.import_module('services.ingestion').IngestionService(
-            embed=embed, connect=publish, audit=Mock(), batch_size=1,
+            embed=with_profile(embed), connect=publish, audit=Mock(), batch_size=1,
         )
         job_id = self.submit(raw=b'[{"question":"one","answer":"a"},{"question":"two","answer":"b"}]')
         worker = self.worker()
@@ -378,7 +379,7 @@ class IngestionJobTests(OfflineCoreFixture, unittest.TestCase):
             if lost.is_set():
                 raise RuntimeError('Lease lost')
 
-        self.jobs.processor = ingestion.IngestionService(embed=embed, connect=publish, audit=Mock())
+        self.jobs.processor = ingestion.IngestionService(embed=with_profile(embed), connect=publish, audit=Mock())
         job_id = self.submit()
         self.jobs.process_one('worker', guard)
         self.assertEqual(self.jobs.get(job_id, 'json')['status'], 'failed')

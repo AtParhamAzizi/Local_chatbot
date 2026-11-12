@@ -163,7 +163,7 @@ class AdminAuthorizationTests(unittest.TestCase):
             'generator': module_double('generator', set_generator_model=cls.model_loader,
                                        get_generator=cls.model_loader, _gen_model=None, _gen_device=None,
                                        MODEL_ID='test', _gen_lock=threading.Lock()),
-            'interface': module_double('interface', embed_texts=cls.model_loader, embedding_dim=cls.model_loader,
+            'interface': module_double('interface', embed_batch=cls.model_loader, embed_texts=cls.model_loader, embedding_dim=cls.model_loader,
                                        set_embedding_model=cls.model_loader, get_embedder=cls.model_loader,
                                        ADMIN_DIR=str(BACKEND_DIR / 'admin'), ADMIN_PORT=8000,
                                        MAX_UPLOAD_BYTES=20 * 1024 * 1024, ALLOWED_EXT={'.json'},

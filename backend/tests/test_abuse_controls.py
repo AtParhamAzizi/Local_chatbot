@@ -141,7 +141,7 @@ class AbuseEndpointFixture:
         cls.forbidden_model = Mock(side_effect=AssertionError('Real model access is forbidden'))
         doubles = {
             'numpy': np,
-            'interface': module_double('interface', embed_texts=cls.forbidden_model,
+            'interface': module_double('interface', embed_batch=cls.forbidden_model, embed_texts=cls.forbidden_model,
                                        embedding_dim=cls.forbidden_model, set_embedding_model=cls.forbidden_model,
                                        BASE_DIR=str(BACKEND_DIR), ADMIN_DIR=str(BACKEND_DIR / 'admin'),
                                        ADMIN_PORT=8000, UI_PORT=5000, MIN_SCORE=0.35,

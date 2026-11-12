@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
+from embedding_fixtures import profile, with_profile
 
 from core_support import OfflineCoreFixture
 
@@ -140,7 +141,7 @@ class ScoringTests(OfflineCoreFixture, unittest.TestCase):
         ):
             with self.subTest(dimension=dimension, blob=blob):
                 self.assertIsNone(self.scoring._cosine_score(query, blob, dimension))
-        self.assertEqual(self.scoring._cosine_score(vector, vector.tobytes(), None), 1.0)
+        self.assertIsNone(self.scoring._cosine_score(vector, vector.tobytes(), None))
 
     def test_lexical_overlap_counts_unique_query_terms_not_document_length(self):
         self.assertEqual(self.scoring._lexical_overlap('alpha alpha beta', 'alpha other terms'), 0.5)
@@ -155,11 +156,12 @@ class ScoringTests(OfflineCoreFixture, unittest.TestCase):
     def test_qa_scores_sort_limit_skip_bad_dimensions_and_close_connection(self):
         query = np.array([1, 0], dtype=np.float32)
         rows = [dict(id=identifier, question='question', answer='answer',
-                     embedding=np.array(vector, dtype=np.float32).tobytes(), embedding_dim=len(vector))
+                     embedding=np.array(vector, dtype=np.float32).tobytes(), embedding_dim=len(vector),
+                     embedding_profile=profile(len(vector)).to_json())
                 for identifier, vector in ((1, [0, 1]), (2, [1, 0]), (3, [1, 0, 0]))]
         connection = self.connection(rows)
         with patch.object(self.scoring, 'get_conn', return_value=connection):
-            hits = self.scoring._search_qa(query, k=1)
+            hits = self.scoring._search_qa(query, k=1, profile=profile(2))
         self.assertEqual([hit['id'] for hit in hits], [2])
         self.assertEqual(hits[0]['source_type'], 'qa')
         self.assertEqual(hits[0]['score'], 1.0)
@@ -169,11 +171,12 @@ class ScoringTests(OfflineCoreFixture, unittest.TestCase):
         query = np.array([1, 0], dtype=np.float32)
         rows = [dict(id=identifier, document_id=7, filename='guide.pdf', chunk_index=identifier,
                      page_start=2, page_end=2, content=content,
-                     embedding=query.tobytes(), embedding_dim=2)
+                     embedding=query.tobytes(), embedding_dim=2, embedding_profile=profile(2).to_json(),
+                     document_embedding_profile=profile(2).to_json(), document_embedding_dim=2)
                 for identifier, content in ((1, 'unrelated'), (2, 'alpha beta'))]
         connection = self.connection(rows)
         with patch.object(self.scoring, 'get_conn', return_value=connection):
-            hits = self.scoring._search_pdf(query, k=2, query='alpha beta')
+            hits = self.scoring._search_pdf(query, k=2, query='alpha beta', profile=profile(2))
         self.assertEqual([hit['id'] for hit in hits], [2, 1])
         self.assertAlmostEqual(hits[0]['score'], 1.0)
         self.assertAlmostEqual(hits[1]['score'], 0.82)
@@ -189,7 +192,7 @@ class ScoringTests(OfflineCoreFixture, unittest.TestCase):
             connection.cursor.return_value.__enter__.return_value.execute.side_effect = RuntimeError('query failed')
             with self.subTest(search=search.__name__), patch.object(self.scoring, 'get_conn', return_value=connection):
                 with self.assertRaisesRegex(RuntimeError, 'query failed'):
-                    search(np.ones(2, dtype=np.float32))
+                    search(np.ones(2, dtype=np.float32), profile=profile(2))
                 connection.close.assert_called_once_with()
 
     def test_retrieval_uses_embedding_double_threshold_merge_and_top_k(self):
@@ -199,14 +202,14 @@ class ScoringTests(OfflineCoreFixture, unittest.TestCase):
         pdf = [{'id': 4, 'score': 0.7}, {'id': 5, 'score': 0.1}]
         search_qa = Mock(return_value=qa)
         search_pdf = Mock(return_value=pdf)
-        service = retrieval.RetrievalService(embed=embedder, search_qa=search_qa, search_pdf=search_pdf)
+        service = retrieval.RetrievalService(embed=with_profile(embedder), search_qa=search_qa, search_pdf=search_pdf)
         self.assertEqual([hit['id'] for hit in service.retrieve('question', limit=2)], [3, 4])
         self.assertEqual([hit['id'] for hit in service.retrieve('question', limit=6)], [3, 4, 1])
         self.assertEqual(embedder.call_args.args, (['question'],))
         np.testing.assert_array_equal(search_qa.call_args.args[0], [1, 0])
         self.assertEqual(search_qa.call_args.args[0].dtype, np.float32)
-        self.assertEqual(search_qa.call_args.kwargs, {'k': 5})
-        self.assertEqual(search_pdf.call_args.kwargs, {'k': 8, 'query': 'question'})
+        self.assertEqual(search_qa.call_args.kwargs, {'k': 5, 'profile': profile(2)})
+        self.assertEqual(search_pdf.call_args.kwargs, {'k': 8, 'query': 'question', 'profile': profile(2)})
 
 
 class PermissionUnitTests(OfflineCoreFixture, unittest.TestCase):

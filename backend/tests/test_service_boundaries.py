@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
+from embedding_fixtures import with_profile
 from flask import Flask, has_app_context, has_request_context
 from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
@@ -131,7 +132,7 @@ class IngestionServiceTests(ServiceFixture, unittest.TestCase):
         self.embed = Mock(side_effect=lambda texts: np.tile(np.array([0.25, 0.5], dtype=np.float32), (len(texts), 1)))
         self.open_pdf = Mock()
         self.service = self.module.IngestionService(
-            connect=self.connect, embed=self.embed, open_pdf=self.open_pdf,
+            connect=self.connect, embed=with_profile(self.embed), open_pdf=self.open_pdf,
             hash_question=lambda question: hashlib.sha256(question.strip().encode()).hexdigest(),
             hash_document=lambda raw: hashlib.sha256(raw).hexdigest(), audit=Mock(), clock=lambda: 100.0,
         )

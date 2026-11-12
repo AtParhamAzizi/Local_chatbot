@@ -2,6 +2,7 @@
 
 import os
 import threading
+from importlib.metadata import version
 from database import logger
 
 import numpy as np
@@ -10,7 +11,8 @@ from settings import ADMIN_PORT, UI_PORT
 from request_validation import MAX_JSON_UPLOAD_BYTES as MAX_UPLOAD_BYTES
 from transformers import AutoTokenizer, AutoModel
 from model_registry import get_active_model_id, get_model_definition
-from persian_text import normalize_persian
+from persian_text import NORMALIZATION_VERSION, normalize_persian
+from embedding_profile import EmbeddingBatch, EmbeddingProfile, local_artifact_revision, require_unchanged_artifacts
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -28,11 +30,12 @@ MAX_SEQ_LEN = 512                           # embedding input length
 _tokenizer = None
 _model     = None
 _dim       = None
-_lock      = threading.Lock()
+_profile   = None
+_lock      = threading.RLock()
 
 @logger.operation
 def set_embedding_model(model_id):
-    global MODEL_ID, MODEL_PATH, _tokenizer, _model, _dim
+    global MODEL_ID, MODEL_PATH, _tokenizer, _model, _dim, _profile
     definition = get_model_definition(model_id)
     with _lock:
         MODEL_ID = model_id
@@ -40,6 +43,7 @@ def set_embedding_model(model_id):
         _tokenizer = None
         _model = None
         _dim = None
+        _profile = None
     logger.logDrop(f'Embedding selection changed to {model_id}')
     return MODEL_PATH
 
@@ -64,7 +68,7 @@ def _model_hidden_size(model):
 
 @logger.operation
 def _load_model():
-    global _tokenizer, _model, _dim
+    global _tokenizer, _model, _dim, _profile
     _sync_model_selection()
     if _model is not None:
         return
@@ -73,13 +77,26 @@ def _load_model():
             return
         print(f'[model] loading from {MODEL_PATH} ...')
         logger.logDrop(f'Loading embedding model from {MODEL_PATH}')
-        _tokenizer = AutoTokenizer.from_pretrained(
+        revision, manifest = local_artifact_revision(MODEL_PATH)
+        tokenizer = AutoTokenizer.from_pretrained(
             MODEL_PATH, trust_remote_code=True, padding_side='left', local_files_only=True
         )
-        _model = AutoModel.from_pretrained(
+        model = AutoModel.from_pretrained(
             MODEL_PATH, trust_remote_code=True, dtype=torch.float32, local_files_only=True
         ).to('cpu').eval()
-        _dim = _model_hidden_size(_model)
+        dimension = _model_hidden_size(model)
+        require_unchanged_artifacts(manifest)
+        profile = EmbeddingProfile.create(
+            model_id=get_model_definition(MODEL_ID)['embedding_model_id'], revision=revision,
+            tokenizer={'class': type(tokenizer).__name__, 'padding_side': tokenizer.padding_side,
+                       'padding': True, 'truncation': True, 'max_length': MAX_SEQ_LEN,
+                       'add_special_tokens': True, 'artifact_revision': revision},
+            pooling={'method': 'last-non-padding-token-v1', 'l2_normalize': True},
+            normalization_version=NORMALIZATION_VERSION, dimension=dimension,
+            runtime={'implementation': 'hf-auto-float32-cpu-v1',
+                     **{name: version(name) for name in ('torch', 'transformers', 'tokenizers')}},
+        )
+        _tokenizer, _model, _dim, _profile = tokenizer, model, dimension, profile
         print(f'[model] ready  |  dim = {_dim}')
         logger.logDrop(f'Embedding model ready with dimension {_dim}')
 
@@ -101,13 +118,30 @@ def embedding_dim():
 @torch.no_grad()
 @logger.operation
 def embed_texts(texts):
+    """Array-only convenience API; indexed work must use embed_batch."""
+    return embed_batch(texts).vectors
 
-    tokenizer, model = get_embedder()
+
+@torch.no_grad()
+@logger.operation
+def embed_batch(texts):
+    # Selection/unload cannot relabel an in-flight batch. The immutable profile
+    # travels with these vectors even if another model is selected afterwards.
+    with _lock:
+        tokenizer, model = get_embedder()
+        vectors = _embed(texts, tokenizer, model)
+        if not isinstance(_profile, EmbeddingProfile):
+            raise ValueError('Loaded embedder has no compatibility profile')
+        return EmbeddingBatch(vectors, _profile)
+
+
+def _embed(texts, tokenizer, model):
     batch = tokenizer(
         [normalize_persian(value) for value in texts],
         padding=True,
         truncation=True,
         max_length=MAX_SEQ_LEN,
+        add_special_tokens=True,
         return_tensors='pt',
     )
     out = model(**batch)

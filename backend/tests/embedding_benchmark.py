@@ -67,7 +67,7 @@ def main():
     import torch
 
     from database import logger
-    from interface import embed_texts
+    from interface import embed_batch, embed_texts
     from services.ingestion import IngestionService
     from test_embedding_batches import RecordingDatabase
 
@@ -83,7 +83,7 @@ def main():
 
             def embed(texts):
                 calls.append(len(texts))
-                return embed_texts(texts)
+                return embed_batch(texts)
 
             def report(event):
                 progress.append(event)

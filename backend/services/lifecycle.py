@@ -59,6 +59,7 @@ class ModelLifecycleService:
             embedder._model = None
             embedder._tokenizer = None
             embedder._dim = None
+            embedder._profile = None
         self._free_memory()
 
     def load_voice(self):

@@ -41,11 +41,13 @@ class PdfDatabase:
                 CREATE TABLE pdf_documents (
                     id INTEGER PRIMARY KEY, filename TEXT, document_hash TEXT UNIQUE, file_size INTEGER,
                     page_count INTEGER, chunk_count INTEGER, embedded_chunk_count INTEGER,
-                    embedding_dim INTEGER, status TEXT
+                    embedding_dim INTEGER, status TEXT, embedding_profile TEXT
                 );
                 CREATE TABLE pdf_chunks (
                     id INTEGER PRIMARY KEY, document_id INTEGER, chunk_index INTEGER,
                     page_start INTEGER, page_end INTEGER, content TEXT, embedding BLOB, embedding_dim INTEGER,
+                    embedding_profile TEXT,
+                    FOREIGN KEY(document_id) REFERENCES pdf_documents(id) ON DELETE CASCADE,
                     UNIQUE(document_id, chunk_index)
                 );
             ''')
@@ -58,6 +60,7 @@ class PdfConnection:
     def __init__(self, filename):
         self.raw = sqlite3.connect(filename, isolation_level=None)
         self.raw.row_factory = sqlite3.Row
+        self.raw.execute('PRAGMA foreign_keys=ON')
 
     def cursor(self):
         return PdfCursor(self.raw.cursor())

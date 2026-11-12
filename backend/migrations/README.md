@@ -35,7 +35,7 @@ python -B backend/schema_migrations.py upgrade --backup C:/private-backups/chatb
 python -B backend/schema_migrations.py status
 ```
 
-Successful output includes `"schema_version": 6`, `"latest_version": 6`, empty
+Successful output includes `"schema_version": 9`, `"latest_version": 9`, empty
 `pending` and `incomplete` lists. An unversioned database reports version 0 without
 being modified. `status` is a read-only inspection command and exits successfully
 even when upgrades are pending; application startup requires the latest version
@@ -142,6 +142,17 @@ or tampered history fail both commands. No models are loaded by either command.
 | 4 | `004_chat_ownership.sql` | Adds missing nullable ASCII `owner_hash`; legacy messages remain unowned, existing ownership and feedback remain intact |
 | 5 | `005_ingestion_jobs.sql` | Creates durable ingestion job metadata and chunked upload payloads; existing knowledge is unchanged |
 | 6 | `006_ingestion_progress.sql` | Adds nullable durable stage/count progress; existing rows and knowledge stay intact |
+| 7 | `007_qa_embedding_profile.sql` | Adds nullable JSON embedding metadata to Q&A; old identities remain unknown |
+| 8 | `008_pdf_embedding_profile.sql` | Adds nullable JSON embedding metadata to PDF documents; originals/vectors remain intact |
+| 9 | `009_chunk_embedding_profile.sql` | Adds nullable JSON embedding metadata to PDF chunks; old identities remain unknown |
+
+For F034, stop writers and apply all versions through 9 before serving. Existing
+vectors have no provable embedding profile and remain NULL: migration does not
+label or regenerate them. They stay visible in document administration but are
+excluded from retrieval, even if their dimensions match. Explicitly re-import
+Q&A/PDF sources with replacement enabled to generate profiled vectors. Preserve
+original answers when refreshing Q&A vectors only. Do not manually copy the active
+profile into legacy rows. See [embedding compatibility](../../docs/embedding-profiles.md).
 
 For F027, stop/drain the F026 workers before upgrading through version 6. New
 publication and job completion commit atomically. Old started jobs without F027

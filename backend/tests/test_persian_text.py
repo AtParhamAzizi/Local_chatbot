@@ -18,6 +18,7 @@ from werkzeug.exceptions import BadRequest
 
 from core_support import BACKEND_DIR, OfflineCoreFixture, module_double
 from ocr_fixture import PdfDatabase
+from embedding_fixtures import with_profile
 
 
 VARIANTS = (
@@ -66,7 +67,7 @@ class PersianTextTests(OfflineCoreFixture, unittest.TestCase):
     def test_empty_format_only_queries_do_no_model_or_database_work(self):
         retrieval = importlib.import_module('services.retrieval')
         embed, qa, pdf = Mock(), Mock(), Mock()
-        service = retrieval.RetrievalService(embed=embed, search_qa=qa, search_pdf=pdf)
+        service = retrieval.RetrievalService(embed=with_profile(embed), search_qa=qa, search_pdf=pdf)
         for value in ('', '\u200c\u200d\ufeff', '\u200e\u200f\u0640\u064b'):
             self.assertEqual(service.retrieve(value), [])
         for adapter in (embed, qa, pdf):
@@ -96,7 +97,7 @@ class KnowledgeDatabase(PdfDatabase):
         with closing(sqlite3.connect(self.filename)) as connection:
             connection.execute('''CREATE TABLE qa_documents (
                 id INTEGER PRIMARY KEY, question TEXT, answer TEXT, question_hash TEXT UNIQUE,
-                embedding BLOB, embedding_dim INTEGER)''')
+                embedding BLOB, embedding_dim INTEGER, embedding_profile TEXT)''')
 
     def rows(self, table='qa_documents'):
         assert table in {'qa_documents', 'pdf_chunks', 'pdf_documents'}
@@ -122,7 +123,7 @@ class NormalizationPipelineTests(OfflineCoreFixture, unittest.TestCase):
         self.embed = Mock(side_effect=self.vectors)
         self.open_pdf = Mock()
         self.service = ingestion.IngestionService(
-            connect=self.knowledge.connect, embed=self.embed, open_pdf=self.open_pdf,
+            connect=self.knowledge.connect, embed=with_profile(self.embed), open_pdf=self.open_pdf,
             hash_question=self.database.hash_question, hash_document=self.database.sha256_bytes,
             audit=Mock(), ocr=SimpleNamespace(enabled=False), batch_size=2)
 
@@ -245,7 +246,7 @@ class NormalizationPipelineTests(OfflineCoreFixture, unittest.TestCase):
         self.assertEqual((stored_pdf['content'], stored_pdf['page_start'], stored_pdf['page_end']), (first, 3, 3))
         self.assertEqual(self.knowledge.rows('pdf_documents')[0]['document_hash'], hashlib.sha256(b'original pdf bytes').hexdigest())
         retrieval = importlib.import_module('services.retrieval').RetrievalService(
-            embed=self.embed, search_qa=self.scoring._search_qa, search_pdf=self.scoring._search_pdf)
+            embed=with_profile(self.embed), search_qa=self.scoring._search_qa, search_pdf=self.scoring._search_pdf)
         self.embed.reset_mock()
         variants = (first, 'ثبت نام کاربری ۱۲۳؟', 'ثبت\u200bنام\tكاربري 123؟')
         with patch.object(self.scoring, 'get_conn', self.knowledge.connect):
@@ -262,7 +263,7 @@ class NormalizationPipelineTests(OfflineCoreFixture, unittest.TestCase):
         query = 'ثبت\u200cنام كاربري ١٢٣؟'
         self.service.ingest_qa(self.raw(query))
         retrieval = importlib.import_module('services.retrieval').RetrievalService(
-            embed=self.embed, search_qa=self.scoring._search_qa, search_pdf=lambda *args, **kwargs: [])
+            embed=with_profile(self.embed), search_qa=self.scoring._search_qa, search_pdf=lambda *args, **kwargs: [])
         user = importlib.import_module('user')
         application = importlib.import_module('application')
         app = application.create_ui_app(retrieval_service=retrieval)

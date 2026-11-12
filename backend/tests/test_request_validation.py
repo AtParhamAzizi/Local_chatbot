@@ -4,6 +4,7 @@ import importlib
 import io
 import json
 import unittest
+from embedding_fixtures import profiled
 
 import numpy as np
 from unittest.mock import MagicMock, Mock, patch
@@ -286,7 +287,7 @@ class RequestValidationTests(AbuseEndpointFixture, unittest.TestCase):
         cursor.lastrowid = 7
         vectors = np.array([[0.1, 0.2]], dtype=np.float32)
         with patch.object(self.database, 'get_conn', return_value=connection), \
-                patch.object(self.ingestion, 'embed', return_value=vectors) as embed:
+                patch.object(self.ingestion, 'embed', return_value=profiled(vectors)) as embed:
             response = self.upload(json.dumps([{'question': '  question  ', 'answer': 'answer'}] * 2).encode())
         self.assertEqual(response.status_code, 200, response.json)
         self.assertEqual(response.json['inserted'], 1)
@@ -304,7 +305,7 @@ class RequestValidationTests(AbuseEndpointFixture, unittest.TestCase):
         document = Mock(page_count=1)
         document.load_page.return_value.get_text.return_value = 'A short PDF paragraph.'
         with patch.object(self.database, 'get_conn', return_value=connection), \
-                patch.object(self.ingestion, 'embed', return_value=vectors) as embed:
+                patch.object(self.ingestion, 'embed', return_value=profiled(vectors)) as embed:
             response = self.pdf(document)
         self.assertEqual(response.status_code, 200, response.json)
         self.assertEqual(response.json['document_id'], 8)

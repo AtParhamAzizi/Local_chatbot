@@ -11,6 +11,11 @@ def embed_texts(texts):
     return embed(texts)
 
 
+def embed_batch(texts):
+    from interface import embed_batch as embed
+    return embed(texts)
+
+
 def embedding_dim():
     from interface import embedding_dim as dimension
     return dimension()
