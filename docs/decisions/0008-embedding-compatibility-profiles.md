@@ -1,5 +1,8 @@
 # 0008: Embedding profiles travel with vectors and gate retrieval
 
+Extended by [0009](0009-resumable-embedding-indexes.md), which adds automatic
+shadow-index rebuilding and index rollback while retaining the identity rules.
+
 Date: 2026-11-11
 
 Status: Implemented

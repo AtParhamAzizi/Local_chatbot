@@ -290,13 +290,14 @@ commands, including administrator setup, logs, and shutdown.
    Qwen3-4B). If none is available, the requested/default ID is retained and
    startup model loading fails. Catalog availability checks only `config.json`
    in both directories; it does not verify complete weights or sufficient memory.
-   A successful selection persists the ID and clears the loaded text models;
-   the next use loads them. No re-embedding happens automatically. Re-ingest
-   knowledge with replacement enabled when changing the embedding profile.
-   Search rejects incompatible profiles even when dimensions match. Migrations
-   7–9 retain old vectors with unknown profiles; refresh them explicitly before
-   expecting them in chat results. Qwen3-4B defaults to `backend/modelgen/` and
-   shares the embedder. See [embedding identity and upgrades](docs/embedding-profiles.md).
+   A successful selection persists the ID and resets the generator for lazy
+   loading. Embedding changes build a separate index in the background while
+   the current compatible model/index continue serving. Validated cutover and
+   rollback preserve exact profile isolation, including equal-dimension changes.
+   Schema version 10 adds durable checkpoints; legacy source text is freshly
+   embedded without rewriting original knowledge. Keep old model snapshots
+   immutable in separate directories. Qwen3-4B defaults to `backend/modelgen/`
+   and shares the embedder. See [index status, retry, rollback and upgrade limits](docs/embedding-index-migration.md).
 
 5. The Flask user app serves its assets directly from `frontend/`. No copying is required; changes to the chat interface and feedback controls are served from that directory.
 

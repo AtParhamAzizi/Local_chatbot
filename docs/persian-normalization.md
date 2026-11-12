@@ -62,14 +62,13 @@ replacement updates only the selected row's answer/vector, preserving its origin
 question, hash and ID. It does not merge or delete other aliases. The original
 publication transaction and unique constraint handle new writes.
 
-F033 itself needs no schema migration; F034 profiles require schema version 9.
-Existing embeddings remain unchanged; explicitly
-replace/re-import Q&A and PDFs to regenerate them with the new preprocessing.
-For Q&A, the existing replacement option supplies the answer to retain/update;
-keep it unchanged when refreshing vectors only. This feature does not implement
-automatic reindexing. [F034 embedding profiles](embedding-profiles.md) now record
-the normalization version and exclude unknown/incompatible vectors, including
-legacy embeddings, until explicitly refreshed. See
+F033 itself needs no schema migration; F034 added profiles in versions 7–9.
+Serving now requires version 10 for [resumable index rebuilding](embedding-index-migration.md).
+Original embedding columns remain unchanged while F035 freshly embeds source
+text into separate profile-keyed generations. Replacement imports also remain
+available; keep the Q&A answer unchanged when refreshing only a base vector.
+[F034 embedding profiles](embedding-profiles.md) record the normalization version
+and exclude unknown/incompatible vectors until their source is freshly embedded. See
 [ADR 0007](decisions/0007-shared-persian-normalization.md).
 
 ## Validation

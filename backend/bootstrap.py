@@ -13,7 +13,9 @@ def initialize_database():
 
 def initialize_models():
     from services.lifecycle import model_lifecycle
+    from services.index_migration import prepare_index_migration
 
+    prepare_index_migration()
     model_lifecycle.warmup()
 
 
@@ -25,9 +27,11 @@ def initialize_runtime(ui_app, admin_app):
     from database import logger
     from retention import start_retention_worker
     from ingestion_worker import start_ingestion_worker
+    from services.index_migration import start_index_migration_worker
 
     _load_state()
     initialize_models()
+    start_index_migration_worker(ui_app, admin_app)
     start_ingestion_worker(ui_app, admin_app)
     start_retention_worker(ui_app, admin_app)
     logger.logDrop('Database schema verified and local models initialized')

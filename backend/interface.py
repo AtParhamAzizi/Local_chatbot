@@ -2,6 +2,7 @@
 
 import os
 import threading
+from dataclasses import dataclass, field
 from importlib.metadata import version
 from database import logger
 
@@ -75,30 +76,50 @@ def _load_model():
     with _lock:
         if _model is not None:
             return
-        print(f'[model] loading from {MODEL_PATH} ...')
-        logger.logDrop(f'Loading embedding model from {MODEL_PATH}')
-        revision, manifest = local_artifact_revision(MODEL_PATH)
-        tokenizer = AutoTokenizer.from_pretrained(
-            MODEL_PATH, trust_remote_code=True, padding_side='left', local_files_only=True
-        )
-        model = AutoModel.from_pretrained(
-            MODEL_PATH, trust_remote_code=True, dtype=torch.float32, local_files_only=True
-        ).to('cpu').eval()
-        dimension = _model_hidden_size(model)
-        require_unchanged_artifacts(manifest)
-        profile = EmbeddingProfile.create(
-            model_id=get_model_definition(MODEL_ID)['embedding_model_id'], revision=revision,
-            tokenizer={'class': type(tokenizer).__name__, 'padding_side': tokenizer.padding_side,
-                       'padding': True, 'truncation': True, 'max_length': MAX_SEQ_LEN,
-                       'add_special_tokens': True, 'artifact_revision': revision},
-            pooling={'method': 'last-non-padding-token-v1', 'l2_normalize': True},
-            normalization_version=NORMALIZATION_VERSION, dimension=dimension,
-            runtime={'implementation': 'hf-auto-float32-cpu-v1',
-                     **{name: version(name) for name in ('torch', 'transformers', 'tokenizers')}},
-        )
-        _tokenizer, _model, _dim, _profile = tokenizer, model, dimension, profile
+        runtime = load_embedding_runtime(MODEL_ID, MODEL_PATH)
+        _tokenizer, _model, _dim, _profile = runtime.tokenizer, runtime.model, runtime.profile.dimension, runtime.profile
         print(f'[model] ready  |  dim = {_dim}')
         logger.logDrop(f'Embedding model ready with dimension {_dim}')
+
+
+@dataclass
+class EmbeddingRuntime:
+    model_id: str
+    path: str
+    tokenizer: object
+    model: object
+    profile: EmbeddingProfile
+    lock: object = field(default_factory=threading.RLock)
+
+    @torch.no_grad()
+    def embed(self, texts):
+        with self.lock:
+            return EmbeddingBatch(_embed(texts, self.tokenizer, self.model), self.profile)
+
+
+def load_embedding_runtime(model_id, path=None):
+    """Load a candidate independently, without unloading the serving model."""
+    path = os.path.abspath(path or get_model_definition(model_id)['embedding_path'])
+    revision, manifest = local_artifact_revision(path)
+    tokenizer = AutoTokenizer.from_pretrained(
+        path, trust_remote_code=True, padding_side='left', local_files_only=True
+    )
+    model = AutoModel.from_pretrained(
+        path, trust_remote_code=True, dtype=torch.float32, local_files_only=True
+    ).to('cpu').eval()
+    dimension = _model_hidden_size(model)
+    require_unchanged_artifacts(manifest)
+    profile = EmbeddingProfile.create(
+        model_id=get_model_definition(model_id)['embedding_model_id'], revision=revision,
+        tokenizer={'class': type(tokenizer).__name__, 'padding_side': tokenizer.padding_side,
+                   'padding': True, 'truncation': True, 'max_length': MAX_SEQ_LEN,
+                   'add_special_tokens': True, 'artifact_revision': revision},
+        pooling={'method': 'last-non-padding-token-v1', 'l2_normalize': True},
+        normalization_version=NORMALIZATION_VERSION, dimension=dimension,
+        runtime={'implementation': 'hf-auto-float32-cpu-v1',
+                 **{name: version(name) for name in ('torch', 'transformers', 'tokenizers')}},
+    )
+    return EmbeddingRuntime(model_id, path, tokenizer, model, profile)
 
 
 def get_embedder():

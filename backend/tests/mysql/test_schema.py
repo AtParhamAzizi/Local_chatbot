@@ -54,7 +54,8 @@ class SchemaUpgradeMySQLTests(unittest.TestCase):
             cursor.execute('SELECT DATABASE() AS name')
             if cursor.fetchone()['name'] != self.target.name:
                 raise AssertionError('Refusing to clear an unexpected schema')
-            for table in ('ingestion_job_payloads', 'ingestion_jobs', *TABLES):
+            for table in ('embedding_index_vectors', 'embedding_index_state', 'embedding_indexes',
+                          'ingestion_job_payloads', 'ingestion_jobs', *TABLES):
                 cursor.execute(f'DROP TABLE IF EXISTS `{table}`')
 
     def legacy_database(self):
@@ -90,7 +91,7 @@ class SchemaUpgradeMySQLTests(unittest.TestCase):
         before = self.snapshot()
         self.assertEqual(self.migrations.schema_status(connect=self.connect)['schema_version'], 0)
         report = self.migrations.upgrade(backup=self.backup, connect=self.connect)
-        self.assertEqual(report['schema_version'], 9)
+        self.assertEqual(report['schema_version'], 10)
         self.assertEqual(self.migrations.require_current_schema(connect=self.connect), report)
         after = self.snapshot()
         self.assert_preserved(before, after)
@@ -101,7 +102,7 @@ class SchemaUpgradeMySQLTests(unittest.TestCase):
         with self.connect() as connection, connection.cursor() as cursor:
             cursor.execute('SELECT * FROM schema_migrations ORDER BY version')
             history = cursor.fetchall()
-            self.assertEqual([row['version'] for row in history], [1, 2, 3, 4, 5, 6, 7, 8, 9])
+            self.assertEqual([row['version'] for row in history], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
             self.assertTrue(all(row['status'] == 'applied' and row['applied_at'] for row in history))
             self.assertTrue(all(row['backup_sha256'] == hashlib.sha256(self.backup.read_bytes()).hexdigest() for row in history))
             cursor.execute("SHOW COLUMNS FROM adminlogger LIKE 'message'")
@@ -158,13 +159,13 @@ class SchemaUpgradeMySQLTests(unittest.TestCase):
         with self.assertRaises(self.migrations.MigrationError):
             self.migrations.upgrade(backup=self.backup, connect=self.connect)
         report = self.migrations.upgrade(backup=self.backup, resume=True, connect=self.connect)
-        self.assertEqual(report['schema_version'], 9)
+        self.assertEqual(report['schema_version'], 10)
         self.assert_preserved(before, self.snapshot())
 
     def test_fresh_database_migrates_without_a_backup(self):
         self.assertEqual(self.migrations.schema_status(connect=self.connect)['schema_version'], 0)
         report = self.migrations.upgrade(connect=self.connect)
-        self.assertEqual(report['schema_version'], 9)
+        self.assertEqual(report['schema_version'], 10)
         self.assertTrue(all(not rows for rows in self.snapshot(sessions=True).values()))
 
 

@@ -19,7 +19,7 @@ def admin_set_model():
         return jsonify({
             'ok': True,
             'active_model': active_model,
-            'message': 'Model selection updated. New requests will use the selected model.',
+            'message': 'Model selection updated. Embedding changes rebuild in the background before activation.',
         })
     except FileNotFoundError:
         return jsonify({'error': 'Selected model files are unavailable.'}), 409

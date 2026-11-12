@@ -35,12 +35,24 @@ def _lexical_overlap(query, content):
 
 
 @logger.operation
-def _search_qa(qvec: np.ndarray, k: int = 5, *, profile=None):
+def _search_qa(qvec: np.ndarray, k: int = 5, *, profile=None, index_id=None):
     _require_query_profile(qvec, profile)
+    if index_id is not None and index_id != profile.identity:
+        raise ValueError('Index identity disagrees with query profile')
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("""
+            if index_id is not None:
+                cur.execute("""
+                    SELECT s.id, s.question, s.answer, s.embedding, s.embedding_dim, s.embedding_profile,
+                           v.embedding AS migrated_embedding
+                    FROM qa_documents s LEFT JOIN embedding_index_vectors v
+                      ON v.index_id=%s AND v.source_kind='qa' AND v.source_id=s.id
+                     AND v.source_hash=SHA2(s.question, 256)
+                    WHERE s.embedding IS NOT NULL OR v.embedding IS NOT NULL
+                """, (index_id,))
+            else:
+                cur.execute("""
                 SELECT id, question, answer, embedding, embedding_dim, embedding_profile
                 FROM qa_documents
                 WHERE embedding IS NOT NULL
@@ -51,6 +63,9 @@ def _search_qa(qvec: np.ndarray, k: int = 5, *, profile=None):
 
     results = []
     for r in rows:
+        if index_id is not None and r.get('migrated_embedding') is not None:
+            r = dict(r, embedding=r['migrated_embedding'], embedding_dim=profile.dimension,
+                     embedding_profile=profile.to_json())
         if not compatible_profile(r.get('embedding_profile'), profile) or r['embedding_dim'] != profile.dimension:
             continue
         score = _cosine_score(qvec, r["embedding"], r["embedding_dim"])
@@ -73,12 +88,27 @@ def _search_qa(qvec: np.ndarray, k: int = 5, *, profile=None):
 
 
 @logger.operation
-def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None):
+def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None, index_id=None):
     _require_query_profile(qvec, profile)
+    if index_id is not None and index_id != profile.identity:
+        raise ValueError('Index identity disagrees with query profile')
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("""
+            if index_id is not None:
+                cur.execute("""
+                    SELECT c.id, c.document_id, d.filename, c.chunk_index, c.page_start, c.page_end,
+                           c.content, c.embedding, c.embedding_dim, c.embedding_profile,
+                           d.embedding_profile AS document_embedding_profile,
+                           d.embedding_dim AS document_embedding_dim, v.embedding AS migrated_embedding
+                    FROM pdf_chunks c JOIN pdf_documents d ON d.id=c.document_id
+                    LEFT JOIN embedding_index_vectors v
+                      ON v.index_id=%s AND v.source_kind='pdf' AND v.source_id=c.id
+                     AND v.source_hash=SHA2(c.content, 256)
+                    WHERE (c.embedding IS NOT NULL OR v.embedding IS NOT NULL) AND d.status='completed'
+                """, (index_id,))
+            else:
+                cur.execute("""
                 SELECT c.id,
                     c.document_id,
                     d.filename,
@@ -102,6 +132,10 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None)
 
     results = []
     for r in rows:
+        if index_id is not None and r.get('migrated_embedding') is not None:
+            r = dict(r, embedding=r['migrated_embedding'], embedding_dim=profile.dimension,
+                     embedding_profile=profile.to_json(), document_embedding_profile=profile.to_json(),
+                     document_embedding_dim=profile.dimension)
         if (not compatible_profile(r.get('embedding_profile'), profile)
                 or not compatible_profile(r.get('document_embedding_profile'), profile)
                 or r['embedding_dim'] != profile.dimension or r.get('document_embedding_dim') != profile.dimension):

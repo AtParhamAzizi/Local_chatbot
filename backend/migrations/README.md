@@ -145,12 +145,19 @@ or tampered history fail both commands. No models are loaded by either command.
 | 7 | `007_qa_embedding_profile.sql` | Adds nullable JSON embedding metadata to Q&A; old identities remain unknown |
 | 8 | `008_pdf_embedding_profile.sql` | Adds nullable JSON embedding metadata to PDF documents; originals/vectors remain intact |
 | 9 | `009_chunk_embedding_profile.sql` | Adds nullable JSON embedding metadata to PDF chunks; old identities remain unknown |
+| 10 | `010_embedding_indexes.sql` | Creates durable shadow generations/vectors and serving/request/rollback state; originals and legacy vectors remain unchanged |
+
+For F035, upgrade through **10** before serving. The background builder freshly
+embeds source text into resumable generations and validates before switching;
+it never guesses legacy vector identities. Preserve immutable old model paths
+for serving and rollback. See [index migration operations](../../docs/embedding-index-migration.md).
 
 For F034, stop writers and apply all versions through 9 before serving. Existing
 vectors have no provable embedding profile and remain NULL: migration does not
 label or regenerate them. They stay visible in document administration but are
-excluded from retrieval, even if their dimensions match. Explicitly re-import
-Q&A/PDF sources with replacement enabled to generate profiled vectors. Preserve
+excluded from retrieval, even if their dimensions match. F035 freshly embeds
+their source text into separate shadow vectors; explicit replacement imports
+also remain available to generate profiled base vectors. Preserve
 original answers when refreshing Q&A vectors only. Do not manually copy the active
 profile into legacy rows. See [embedding compatibility](../../docs/embedding-profiles.md).
 

@@ -1,5 +1,20 @@
 # Offline unit-test foundation
 
+## Resumable embedding-index migration (F035)
+
+Run `python -B backend/tests/run_tests.py --pattern test_index_migration.py --repeat 2`.
+The production index store/orchestration/retrieval run against translated SQLite
+SQL with explicit model doubles. Cases cover equal/different dimensions, live
+queries through cutover and rollback, committed-batch recovery after failure or
+process death, changed/deleted/new sources, completed-PDF filtering, corrupt
+vectors, obsolete requests/uploads, legacy preservation and startup restoration.
+
+The disposable MySQL runner repeats these scenarios and tests nonblocking reads
+during validation, upload serialization and transactional cutover rollback.
+Use `python -B backend/tests/run_mysql_tests.py --repeat 2` with Docker running.
+No configured deployment DB or real model weights are used. See
+[operations and resource limits](../../docs/embedding-index-migration.md).
+
 ## Embedding identity and compatibility (F034)
 
 Run `python -B backend/tests/run_tests.py --pattern test_embedding_profiles.py -v`.

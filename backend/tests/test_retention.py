@@ -303,10 +303,14 @@ class RetentionTests(unittest.TestCase):
         modules['schema_migrations'].MigrationError = RuntimeError
         expected_apps = (Flask('startup_user'), Flask('startup_admin'))
         with patch.dict(sys.modules, modules), patch.dict('os.environ', {'APP_ENV': 'test'}, clear=True), \
+                patch('services.index_migration.prepare_index_migration') as prepare_index, \
+                patch('services.index_migration.start_index_migration_worker') as start_index, \
                 patch('ingestion_worker.start_ingestion_worker') as start_ingestion, \
                 patch.object(self.retention, 'start_retention_worker') as start, \
                 redirect_stdout(io.StringIO()):
             calls.attach_mock(start, 'start_retention_worker')
+            calls.attach_mock(prepare_index, 'prepare_index_migration')
+            calls.attach_mock(start_index, 'start_index_migration_worker')
             calls.attach_mock(start_ingestion, 'start_ingestion_worker')
             main = importlib.import_module('main')
             with patch.object(main, 'validate_settings'), patch.object(main, 'bind_host', return_value='127.0.0.1'), \
@@ -314,7 +318,8 @@ class RetentionTests(unittest.TestCase):
                 apps = main.create_serving_apps()
         self.assertEqual(apps, expected_apps)
         self.assertEqual([call[0] for call in calls.mock_calls], [
-            'require_current_schema', '_load_state', 'get_embedder', 'get_generator',
+            'require_current_schema', '_load_state', 'prepare_index_migration', 'get_embedder', 'get_generator',
+            'start_index_migration_worker',
             'start_ingestion_worker',
             'start_retention_worker',
         ])

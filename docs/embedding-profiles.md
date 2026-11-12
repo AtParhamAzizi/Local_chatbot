@@ -36,8 +36,8 @@ the whole snapshot digest, conservatively invalidating it on model changes too.
 Hashing streams files once at model load and adds startup disk I/O proportional
 to snapshot size; profiles remain cached with the loaded model. The loader checks
 the runtime file inventory and size/timestamps before publishing loaded resources.
-Keep model artifacts immutable while loading/loaded; replace them with the
-application stopped or unload/reload explicitly. This is compatibility metadata,
+Keep model artifacts immutable while loading/loaded; use a separate directory
+for a candidate and retain serving/previous snapshots. This is compatibility metadata,
 not a signature or protection against an administrator rewriting files/metadata.
 Exact runtime-version matching is intentionally conservative: even a dependency
 upgrade that would produce equivalent vectors can require re-embedding.
@@ -62,34 +62,38 @@ staged vectors. Retrieval passes its query batch's own profile to both searches,
 even if a different model becomes active while that request is running.
 
 Selecting a different generator with the same embedding artifacts and processing
-configuration preserves compatibility. Selecting/replacing an embedder does not
-automatically reindex knowledge: profiles can coexist in storage, but a query
-only scores its matching subset. There is no lexical fallback for incompatible
-PDF vectors. With no compatible hits the normal no-hit reply is returned.
+configuration preserves compatibility. F035 queues changed embedding selections
+for background re-embedding into a separate generation. The current compatible
+runtime/index remain available until full validation and atomic cutover. A query
+only scores its captured profile, including when cutover happens during the
+request. There is no lexical fallback for incompatible PDF vectors. See
+[index operations and runtime-upgrade limits](embedding-index-migration.md).
 
 ## Upgrade and legacy knowledge
 
 Migrations 7–9 add nullable JSON columns to Q&A, PDF documents and PDF chunks.
 They preserve all rows, originals, vectors and timestamps, and never guess a
-profile for existing vectors. Serving requires schema version 9. Follow the
+profile for existing vectors. Serving now requires schema version 10, which adds
+shadow generations, durable checkpoints and active/previous/request state. Follow the
 [migration guide](../backend/migrations/README.md): stop writers, prepare and
 restore-test a backup, then run the explicit migration CLI. Startup never adds
 columns or backfills identities.
 
-Legacy rows remain visible to authorized document administration but are excluded
-from retrieval until explicitly refreshed. Use the existing JSON/PDF import
-flows with **replacement enabled**, after reviewing preflight. Keep the original
-Q&A answer when refreshing only its vector. A normal duplicate import skips Q&A
-and rejects duplicate PDFs; it cannot certify old embeddings. Historical Q&A
-aliases remain stored; replacement refreshes the same selected alias described
-in the [normalization policy](persian-normalization.md).
+Legacy rows remain visible to authorized document administration. Unknown
+vectors stay excluded, while F035 freshly embeds their original source text into
+the serving generation in the background. Original text, answers, IDs, profiles
+and bytes stay untouched. Existing replacement-import flows remain available;
+normal duplicate imports still skip Q&A/reject duplicate PDFs and cannot certify
+old vectors. Historical Q&A aliases remain stored as described in the
+[normalization policy](persian-normalization.md).
 
 To inspect stored identities without reading BLOBs, an authorized database
 operator can query `SELECT id, embedding_dim, embedding_profile FROM qa_documents`
 (or `pdf_documents`/`pdf_chunks`). Do not label unknown vectors by copying the
-current profile into their columns. Re-embed the source. There is no destructive
-automatic migration, cross-profile conversion or downgrade. Rollback uses the
-matching older release and a clean restored database, as in the migration guide.
+current profile into their columns. Re-embed the source. F035 status/rollback
+uses `python -B backend/reembed.py status|rollback`; the previous generation first
+catches up with current sources and validates before switching. Schema/release
+downgrade still requires the matching older release and a clean restored database.
 
 ## Verification
 

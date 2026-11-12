@@ -182,7 +182,7 @@ class EmbeddingProfileTests(OfflineCoreFixture, unittest.TestCase):
 
     def test_profile_migrations_are_additive_nullable_and_resumable(self):
         migrations = importlib.import_module('schema_migrations')
-        for migration, table in zip(migrations.MIGRATIONS[-3:], ('qa_documents', 'pdf_documents', 'pdf_chunks'), strict=True):
+        for migration, table in zip(migrations.MIGRATIONS[6:9], ('qa_documents', 'pdf_documents', 'pdf_chunks'), strict=True):
             cursor = Mock()
             cursor.fetchone.return_value = None
             migration.apply(cursor)

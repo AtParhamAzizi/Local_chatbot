@@ -215,6 +215,8 @@ class IngestionService:
                 publication_guard()
             result = {'received': received, 'errors': []}
             with self._publication(result, publication) as conn:
+                if self.embed is adapters.embed_batch:
+                    adapters.guard_embedding_publication(conn, profile)
                 inserted, updated, skipped = self._persist_qa(rows, vectors, profile, replace, conn, progress, publication_guard)
                 result.update(inserted=inserted, updated=updated, skipped=skipped,
                               embedded=inserted + updated, duration_sec=round(self.clock() - started, 2))
@@ -463,6 +465,8 @@ class IngestionService:
                     {key: value for key, value in page.items() if key != 'text_sample'} for page in extraction['pages']
                 ]}
             with self._pdf_publication(result, publication) as conn:
+                if self.embed is adapters.embed_batch:
+                    adapters.guard_embedding_publication(conn, profile)
                 result['document_id'] = self._persist_pdf(
                     raw, filename, document_hash, pdf_page_count, chunks, existing, replace, vectors, profile,
                     conn, progress, publication_guard,

@@ -60,6 +60,7 @@ backend/
   searchForAnswer.py  Vector search over qa_documents / pdf_chunks + build_context
   persian_text.py     Shared fa-v1 normalization copies for embeddings, lexical terms and Q&A keys
   embedding_profile.py Immutable embedding metadata, canonical identities and profiled batch validation
+  reembed.py           Operator index status/retry/rollback CLI (no model loading)
   model_registry.py   Model catalog + persisted active-model selection
   voice.py            Whisper STT on the user app (/voice/health, /voice/audio-worklet.js, WS /voice-stream)
   speech.py           Public /tts/health and /tts/synthesize; lazy private worker and bounded synthesis
@@ -122,8 +123,8 @@ The runtime initialization order is:
 
 1. `bootstrap.initialize_database()` calls `schema_migrations.require_current_schema()` using read-only metadata/ledger queries. Pending, incomplete, unknown or checksum-mismatched migrations stop startup before any model/worker/server work. No schema creation, ALTER or audit writes occur in this check. Local startup and the production worker preserve the trusted `MigrationError` guidance (including the backup requirement); arbitrary exception details remain suppressed.
 2. `controller._load_state()` loads persisted feature toggles after the schema check.
-3. `bootstrap.initialize_models()` calls the shared lifecycle service's `warmup()`: `get_embedder()` (interface.py, CPU), then `get_generator()` (generator.py, CUDA if available).
-4. `start_ingestion_worker(ui_app, admin_app)` starts a shared ingestion supervisor after schema/model validation. One database-elected pool processes durable jobs with bounded concurrency; standby pools retry election. No jobs run on import or factory assembly.
+3. `bootstrap.initialize_models()` prepares index management, restores the database's serving embedding runtime (CPU), then calls lifecycle `warmup()` for that runtime and `get_generator()` (CUDA if available). Candidate embedding loads are deferred to the background worker; immutable retained artifacts must reproduce the saved serving profile.
+4. `start_index_migration_worker(ui_app, admin_app)` starts the shared, database-elected resumable shadow-index builder. `start_ingestion_worker(ui_app, admin_app)` then starts the ingestion supervisor. No workers run on import or factory assembly.
 5. `start_retention_worker(ui_app, admin_app)` starts one shared privacy-cleanup daemon after schema/model validation; its first sweep runs immediately, then hourly by default. No cleanup starts on import.
 6. Return both apps to the selected runtime. Development starts user serving in a daemon thread and admin serving on the main thread. Production serves both through the worker's shared thread pool. Both profiles default to `APP_HOST=127.0.0.1`; LAN exposure requires explicitly setting an interface address or wildcard. Debugger and reloader are disabled.
 
@@ -155,11 +156,14 @@ an already-prepared app; it does not implicitly start retention or initialize se
 | `schema_migrations` | version PRIMARY KEY, name, checksum, status, started_at, applied_at, backup_path, backup_sha256 | Ordered DDL ledger; never modified by startup or request handlers |
 | `ingestion_jobs` | job_id PRIMARY KEY, kind, filename, status, worker_id, progress_json, result_json, error_code, created_at, started_at, finished_at | Durable lifecycle, attempt fencing and stage/count progress; terminal metadata retained |
 | `ingestion_job_payloads` | job_id FK, chunk_index, content MEDIUMBLOB; PRIMARY KEY(job_id, chunk_index) | Transactionally submitted bytes in 1 MiB chunks; successful publication deletes bytes, failed/canceled checkpoints expire after 24 hours |
+| `embedding_indexes` | index_id PRIMARY KEY, profile JSON, model_id, model_path, status, embedded_count, error_code, validated_at | Profile identities and immutable snapshot locators; prior generations retained |
+| `embedding_index_vectors` | PRIMARY KEY(index_id, source_kind, source_id), source_hash, embedding | Durable bounded-batch checkpoints; live source hash must match before retrieval |
+| `embedding_index_state` | singleton, active_id, previous_id, requested_id/model/path, request_token, configured_model/path, error_code | Atomic serving/rollback pointers and durable fenced requests |
 
 Env: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`. All defaults and validation live in `settings.SETTING_REGISTRY`; `database.DB_CONFIG` adds the MySQL adapter's charset, `DictCursor` and `autocommit=True`. Development defaults are localhost, 3306, root, an empty password and `chatbot_db`; production requires explicit restricted-account credentials. `interface.py` has no separate database configuration. Use `database.get_conn()`; rows are accessed by column name.
 ### Explicit migrations (F020)
 
-Read `backend/migrations/README.md` before deployment. Run `python -B backend/schema_migrations.py status` for the recorded schema version (unversioned = 0, current = 9), pending/incomplete versions and latest supported version. Empty pre-created databases use `upgrade`; existing databases require stopped writers, a restore-tested pre-upgrade dump and `upgrade --backup PATH`. File existence/nonzero size and SHA-256 are checked/recorded, not backup validity; restore-testing remains an operator requirement. Startup and `setup_admin.py` only require the current ledger and never repair a schema opportunistically.
+Read `backend/migrations/README.md` before deployment. Run `python -B backend/schema_migrations.py status` for the recorded schema version (unversioned = 0, current = 10), pending/incomplete versions and latest supported version. Empty pre-created databases use `upgrade`; existing databases require stopped writers, a restore-tested pre-upgrade dump and `upgrade --backup PATH`. File existence/nonzero size and SHA-256 are checked/recorded, not backup validity; restore-testing remains an operator requirement. Startup and `setup_admin.py` only require the current ledger and never repair a schema opportunistically.
 
 Migrations create the original six tables (1), add account session versions and `admin_sessions` (2), widen legacy log messages (3), add nullable anonymous ownership (4), create durable ingestion jobs/payloads (5), add durable job progress (6), and add nullable embedding profiles to Q&A/PDF documents/chunks (7–9). Documented pre-ledger databases, including those already carrying these changes, are adopted using explicit migration-only table/column guards without rewriting records. Legacy ownership/profiles remain NULL; existing ownership, credentials, permissions, feedback and float32 embedding bytes stay intact. Unsupported legacy column layouts fail before DDL. This is not a repair tool for arbitrary manual schema/type/constraint changes.
 
@@ -200,7 +204,7 @@ Scoring:
 - Loading: `AutoModel`, float32, CPU, tokenizer `padding_side='left'`. Pooling takes the last token, then L2-normalizes. Inputs are truncated at `MAX_SEQ_LEN=512`.
 - Default model: `Qwen3-Embedding-0.6B` in `backend/model/Qwen3-Embedding-0.6B/`.
 - Constants: `ADMIN_PORT=8000`, `UI_PORT=5000`, `MAX_UPLOAD_BYTES=20MB`, `ALLOWED_EXT={'.json'}`, `MIN_SCORE=0.35`, `MAX_SEQ_LEN=512`, `ADMIN_DIR=backend/admin`.
-- Search requires full profile equality, including equal dimensions. Legacy unknown vectors are retained but excluded until explicitly re-imported with replacement enabled.
+- Search requires full profile equality, including equal dimensions. Legacy unknown vectors stay excluded until the background builder freshly embeds their source text (or explicit replacement imports refresh them).
 - Uploads call this adapter through `services/embedding_batches.py`: `EMBEDDING_BATCH_SIZE` (default 8, integer 1-64) bounds each actual model invocation. Query embedding still uses one input. The tokenizer's 512-token limit remains unchanged.
 
 ### 6.3.1 Shared Persian normalization (F033)
@@ -235,8 +239,8 @@ full corpus scan; there is no persistent normalization index yet.
 Q&A/PDF display fields, retrieval/generation context, chat history, filenames,
 page citations, upload bytes and PDF byte hashes do not receive these normalized
 copies. Existing validation trimming and PDF extraction/chunk cleanup still
-apply. Existing embeddings are not rewritten: explicitly replace/re-import
-knowledge to refresh vectors under the new preprocessing. F034's profile below
+apply. Existing embeddings are not rewritten: the F035 background builder makes
+separate vectors from source text. F034's profile below
 records that policy with each new vector. See [policy and verification](docs/persian-normalization.md)
 and [ADR 0007](docs/decisions/0007-shared-persian-normalization.md).
 
@@ -268,9 +272,10 @@ PDF document/chunk dimensions and profiles must both match the query.
 
 Migrations 7–9 add nullable JSON fields without assigning profiles to old vectors.
 Different profiles may coexist in storage, but searches only compare matching
-profiles. Refresh legacy/incompatible knowledge through explicit replacement
-imports; ordinary dedup leaves it intact. Model/dependency changes do not trigger
-automatic reindex. See [profile policy/upgrade](docs/embedding-profiles.md) and
+profiles. F035 now rebuilds source text in separate profile-keyed generations;
+ordinary import dedup still leaves existing rows intact. See
+[index migration and runtime-upgrade limits](docs/embedding-index-migration.md),
+[profile policy/upgrade](docs/embedding-profiles.md) and
 [ADR 0008](docs/decisions/0008-embedding-compatibility-profiles.md).
 
 ### 6.4 Model selection (`model_registry.py`)
@@ -281,7 +286,32 @@ automatic reindex. See [profile policy/upgrade](docs/embedding-profiles.md) and
 - A model is available when both of its paths contain `config.json`. `get_active_model_id()` tries the saved id or `GEN_MODEL_ID` if available, then the first available model, then the requested or default id.
 - The selection is persisted atomically in `backend/model_selection.json` (`_read_saved_id`, `_write_saved_id`). A recognized saved ID takes precedence over `GEN_MODEL_ID`; if the requested model lacks either config, the first available entry wins. With no available entries, the recognized requested/default ID remains selected and the loader fails. Availability is a config-presence check, not a weight/memory validation. The only catalog IDs are `qwen3.5-2b` and `qwen3-4b`; loader compatibility with Gemma does not register it.
 - Public functions: `get_active_model_id()`, `get_model_definition(id)`, `get_model_catalog()`, `model_available(id)`, `set_active_model(id)` (raises `FileNotFoundError` if unavailable).
-- Admin flow: sign in, open `/admin/adminmodel.html` with the `models` grant or administrator role; POST `/admin/api/models` with CSRF -> `admin_routes.models.admin_set_model()` -> `ModelLifecycleService.select_model()` -> `set_active_model` + `set_embedding_model` + `set_generator_model`. Returns 409 for missing configs and 400 for an unknown ID. Selection clears loaded text models; they reload on next use. It does not re-embed stored knowledge. Re-ingest after changing the embedding model, even if dimensions match. `/adminmodel.html` is not an alias.
+- Admin flow: sign in, open `/admin/adminmodel.html` with the `models` grant or administrator role; POST `/admin/api/models` with CSRF -> `ModelLifecycleService.select_model()`. Returns 409 for missing configs and 400 for an unknown ID. Selection persists the requested catalog ID, resets the generator and queues embedding selection. The serving embedding runtime/index remain active until background validation and cutover succeed. `/adminmodel.html` is not an alias.
+
+### 6.4.1 Resumable embedding indexes (F035)
+
+`services/index_migration.py` owns independent model handles and the explicitly
+started, database-elected background builder. `services/index_store.py` persists
+profile-keyed shadow vectors, source hashes, progress and active/previous/request
+pointers. The initial serving generation is materialized before candidate
+cutover; legacy source text is freshly embedded without relabeling old vectors.
+Each committed micro-batch is resumable. Source changes are reconciled by hash.
+
+Queries capture one active runtime/profile for both searches. Search joins shadow
+vectors only to matching live source hashes and falls back to compatible base
+vectors for new uploads. Retained generations serve requests already in flight.
+Cutover uses a repeatable-read transaction: lock state/source ranges, validate
+every live vector and complete coverage, then commit active/previous pointers.
+Retrieval reads remain nonlocking. Ingestion locks the same state before writes,
+rejecting an obsolete staged profile and rolling back its publication/job result.
+
+`python -B backend/reembed.py status|retry|rollback` inspects progress, retries
+failed work or queues catch-up/validation of the previous profile. Saved requests
+survive restart; tokens fence superseded cutovers. Startup restores the saved
+active runtime before candidate loading. Snapshots must remain immutable and
+runtime-compatible; different dependency/normalization executables require a
+parallel deployment. Prior generations have no automatic garbage collection.
+See [operations/limits](docs/embedding-index-migration.md) and [ADR 0009](docs/decisions/0009-resumable-embedding-indexes.md).
 
 ### 6.5 JSON Q&A ingestion (`admin_routes/knowledge.py`, `services/ingestion.py`)
 

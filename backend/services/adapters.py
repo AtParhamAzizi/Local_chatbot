@@ -12,23 +12,44 @@ def embed_texts(texts):
 
 
 def embed_batch(texts):
+    from services.index_migration import current_migration_service
+    service = current_migration_service()
+    if service is not None:
+        return service.embed(texts)
     from interface import embed_batch as embed
     return embed(texts)
 
 
 def embedding_dim():
+    from services.index_migration import current_migration_service
+    service = current_migration_service()
+    if service is not None:
+        return service.runtime(service.store.state()['active_id']).profile.dimension
     from interface import embedding_dim as dimension
     return dimension()
 
 
 def search_qa(vector, **options):
     from searchForAnswer import _search_qa
+    from services.index_migration import current_migration_service
+    if current_migration_service() is not None:
+        options['index_id'] = options['profile'].identity
     return _search_qa(vector, **options)
 
 
 def search_pdf(vector, **options):
     from searchForAnswer import _search_pdf
+    from services.index_migration import current_migration_service
+    if current_migration_service() is not None:
+        options['index_id'] = options['profile'].identity
     return _search_pdf(vector, **options)
+
+
+def guard_embedding_publication(connection, profile):
+    from services.index_migration import current_migration_service
+    service = current_migration_service()
+    if service is not None:
+        service.store.publication_guard(connection, profile)
 
 
 def open_pdf(**options):

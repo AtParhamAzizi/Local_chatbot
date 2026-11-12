@@ -62,6 +62,7 @@ MIGRATIONS = (
     Migration(7, 'qa_embedding_profile', 'qa_documents', 'embedding_profile'),
     Migration(8, 'pdf_embedding_profile', 'pdf_documents', 'embedding_profile'),
     Migration(9, 'chunk_embedding_profile', 'pdf_chunks', 'embedding_profile'),
+    Migration(10, 'embedding_indexes'),
 )
 LATEST_VERSION = MIGRATIONS[-1].version
 REQUIRED_COLUMNS = {

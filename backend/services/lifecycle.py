@@ -51,9 +51,19 @@ class ModelLifecycleService:
         self._free_memory()
 
     def load_embedder(self):
+        from services.index_migration import current_migration_service
+        migration = current_migration_service()
+        if migration is not None:
+            migration.runtime(migration.store.state()['active_id'])
+            return
         self._module('interface').get_embedder()
 
     def unload_embedder(self):
+        from services.index_migration import current_migration_service
+        migration = current_migration_service()
+        if migration is not None:
+            with migration.lock:
+                migration.runtimes.clear()
         embedder = self._module('interface')
         with embedder._lock:
             embedder._model = None
@@ -81,7 +91,13 @@ class ModelLifecycleService:
 
     def select_model(self, model_id):
         self._module('model_registry').set_active_model(model_id)
-        self._module('interface').set_embedding_model(model_id)
+        from services.index_migration import current_migration_service
+        migration = current_migration_service()
+        if migration is None:
+            self._module('interface').set_embedding_model(model_id)
+        else:
+            definition = self._module('model_registry').get_model_definition(model_id)
+            migration.request(model_id, definition['embedding_path'])
         self._module('generator').set_generator_model(model_id)
         return self._module('model_registry').get_active_model_id()
 
@@ -131,6 +147,18 @@ class ModelLifecycleService:
             voice_state = 'error' if future.exception() else 'loaded'
         with self.lock:
             busy, errors = dict(self.busy), dict(self.errors)
+        embedding_status = {
+            'loaded': embedder._model is not None, 'model_id': embedder.MODEL_ID, 'dim': embedder._dim,
+        }
+        from services.index_migration import current_migration_service
+        migration = current_migration_service()
+        if migration is not None:
+            state = migration.store.state()
+            metadata = migration.store.get(state['active_id'])
+            from embedding_profile import EmbeddingProfile
+            profile = EmbeddingProfile.from_json(metadata['profile'])
+            embedding_status = {'loaded': state['active_id'] in migration.runtimes,
+                                'model_id': metadata['model_id'], 'dim': profile.dimension}
         return {
             'models': {
                 'generator': {
@@ -138,11 +166,7 @@ class ModelLifecycleService:
                     'device': generator._gen_device,
                     'model_id': generator.MODEL_ID,
                 },
-                'embedder': {
-                    'loaded': embedder._model is not None,
-                    'model_id': embedder.MODEL_ID,
-                    'dim': embedder._dim,
-                },
+                'embedder': embedding_status,
                 'voice': {'state': voice_state, 'model': voice.MODEL_NAME},
             },
             'busy': busy,

@@ -278,15 +278,17 @@ volumes; `docker compose down` preserves them, while `down -v` deletes them.
 Changing `.env` does not rotate passwords in an existing MySQL volume.
 
 A recognized saved model ID outranks `GEN_MODEL_ID`; unavailable requests fall
-back to the first config-present catalog entry. Authorized selection resets
-loaded text models and reloads lazily. Re-ingest all knowledge after changing
-the embedding profile, including model artifacts, tokenizer/pooling,
-normalization or runtime dependencies. Equal dimensions cannot bypass profile
-checks. Migration 7–9 leaves legacy profiles NULL and search excludes them until
-explicit re-import with replacement enabled. Generator-only selection with
-unchanged embedding artifacts/configuration stays compatible. Keep model files
-immutable while loaded; full content hashing adds disk I/O at model load, not at
-each query. See [profile recovery/inspection](embedding-profiles.md). Preserve the old environment
+back to the first config-present catalog entry. Authorized selection resets the
+generator and queues embedding changes for background re-embedding. Apply schema
+version 10; monitor `python -B backend/reembed.py status`, use `retry` after fixing
+a failure, or `rollback` to catch up and restore the previous generation. The
+serving model/index remain active until candidate validation and atomic cutover.
+Legacy source text is freshly embedded without assigning identities to old bytes.
+Equal dimensions cannot bypass profile checks. Generator-only selection with
+unchanged embedding artifacts/configuration stays compatible. Keep serving and
+candidate model files in separate immutable directories. Different executable
+runtime/normalization environments require parallel deployments for uninterrupted
+upgrades. See [index recovery and capacity](embedding-index-migration.md). Preserve the old environment
 until the replacement passes dependency and application acceptance checks.
 
 Monitor service-manager logs, public error codes, authorized System Logs and
