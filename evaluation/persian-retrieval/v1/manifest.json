@@ -1,0 +1,52 @@
+{
+  "format_version": 1,
+  "dataset_id": "persian-retrieval",
+  "version": "1.0.0",
+  "created": "2026-11-12",
+  "license": "MIT",
+  "provenance": "Entirely synthetic Persian source units and authored questions for the fictional Sepehr test service; no customer data or real service policy.",
+  "source_count": 30,
+  "corpus_sha256": "aecc23cdc145662c0336a9bc66ac4d6eb16095c9cc360a1f7802c500918e28a1",
+  "hash_policy": "sha256 of UTF-8 canonical JSON, sorted keys, compact separators, ensure_ascii=false, no NaN; insensitive to file newline/indentation",
+  "review": {
+    "status": "agent-reviewed",
+    "reviewer": "Codex",
+    "date": "2026-11-12",
+    "method": "Source-grounding review of all 60 questions, exact evidence spans, scope contrasts, missing-information cases, graded relevance and split intent families; see REVIEW.md. Independent human/domain review remains pending."
+  },
+  "relevance_policy": {
+    "unlisted_grade": 0,
+    "grades": {
+      "0": "irrelevant, wrong scope, or insufficient to support this question",
+      "1": "useful partial supporting evidence",
+      "2": "complete evidence for this question"
+    },
+    "answerability": "Only the supplied frozen corpus counts. Missing details are unanswerable; a documented negative answer is answerable."
+  },
+  "splits": {
+    "development": {
+      "question_count": 30,
+      "families": [
+        "signup",
+        "password",
+        "ticket",
+        "upload",
+        "search",
+        "export"
+      ],
+      "sha256": "8339f82d33d01378b7d4b04cf2ae92d85d5fd9798374f12161ceca563644c32a"
+    },
+    "heldout": {
+      "question_count": 30,
+      "families": [
+        "notification",
+        "sharing",
+        "archive",
+        "api",
+        "language",
+        "maintenance"
+      ],
+      "sha256": "5696f2191cc2db54cb0a0ecad43487ac3ec62b896eec70692b7c8da9afcfea5b"
+    }
+  }
+}

@@ -583,6 +583,14 @@ remain available for display. Preview also recognizes equivalent existing
 questions with legacy hashes. Replace/re-import knowledge to refresh older
 embeddings with the new preprocessing. See [normalization policy and limits](docs/persian-normalization.md).
 
+The versioned [Persian retrieval benchmark](docs/retrieval-evaluation.md) includes
+60 questions with graded source labels, separate development/heldout intent
+families, unknown-answer cases and difficult near-matches. Review is agent-based;
+independent human review remains pending. Replay the fixed lexical baseline with
+`python -B backend/retrieval_eval.py check-baseline`, or record recall/MRR/nDCG
+with `python -B backend/retrieval_eval.py run`. Explicit local-weight and external
+ranking evaluation commands are documented in the guide.
+
 The complete route inventory is in the API contract. These access boundaries
 apply before the handlers:
 

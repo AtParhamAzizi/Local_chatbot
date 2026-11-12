@@ -70,6 +70,8 @@ backend/
   theme.js            Shared dark/light theme for the dashboard and every admin page (loaded as ../theme.js)
   admin/              Admin pages (.html/.css/.js each): admin (JSON), admin_pdf, admin_import (controlled formats), adminmodel, adminchat, adminlogger, controller
   test.py             Ad-hoc retrieval smoke script, not a test suite
+  retrieval_eval.py    Versioned Persian dataset validation, ranking metrics and baseline replay CLI
+  retrieval_eval_local.py Explicit local-weight scoring evaluation with independent profiled embeddings
   tests/              Offline unittest regressions; mysql/ tests real DB effects; browser/ tests UI journeys
   model/              (gitignored) active embedder: Qwen3-Embedding-0.6B/
   modelgen/           (gitignored) qwen3.5-2B/; Qwen3-4B defaults to modelgen/ itself; Gemma is not in the catalog
@@ -80,6 +82,7 @@ frontend/             User chat UI: index.html, script.js, style.css, theme.js
 requirements.txt, requirements-cuda.txt, run_gpu.cmd, README.md, LICENSE
 requirements/          Native CPU/cu118 wheel locks, shared constraints, upgrade guide and validation record
 scripts/dependencies.py  Fresh-environment installer, dependency smoke verifier and native report-to-lock recorder
+evaluation/persian-retrieval/v1/  Synthetic sources, separate question splits, review record and frozen baselines
 CONTRIBUTING.md       Minimal offline setup, change boundaries, review and validation guidance
 docs/operations.md    Startup, migration/serving credentials, deployment and recovery
 docs/troubleshooting.md Symptom-to-code diagnosis and known limitations
@@ -188,6 +191,31 @@ One database-scoped named lock excludes competing migration commands. Each versi
 Scoring:
 - QA: complete profile equality precedes `_cosine_score(qvec, blob, embedding_dim)`. Unknown/incompatible profiles, invalid BLOBs, dimension mismatches, nonfinite values and zero norms are skipped.
 - PDF: `0.82 * semantic + 0.18 * _lexical_overlap(query, content)`. `_terms` uses shared Persian normalization plus Unicode casefolding. Overlap = shared terms / query terms; punctuation separates terms.
+
+### 6.1.1 Persian retrieval evaluation (F037)
+
+`backend/retrieval_eval.py` validates and measures the synthetic corpus in
+`evaluation/persian-retrieval/v1/`: 30 Q&A/PDF/Markdown source units and 60
+Persian questions, with 30 development and 30 heldout cases in disjoint intent
+families. Each split includes answerable/unanswerable questions, orthographic
+and terminology variants, near-matches and graded relevant evidence. Exact
+quotes, coordinates, review rationale and canonical JSON checksums make labels
+auditable. Review is agent-performed; independent human/domain review is pending.
+
+Default runs open only development questions. Explicit heldout runs evaluate
+a frozen candidate; a holdout used for tuning requires replacement in a new
+version. The standard-library lexical reference has replayable committed
+baselines. Reports include recall@1/3/6, MRR@6, graded nDCG@6, abstention,
+unanswerable false positives, hard negatives and per-case/tag/source-kind slices.
+External rankings require complete coverage and matching dataset identities;
+comparison recomputes baseline metrics and rejects incompatible versions/splits.
+
+`--ranker local --model-path PATH` explicitly loads an independent local embedder
+and measures the current scoring policy without a database or serving changes.
+It records full embedding profiles and blocks normal Python network access.
+Offline tests cover arithmetic, leakage, drift, malformed predictions and
+production-score parity with deterministic vectors. Real-weight quality runs
+remain manual. See [commands, baseline and limits](docs/retrieval-evaluation.md).
 
 ### 6.2 Generation (`generator.py`)
 
@@ -812,7 +840,7 @@ Each run prints an ignored `backend/tests/browser-artifacts/<id>` folder contain
 
 `backend/tests/check_source.py` uses Git's tracked/nonignored new file inventory, compiles Python without executing imports or writing bytecode, runs `node --check` on JavaScript, and applies `git diff --check` whitespace policy to proposed changes. F023 adds narrow AST checks for identical imports repeated within uninterrupted blocks and a separate unfiltered Git-index guard against tracked `__pycache__` contents or `.pyc`/`.pyo` files. Conditional branches and local scopes are independent; no general formatter, linter or type checker is configured. Its local base defaults to `HEAD`; CI uses the event's base SHA with full history. Missing tools, malformed source, invalid bases, tracked bytecode, repeated imports and whitespace errors fail closed. `test_ci_checks.py` checks these boundaries (including force-added bytecode in a temporary Git repository) plus regression-runner assertion/error/empty-discovery failure propagation.
 
-The always-evaluated `Merge checks` aggregate requires every prerequisite result to be `success`; failures, cancellations and skips fail it. A repository administrator must require that exact check in the `main` branch ruleset to enforce merge blocking; workflow files cannot enable branch protection. See `backend/tests/TESTING.md` for setup and deliberate API/permission negative controls. GPU/real-model quality and physical-audio evaluations stay separate manual work, not merge prerequisites; no automated model-quality evaluator exists yet. Never run unreviewed PR code on a credentialed GPU runner.
+The always-evaluated `Merge checks` aggregate requires every prerequisite result to be `success`; failures, cancellations and skips fail it. A repository administrator must require that exact check in the `main` branch ruleset to enforce merge blocking; workflow files cannot enable branch protection. See `backend/tests/TESTING.md` for setup and deliberate API/permission negative controls. GPU/real-model quality and physical-audio evaluations stay separate manual work, not merge prerequisites. F037 adds versioned retrieval evaluation and offline reference replay; real-weight acceptance remains manual. Never run unreviewed PR code on a credentialed GPU runner.
 
 ## Reproducible CPU/GPU dependencies (F017)
 

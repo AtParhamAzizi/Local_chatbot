@@ -1,5 +1,20 @@
 # Offline unit-test foundation
 
+## Persian retrieval evaluation (F037)
+
+Run `python -B backend/tests/run_tests.py --pattern test_retrieval_eval.py --repeat 2`
+for metric arithmetic, source/label/hash integrity, family and question isolation,
+invalid predictions, baseline replay, CLI output and production-scoring parity.
+Fixtures use deterministic profiled vectors; real model/network/DB access stays
+forbidden. The existing offline CI matrix discovers these cases automatically.
+
+`python -B backend/retrieval_eval.py validate` validates both versioned splits.
+`python -B backend/retrieval_eval.py check-baseline` replays development only;
+`--split heldout` explicitly replays the frozen heldout reference. Neither loads
+real weights. See [dataset review, measured baseline and candidate evaluation](../../docs/retrieval-evaluation.md)
+for the optional local-model command, prediction contract and holdout discipline.
+Agent review is recorded; independent human/domain review remains pending.
+
 ## Controlled formats (F036)
 
 Run `python -B backend/tests/run_tests.py --pattern test_controlled_imports.py`.

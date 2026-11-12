@@ -1,0 +1,354 @@
+[
+  {
+    "id": "signup-main",
+    "family": "signup",
+    "kind": "qa",
+    "title": "ثبت نام شخصی",
+    "filename": "signup.csv",
+    "location": {
+      "record": 1
+    },
+    "question": "برای ثبت نام شخصی در سپهر چه اطلاعاتی لازم است؟",
+    "text": "برای ثبت نام شخصی، شماره همراه و کد یک بار مصرف لازم است. کد یک بار مصرف تا ۳ دقیقه معتبر است."
+  },
+  {
+    "id": "signup-contrast",
+    "family": "signup",
+    "kind": "pdf",
+    "title": "ثبت نام سازمانی",
+    "filename": "signup.pdf",
+    "location": {
+      "page": 2
+    },
+    "text": "برای ثبت نام سازمانی، شناسه سازمان و معرفی نماینده لازم است؛ شماره همراه به تنهایی کافی نیست."
+  },
+  {
+    "id": "signup-support",
+    "family": "signup",
+    "kind": "document",
+    "title": "کاربرد پیامک تأیید",
+    "filename": "signup.md",
+    "location": {
+      "line_start": 7,
+      "line_end": 7
+    },
+    "text": "کد پیامکی ساخت حساب فردی سپهر فقط برای تأیید شماره همراه است و تاریخ انقضا دارد."
+  },
+  {
+    "id": "password-main",
+    "family": "password",
+    "kind": "pdf",
+    "title": "بازیابی رمز ورود",
+    "filename": "password.pdf",
+    "location": {
+      "page": 1
+    },
+    "text": "اگر رمز ورود را فراموش کرده‌اید، در صفحه ورود «بازیابی رمز» را بزنید. پیوند بازیابی به ایمیل تأییدشده حساب ارسال می‌شود."
+  },
+  {
+    "id": "password-contrast",
+    "family": "password",
+    "kind": "qa",
+    "title": "تغییر رمز در حساب باز",
+    "filename": "password.csv",
+    "location": {
+      "record": 2
+    },
+    "question": "وقتی وارد سپهر شده‌ام رمز را از کجا تغییر دهم؟",
+    "text": "برای تغییر رمز در حساب باز، به تنظیمات امنیت بروید و رمز فعلی و رمز تازه را وارد کنید. این کار پیوند بازیابی ارسال نمی‌کند."
+  },
+  {
+    "id": "ticket-main",
+    "family": "ticket",
+    "kind": "document",
+    "title": "پیگیری درخواست پشتیبانی",
+    "filename": "ticket.md",
+    "location": {
+      "line_start": 1,
+      "line_end": 1
+    },
+    "text": "پس از ثبت درخواست پشتیبانی، یک کد رهگیری ۱۲ رقمی می‌گیرید. برای دیدن وضعیت، کد رهگیری را در بخش «درخواست‌های من» وارد کنید."
+  },
+  {
+    "id": "ticket-contrast",
+    "family": "ticket",
+    "kind": "qa",
+    "title": "گزارش اشکال بدون پیگیری",
+    "filename": "ticket.csv",
+    "location": {
+      "record": 2
+    },
+    "question": "گزارش اشکال ناشناس سپهر کد رهگیری دارد؟",
+    "text": "گزارش اشکال ناشناس از بخش «گزارش مشکل» ارسال می‌شود و کد رهگیری ندارد. برای پیگیری باید درخواست پشتیبانی ثبت کنید."
+  },
+  {
+    "id": "ticket-support",
+    "family": "ticket",
+    "kind": "document",
+    "title": "نمایش وضعیت تیکت",
+    "filename": "ticket.md",
+    "location": {
+      "line_start": 7,
+      "line_end": 7
+    },
+    "text": "وضعیت تیکت پشتیبانی سپهر در صفحه «درخواست‌های من» نمایش داده می‌شود."
+  },
+  {
+    "id": "upload-main",
+    "family": "upload",
+    "kind": "qa",
+    "title": "پیوست درخواست",
+    "filename": "upload.csv",
+    "location": {
+      "record": 1
+    },
+    "question": "برای پیوست کردن فایل به درخواست سپهر چه محدودیتی وجود دارد؟",
+    "text": "پیوست درخواست سپهر فقط PDF است و حجم هر فایل باید حداکثر ۱۰ مگابایت باشد. فایل رمزدار پذیرفته نمی‌شود."
+  },
+  {
+    "id": "upload-contrast",
+    "family": "upload",
+    "kind": "pdf",
+    "title": "تصویر نمایه",
+    "filename": "upload.pdf",
+    "location": {
+      "page": 2
+    },
+    "text": "تصویر نمایه سپهر باید PNG یا JPEG و حداکثر ۲ مگابایت باشد. این تصویر پیوست درخواست محسوب نمی‌شود."
+  },
+  {
+    "id": "search-main",
+    "family": "search",
+    "kind": "pdf",
+    "title": "جستجوی راهنما",
+    "filename": "search.pdf",
+    "location": {
+      "page": 1
+    },
+    "text": "جستجوی راهنمای سپهر عنوان و متن مقاله‌ها را بررسی می‌کند. برای جستجوی عبارت دقیق، آن را داخل گیومه دوتایی قرار دهید."
+  },
+  {
+    "id": "search-contrast",
+    "family": "search",
+    "kind": "qa",
+    "title": "جستجوی درخواست",
+    "filename": "search.csv",
+    "location": {
+      "record": 2
+    },
+    "question": "جستجوی درخواست‌های من در سپهر روی چه چیزی انجام می‌شود؟",
+    "text": "جستجوی «درخواست‌های من» فقط کد رهگیری و موضوع درخواست را بررسی می‌کند و متن مقاله‌های راهنما را جستجو نمی‌کند."
+  },
+  {
+    "id": "search-support",
+    "family": "search",
+    "kind": "document",
+    "title": "مثال عبارت دقیق",
+    "filename": "search.md",
+    "location": {
+      "line_start": 7,
+      "line_end": 7
+    },
+    "text": "در راهنمای سپهر، گذاشتن جمله در گیومه دوتایی، جستجو را به همان عبارت محدود می‌کند."
+  },
+  {
+    "id": "export-main",
+    "family": "export",
+    "kind": "document",
+    "title": "خروجی فهرست درخواست",
+    "filename": "export.md",
+    "location": {
+      "line_start": 1,
+      "line_end": 1
+    },
+    "text": "در صفحه درخواست‌های من، دکمه «خروجی CSV» فهرست پالایش‌شده را با کدگذاری UTF-8 دریافت می‌کند. متن پیوست‌ها در این خروجی نیست."
+  },
+  {
+    "id": "export-contrast",
+    "family": "export",
+    "kind": "qa",
+    "title": "دریافت رسید درخواست",
+    "filename": "export.csv",
+    "location": {
+      "record": 2
+    },
+    "question": "رسید یک درخواست سپهر را چگونه دریافت کنم؟",
+    "text": "در جزئیات هر درخواست، دکمه «دریافت رسید» یک فایل PDF همان درخواست را می‌دهد و فهرست درخواست‌ها را صادر نمی‌کند."
+  },
+  {
+    "id": "notification-main",
+    "family": "notification",
+    "kind": "qa",
+    "title": "اعلان تغییر وضعیت",
+    "filename": "notification.csv",
+    "location": {
+      "record": 1
+    },
+    "question": "اعلان تغییر وضعیت درخواست سپهر را چگونه فعال کنم؟",
+    "text": "برای دریافت ایمیل تغییر وضعیت درخواست سپهر، در تنظیمات اعلان، گزینه «وضعیت درخواست» را روشن کنید. این اعلان پیامک ندارد."
+  },
+  {
+    "id": "notification-contrast",
+    "family": "notification",
+    "kind": "pdf",
+    "title": "پیامک تأیید ورود",
+    "filename": "notification.pdf",
+    "location": {
+      "page": 2
+    },
+    "text": "پیامک تأیید ورود سپهر برای بررسی شماره همراه است و از تنظیمات اعلان درخواست خاموش نمی‌شود. این پیام، تغییر وضعیت درخواست را اطلاع نمی‌دهد."
+  },
+  {
+    "id": "notification-support",
+    "family": "notification",
+    "kind": "document",
+    "title": "اشتراک خبرهای تیکت",
+    "filename": "notification.md",
+    "location": {
+      "line_start": 7,
+      "line_end": 7
+    },
+    "text": "اشتراک خبرهای تیکت سپهر در تنظیمات اعلان با گزینه «وضعیت درخواست» مدیریت می‌شود."
+  },
+  {
+    "id": "sharing-main",
+    "family": "sharing",
+    "kind": "pdf",
+    "title": "اشتراک پیوند مقاله",
+    "filename": "sharing.pdf",
+    "location": {
+      "page": 1
+    },
+    "text": "پیوند اشتراک مقاله عمومی سپهر فقط اجازه خواندن می‌دهد و پس از ۷ روز منقضی می‌شود. این پیوند مجوز ویرایش ایجاد نمی‌کند."
+  },
+  {
+    "id": "sharing-contrast",
+    "family": "sharing",
+    "kind": "qa",
+    "title": "دعوت همکار ویرایشگر",
+    "filename": "sharing.csv",
+    "location": {
+      "record": 2
+    },
+    "question": "برای ویرایش مقاله سپهر چگونه همکار دعوت کنم؟",
+    "text": "دعوت همکار ویرایشگر فقط از صفحه مدیریت اعضا انجام می‌شود و به حساب تأییدشده نیاز دارد. پیوند اشتراک عمومی برای دعوت ویرایشگر کافی نیست."
+  },
+  {
+    "id": "archive-main",
+    "family": "archive",
+    "kind": "document",
+    "title": "بایگانی درخواست بسته",
+    "filename": "archive.md",
+    "location": {
+      "line_start": 1,
+      "line_end": 1
+    },
+    "text": "بایگانی فقط درخواست بسته سپهر را از فهرست جاری پنهان می‌کند و محتوای آن را حذف نمی‌کند. درخواست بایگانی‌شده در بخش بایگانی قابل مشاهده است."
+  },
+  {
+    "id": "archive-contrast",
+    "family": "archive",
+    "kind": "qa",
+    "title": "حذف پیش نویس",
+    "filename": "archive.csv",
+    "location": {
+      "record": 2
+    },
+    "question": "حذف پیش نویس درخواست سپهر قابل بازگشت است؟",
+    "text": "حذف پیش نویس درخواست سپهر، متن ارسال‌نشده را پاک می‌کند و قابل بازگشت نیست. درخواست ارسال‌شده با این گزینه حذف نمی‌شود."
+  },
+  {
+    "id": "archive-support",
+    "family": "archive",
+    "kind": "document",
+    "title": "محل نمایش آرشیو",
+    "filename": "archive.md",
+    "location": {
+      "line_start": 7,
+      "line_end": 7
+    },
+    "text": "آرشیو تیکت سپهر محل مشاهده درخواست‌های بسته‌ای است که از فهرست جاری کنار گذاشته‌اید."
+  },
+  {
+    "id": "api-main",
+    "family": "api",
+    "kind": "qa",
+    "title": "توکن API",
+    "filename": "api.csv",
+    "location": {
+      "record": 1
+    },
+    "question": "توکن API سپهر را از کجا بسازم و کجا بفرستم؟",
+    "text": "توکن API سپهر در تنظیمات توسعه‌دهنده ساخته می‌شود. آن را در سرآیند Authorization با پیشوند Bearer بفرستید؛ توکن را در نشانی درخواست نگذارید."
+  },
+  {
+    "id": "api-contrast",
+    "family": "api",
+    "kind": "pdf",
+    "title": "کد یک بار مصرف API",
+    "filename": "api.pdf",
+    "location": {
+      "page": 2
+    },
+    "text": "کد یک بار مصرف ورود سپهر برای تأیید کاربر است و جای توکن API را نمی‌گیرد. برای رابط برنامه‌نویسی باید توکن توسعه‌دهنده بسازید."
+  },
+  {
+    "id": "language-main",
+    "family": "language",
+    "kind": "pdf",
+    "title": "زبان رابط",
+    "filename": "language.pdf",
+    "location": {
+      "page": 1
+    },
+    "text": "در تنظیمات نمایش سپهر، زبان رابط را میان فارسی و انگلیسی انتخاب کنید. تغییر زبان رابط، متن درخواست‌های ذخیره‌شده را ترجمه نمی‌کند."
+  },
+  {
+    "id": "language-contrast",
+    "family": "language",
+    "kind": "qa",
+    "title": "ترجمه مقاله",
+    "filename": "language.csv",
+    "location": {
+      "record": 2
+    },
+    "question": "نسخه انگلیسی مقاله سپهر خودکار ساخته می‌شود؟",
+    "text": "نسخه انگلیسی مقاله سپهر باید جداگانه توسط نویسنده ثبت شود. انتخاب زبان انگلیسی رابط، نسخه ترجمه مقاله را ایجاد نمی‌کند."
+  },
+  {
+    "id": "language-support",
+    "family": "language",
+    "kind": "document",
+    "title": "محدوده تنظیم زبان",
+    "filename": "language.md",
+    "location": {
+      "line_start": 7,
+      "line_end": 7
+    },
+    "text": "انتخاب فارسی یا انگلیسی در تنظیمات نمایش سپهر تنها منوها و برچسب‌های رابط را تغییر می‌دهد."
+  },
+  {
+    "id": "maintenance-main",
+    "family": "maintenance",
+    "kind": "document",
+    "title": "نگهداری برنامه ریزی شده",
+    "filename": "maintenance.md",
+    "location": {
+      "line_start": 1,
+      "line_end": 1
+    },
+    "text": "پنجره نگهداری برنامه ریزی شده سامانه آزمایشی سپهر، جمعه از ساعت ۲ تا ۳ بامداد به وقت تهران است. زمان پایان هر رخداد در صفحه وضعیت اعلام می‌شود."
+  },
+  {
+    "id": "maintenance-contrast",
+    "family": "maintenance",
+    "kind": "qa",
+    "title": "پشتیبانی انسانی",
+    "filename": "maintenance.csv",
+    "location": {
+      "record": 2
+    },
+    "question": "کارشناسان پشتیبانی سپهر چه ساعتی پاسخ می‌دهند؟",
+    "text": "کارشناسان پشتیبانی سامانه آزمایشی سپهر، شنبه تا چهارشنبه از ساعت ۹ تا ۱۷ به وقت تهران پاسخ می‌دهند. این ساعت، پنجره نگهداری فنی نیست."
+  }
+]
