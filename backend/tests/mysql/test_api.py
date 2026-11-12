@@ -158,6 +158,31 @@ class FlaskMySQLTests(unittest.TestCase):
             'replace': str(replace).lower(),
         })
 
+    def test_controlled_upload_jobs_roundtrip_source_metadata_and_search_all_enabled_formats(self):
+        from test_controlled_imports import samples
+
+        headers = self.login()
+        jobs = self.admin_app.extensions['ingestion_jobs']
+        for filename, raw in samples().items():
+            with self.subTest(filename=filename):
+                response = self.admin_request('/admin/api/import/jobs', 'POST', headers=headers, data={
+                    'file': (io.BytesIO(raw), filename),
+                })
+                self.assertEqual(response.status_code, 202)
+                result = jobs.wait(response.json['job_id'], 'import', timeout=10)
+                self.assertEqual(result['source_metadata']['filename'], filename)
+                self.assertEqual(result['source_metadata']['sha256'], hashlib.sha256(raw).hexdigest())
+                job = self.admin_request(response.headers['Location']).json
+                self.assertEqual(job['status'], 'completed')
+                self.assertEqual(job['result'], result)
+        self.assertEqual(self.count('qa_documents'), 1)
+        self.assertEqual(self.count('pdf_documents'), 3)
+        self.assertEqual(self.count('ingestion_job_payloads'), 0)
+        response = self.owner.post('/chat', json={'message': 'راهنمای ثبت درخواست'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({source['source_metadata']['format'] for source in response.json['sources']},
+                         {'text', 'markdown', 'csv', 'docx'})
+
     def test_preflight_reports_existing_data_without_changing_searchable_rows_or_jobs(self):
         headers = self.login()
         self.assertEqual(self.upload_json([{'question': 'existing', 'answer': 'original'}], headers).status_code, 200)

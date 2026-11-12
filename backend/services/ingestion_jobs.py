@@ -11,6 +11,7 @@ from werkzeug.exceptions import HTTPException
 from public_errors import public_error
 from request_validation import MAX_JSON_UPLOAD_BYTES, MAX_PDF_UPLOAD_BYTES
 from services.ingestion import IngestionError
+from services.importers import MAX_IMPORT_BYTES, clean_filename
 from services.job_store import MySQLJobStore
 
 
@@ -28,12 +29,13 @@ class IngestionJobs:
         self.store = MySQLJobStore() if store is None else store
 
     def submit(self, kind, raw, filename, *, replace=False, submitted_by=None):
-        maximum = {'json': MAX_JSON_UPLOAD_BYTES, 'pdf': MAX_PDF_UPLOAD_BYTES}.get(kind)
+        maximum = {'json': MAX_JSON_UPLOAD_BYTES, 'pdf': MAX_PDF_UPLOAD_BYTES, 'import': MAX_IMPORT_BYTES}.get(kind)
         if maximum is None or not raw:
             raise IngestionError({'error': 'Invalid upload.'}, 400)
         if len(raw) > maximum:
             raise IngestionError({'error': 'Upload is too large.'}, 413)
-        job_id = self.store.submit(kind, raw, filename[:255], replace, submitted_by)
+        filename = clean_filename(filename) if kind == 'import' else filename[:255]
+        job_id = self.store.submit(kind, raw, filename, replace, submitted_by)
         return {'job_id': job_id, 'kind': kind, 'status': 'queued'}
 
     def _get(self, job_id, kind):
@@ -103,12 +105,15 @@ class IngestionJobs:
                     progress=lambda event: self.store.progress(job, event),
                     publication=lambda result: self.store.publication(job, result, publication_guard),
                 )
-            else:
-                result = self.processor.ingest_pdf(
+            elif job['kind'] in {'pdf', 'import'}:
+                processor = self.processor.ingest_import if job['kind'] == 'import' else self.processor.ingest_pdf
+                result = processor(
                     raw, job['filename'], replace=bool(job['replace_existing']), publication_guard=publication_guard,
                     progress=lambda event: self.store.progress(job, event),
                     publication=lambda result: self.store.publication(job, result, publication_guard),
                 )
+            else:
+                raise IngestionError({'error': 'Invalid upload kind.'}, 400)
             self.store.finish(job, result=result)
         except Exception as error:
             status = error.status if isinstance(error, IngestionError) else error.code if isinstance(error, HTTPException) else 500

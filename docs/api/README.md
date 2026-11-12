@@ -3,9 +3,14 @@
 The checked-in `openapi.json` describes the supported chatbot UI and administrator
 HTTP APIs, their request/response JSON Schemas, parameters, media types, permissions,
 and voice WebSocket frames. Its `info.version` is the contract revision, currently
-`1.4.0`. Both applications advertise `API-Version: 1` on successes, errors,
+`1.5.0`. Both applications advertise `API-Version: 1` on successes, errors,
 redirects, and HEAD responses. This is a response marker, not a negotiation header;
 clients do not send it. Allowed UI origins can read it through CORS.
+
+Revision 1.5.0 adds administrator-only controlled text/Markdown/CSV/DOCX import
+preview/jobs, `kind=import`, `type=document` chat sources and optional source
+provenance. The exact enabled formats, encoding rules, quotas and duplicate
+semantics are defined in [import-formats.md](../import-formats.md).
 
 The UI and admin are separate origins (development ports 5000 and 8000). Each
 OpenAPI operation names its service and development server; substitute the actual

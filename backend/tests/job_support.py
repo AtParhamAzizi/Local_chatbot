@@ -72,6 +72,10 @@ class JobCursor:
     def __exit__(self, *args):
         self.raw.close()
 
+    @property
+    def lastrowid(self):
+        return self.raw.lastrowid
+
     def execute(self, query, parameters=()):
         self.result = None
         database = self.connection.database

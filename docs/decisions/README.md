@@ -22,6 +22,7 @@ unrecorded historical team approval or new feature delivery.
 | [0007](0007-shared-persian-normalization.md) | Shared Persian comparison/model copies with original text and legacy Q&A keys preserved |
 | [0008](0008-embedding-compatibility-profiles.md) | Immutable embedding profiles captured with vectors, stored atomically and required for retrieval |
 | [0009](0009-resumable-embedding-indexes.md) | Durable shadow generations, background re-embedding, validated atomic cutover and rollback |
+| [0010](0010-controlled-import-formats.md) | Allowlisted text/Markdown/CSV/DOCX adapters with explicit validation and atomic source provenance |
 
 ## When and how to add one
 

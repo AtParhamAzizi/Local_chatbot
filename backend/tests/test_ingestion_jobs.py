@@ -1,5 +1,6 @@
 """Durable job transitions, request isolation, restart recovery and bounded workers."""
 
+import hashlib
 import importlib
 import io
 import json
@@ -55,6 +56,49 @@ class IngestionJobTests(OfflineCoreFixture, unittest.TestCase):
         self.assertIsNone(worker.lease)
         self.processor.ingest_qa.assert_not_called()
         self.processor.ingest_pdf.assert_not_called()
+
+    def test_controlled_import_worker_validates_and_atomically_publishes_all_enabled_formats(self):
+        import numpy as np
+        from types import SimpleNamespace
+        from test_controlled_imports import samples
+        from test_persian_text import KnowledgeDatabase
+
+        knowledge = KnowledgeDatabase(self.database.path)
+        ingestion = importlib.import_module('services.ingestion')
+        processor = ingestion.IngestionService(
+            connect=self.database.connect, embed=with_profile(lambda values: np.ones((len(values), 3), dtype=np.float32)),
+            hash_question=lambda value: hashlib.sha256(value.encode()).hexdigest(),
+            audit=Mock(), ocr=SimpleNamespace(enabled=False))
+        jobs = self.jobs_module.IngestionJobs(processor, store=self.store)
+        for filename, raw in samples().items():
+            with self.subTest(filename=filename):
+                job_id = jobs.submit('import', raw, '../' + filename)['job_id']
+                self.assertEqual(jobs.get(job_id, 'import')['filename'], filename)
+                with patch.object(self.store, 'progress'):
+                    self.assertTrue(jobs.process_one('worker', lambda: None))
+                job = jobs.get(job_id, 'import')
+                self.assertEqual(job['status'], 'completed', job)
+                self.assertEqual(job['result']['source_metadata']['filename'], filename)
+                self.assertEqual(self.payload_count(job_id), 0)
+        self.assertEqual(len(knowledge.rows()), 1)
+        self.assertEqual(len(knowledge.rows('pdf_documents')), 3)
+        job_id = jobs.submit('import', b'not a DOCX', 'bad.docx')['job_id']
+        jobs.process_one('worker', lambda: None)
+        self.assertEqual(jobs.get(job_id, 'import')['status'], 'failed')
+        self.assertEqual(jobs.get(job_id, 'import')['error']['code'], 'invalid_request')
+        self.assertEqual(self.payload_count(job_id), 1)
+
+    def test_controlled_import_cancel_and_retry_remain_kind_scoped(self):
+        self.processor.ingest_import.return_value = {'success': True}
+        job_id = self.jobs.submit('import', b'text', 'guide.txt')['job_id']
+        self.jobs.cancel(job_id, 'import')
+        self.assertEqual(self.jobs.get(job_id, 'import')['status'], 'canceled')
+        with self.assertRaises(self.jobs_module.IngestionError):
+            self.jobs.get(job_id, 'pdf')
+        self.assertEqual(self.jobs.retry(job_id, 'import')['status'], 'queued')
+        self.jobs.process_one('worker', lambda: None)
+        self.processor.ingest_import.assert_called_once()
+        self.assertEqual(self.jobs.get(job_id, 'import')['status'], 'completed')
 
     def test_submission_persists_before_return_without_parsing_or_embedding(self):
         job_id = self.submit(raw=b'invalid JSON is validated by the worker')

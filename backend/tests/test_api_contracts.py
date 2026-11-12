@@ -159,7 +159,8 @@ class ApiContractTests(AbuseEndpointFixture, unittest.TestCase):
         jobs = Mock()
         job_id = 'a' * 32
         with patch.dict(self.admin_app.extensions, {'ingestion_jobs': jobs}):
-            for kind, prefix in (('json', '/admin/api/upload/jobs'), ('pdf', '/admin/api/pdf/upload/jobs')):
+            for kind, prefix in (('json', '/admin/api/upload/jobs'), ('pdf', '/admin/api/pdf/upload/jobs'),
+                                 ('import', '/admin/api/import/jobs')):
                 accepted = {'job_id': job_id, 'kind': kind, 'status': 'queued'}
                 jobs.submit.return_value = accepted
                 job = {**accepted, 'filename': 'upload.' + kind, 'created_at': self.timestamp.isoformat(),
@@ -168,8 +169,9 @@ class ApiContractTests(AbuseEndpointFixture, unittest.TestCase):
                 jobs.cancel.return_value = {**job, 'status': 'canceled', 'finished_at': self.timestamp.isoformat()}
                 jobs.retry.return_value = {**job, 'checkpoint': 'upload', 'retryable': False,
                                           'progress': {'stage': 'embedding', 'source': kind, 'completed': 1, 'total': 2}}
+                filename = 'upload.txt' if kind == 'import' else 'upload.' + kind
                 response = self.admin_open(prefix, 'POST', headers=self.headers,
-                                           data={'file': (io.BytesIO(b'content'), 'upload.' + kind)})
+                                           data={'file': (io.BytesIO(b'content'), filename)})
                 self.check(response, prefix, 'POST', 202)
                 self.assertEqual(response.headers['Location'], prefix + '/' + job_id)
                 self.check(self.admin_open(prefix + '/' + job_id, headers=self.headers), prefix + '/{job_id}')
@@ -186,16 +188,22 @@ class ApiContractTests(AbuseEndpointFixture, unittest.TestCase):
 
     def test_chat_retained_stateless_and_feedback_payloads_preserve_legacy_identity_behavior(self):
         history = MemoryHistory()
+        from services.importers import prepare_import
+        metadata = {**prepare_import(b'original', 'guide.txt').metadata,
+                    'location': {'line_start': 1, 'line_end': 1, 'character_start': 0, 'character_end': 8}}
         with patch.object(self.user, 'get_conn', side_effect=history.connect), patch.object(
             self.user, '_retrieve_top', return_value=[
                 dict(source_type='qa', score=0.9, question='Question', answer='Answer'),
                 dict(source_type='pdf', score=0.8, filename='guide.pdf', page_start=1, page_end=2, content='Content'),
+                dict(source_type='document', score=0.7, filename='guide.txt', content='original', source_metadata=metadata),
             ],
         ), patch.object(self.user, 'generate_reply', return_value='Answer'):
             payload = {'message': 'question', 'user_id': 'legacy-client-identity'}
             self.contract.assert_schema(payload, self.contract.document['components']['schemas']['ChatRequest'])
             reply = self.check(self.ui_client.post('/chat', json=payload), '/chat', 'POST')
             self.assertEqual(reply['sources'][1]['pages'], [1, 2])
+            self.assertIsNone(reply['sources'][2]['pages'])
+            self.assertEqual(reply['sources'][2]['source_metadata'], metadata)
             self.assertNotEqual(history.rows[reply['message_id']]['user_id'], payload['user_id'])
             feedback = {'message_id': reply['message_id'], 'feedback': 'like'}
             self.check(self.ui_client.post('/feedback', json=feedback), '/feedback', 'POST')
@@ -267,6 +275,22 @@ class ApiContractTests(AbuseEndpointFixture, unittest.TestCase):
                                    json={'action': 'chat_disable'}), '/admin/api/controller/action', 'POST')
         self.check(self.admin_open('/admin/api/controller/action', 'POST', headers=self.headers,
                                    json={'action': 'generator_load'}), '/admin/api/controller/action', 'POST', 202)
+
+    def test_controlled_preflight_success_and_content_error_reports_use_real_preparation(self):
+        connection, _ = self.database_rows()
+        with patch.object(self.ingestion, 'embed') as embed:
+            from test_controlled_imports import samples
+            path = '/admin/api/import/preflight'
+            for filename, raw in samples().items():
+                report = self.check(self.admin_open(path, 'POST', headers=self.headers,
+                                    data={'file': (io.BytesIO(raw), filename)}), path, 'POST')
+                self.assertTrue(report['can_publish'])
+                self.assertEqual(report['source_metadata']['filename'], filename)
+            report = self.check(self.admin_open(path, 'POST', headers=self.headers,
+                                data={'file': (io.BytesIO(b'invalid DOCX'), 'bad.docx')}), path, 'POST')
+            self.assertFalse(report['valid'])
+            embed.assert_not_called()
+            connection.commit.assert_not_called()
 
     def test_preflight_success_and_content_error_reports_use_real_preparation(self):
         connection, _ = self.database_rows()

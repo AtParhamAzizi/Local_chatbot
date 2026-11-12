@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 from database import get_conn, logger
 from persian_text import persian_terms
@@ -44,7 +46,7 @@ def _search_qa(qvec: np.ndarray, k: int = 5, *, profile=None, index_id=None):
         with conn.cursor() as cur:
             if index_id is not None:
                 cur.execute("""
-                    SELECT s.id, s.question, s.answer, s.embedding, s.embedding_dim, s.embedding_profile,
+                    SELECT s.id, s.question, s.answer, s.embedding, s.embedding_dim, s.embedding_profile, s.source_metadata,
                            v.embedding AS migrated_embedding
                     FROM qa_documents s LEFT JOIN embedding_index_vectors v
                       ON v.index_id=%s AND v.source_kind='qa' AND v.source_id=s.id
@@ -53,7 +55,7 @@ def _search_qa(qvec: np.ndarray, k: int = 5, *, profile=None, index_id=None):
                 """, (index_id,))
             else:
                 cur.execute("""
-                SELECT id, question, answer, embedding, embedding_dim, embedding_profile
+                SELECT id, question, answer, embedding, embedding_dim, embedding_profile, source_metadata
                 FROM qa_documents
                 WHERE embedding IS NOT NULL
             """)
@@ -81,6 +83,7 @@ def _search_qa(qvec: np.ndarray, k: int = 5, *, profile=None, index_id=None):
             "document_id": None,
             "page_start": None,
             "page_end": None,
+            "source_metadata": _source_metadata(r.get('source_metadata')),
         })
 
     results.sort(key=lambda x: x["score"], reverse=True)
@@ -98,7 +101,7 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None,
             if index_id is not None:
                 cur.execute("""
                     SELECT c.id, c.document_id, d.filename, c.chunk_index, c.page_start, c.page_end,
-                           c.content, c.embedding, c.embedding_dim, c.embedding_profile,
+                           c.content, c.embedding, c.embedding_dim, c.embedding_profile, c.source_metadata,
                            d.embedding_profile AS document_embedding_profile,
                            d.embedding_dim AS document_embedding_dim, v.embedding AS migrated_embedding
                     FROM pdf_chunks c JOIN pdf_documents d ON d.id=c.document_id
@@ -119,6 +122,7 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None,
                     c.embedding,
                     c.embedding_dim,
                     c.embedding_profile,
+                    c.source_metadata,
                     d.embedding_profile AS document_embedding_profile,
                     d.embedding_dim AS document_embedding_dim
                 FROM pdf_chunks AS c
@@ -147,7 +151,7 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None,
         results.append({
             "score": score,
             "semantic_score": semantic_score,
-            "source_type": "pdf",
+            "source_type": "document" if r.get('source_metadata') else "pdf",
             "id": r["id"],
             "document_id": r["document_id"],
             "filename": r["filename"],
@@ -157,10 +161,20 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None,
             "page_end": r["page_end"],
             "question": None,
             "answer": None,
+            "source_metadata": _source_metadata(r.get('source_metadata')),
         })
 
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:k]
+
+
+def _source_metadata(value):
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (ValueError, TypeError):
+            return None
+    return value if isinstance(value, dict) else None
 
 
 def _require_query_profile(qvec, profile):
@@ -197,19 +211,25 @@ def build_context(results):
                     """.strip()
                                 )
 
-        elif item["source_type"] == "pdf":
+        elif item["source_type"] in {"pdf", "document"}:
+            source_label = 'PDF' if item['source_type'] == 'pdf' else 'Document'
+            location_label = 'Pages' if item['source_type'] == 'pdf' else 'Source location'
+            if item['source_type'] == 'pdf':
+                source_location = f"{item['page_start']}-{item['page_end']}"
+            else:
+                source_location = json.dumps((item.get('source_metadata') or {}).get('location', {}), ensure_ascii=False)
 
             context_parts.append(
                 f"""
-                    [منبع {i} - PDF]
+                    [منبع {i} - {source_label}]
                     Document ID:
                     {item["document_id"]}
 
                     Filename:
                     {item.get("filename", "")}
 
-                    Pages:
-                    {item["page_start"]}-{item["page_end"]}
+                    {location_label}:
+                    {source_location}
 
                     Content:
                     {item["content"]}
@@ -218,5 +238,11 @@ def build_context(results):
                     {item["score"]:.4f}
                     """.strip()
                                 )
+
+        else:
+            continue
+
+        if item.get('source_metadata'):
+            context_parts[-1] += '\nSource metadata: ' + json.dumps(item['source_metadata'], ensure_ascii=False, sort_keys=True)
 
     return "\n\n".join(context_parts)

@@ -14,7 +14,7 @@ A local, Persian-language (RTL) RAG chatbot. Python/Flask, MySQL, local HuggingF
 - **User app** (Flask `ui_app`, port 5000): public chat UI, `/chat`, owner-scoped `/feedback`, voice speech-to-text, local text-to-speech and runtime feature flags.
 - **Admin app** (Flask `admin_app`, port 8000): dashboard shell plus pages for JSON Q&A import, PDF ingestion, model selection, chat history, system logs and a runtime controller.
 - Both share one serving process (`backend/main.py`): development uses two Flask servers; production uses one threaded Gunicorn worker listening on both ports, plus its supervising master. Optional local TTS runs in a separate private subprocess started lazily by that serving process.
-- Knowledge = `qa_documents` (JSON Q&A) + `pdf_chunks` (PDF text). Embeddings are float32 BLOBs in MySQL. Search is brute-force cosine in numpy (no vector DB).
+- Knowledge = `qa_documents` (JSON/CSV Q&A) + `pdf_chunks` (PDF and controlled text/Markdown/DOCX sources). Embeddings are float32 BLOBs in MySQL. Search is brute-force cosine in numpy (no vector DB).
 - Embedding and generator models load from local folders (`local_files_only=True`). Whisper may download on first use unless `STT_LOCAL_FILES_ONLY=1`. TTS needs separate local weights and a voice prompt; its G2P loader may download unless prepared in advance. The Whisper flag does not control TTS.
 
 ## 2. Stack
@@ -68,7 +68,7 @@ backend/
   TTS/                chat_worker.py, tts_engine.py, text_router.py; app.py is a separate demo
   dashboard.html/.css/.js  Admin shell served at admin `/`: sidebar + iframe that loads admin/*.html
   theme.js            Shared dark/light theme for the dashboard and every admin page (loaded as ../theme.js)
-  admin/              Admin pages (.html/.css/.js each): admin (JSON), admin_pdf, adminmodel, adminchat, adminlogger, controller
+  admin/              Admin pages (.html/.css/.js each): admin (JSON), admin_pdf, admin_import (controlled formats), adminmodel, adminchat, adminlogger, controller
   test.py             Ad-hoc retrieval smoke script, not a test suite
   tests/              Offline unittest regressions; mysql/ tests real DB effects; browser/ tests UI journeys
   model/              (gitignored) active embedder: Qwen3-Embedding-0.6B/
@@ -146,9 +146,9 @@ an already-prepared app; it does not implicitly start retention or initialize se
 
 | Table | Key columns | Notes |
 | --- | --- | --- |
-| `qa_documents` | id, question, answer, `question_hash` UNIQUE, `embedding` LONGBLOB, `embedding_dim`, embedding_profile JSON NULL, created_at, updated_at | New keys use shared Persian normalization; legacy keys/originals are retained; search requires a matching embedding profile |
-| `pdf_documents` | id, filename, `document_hash` UNIQUE, file_size, page_count, chunk_count, embedded_chunk_count, embedding_dim, embedding_profile JSON NULL, `status` ENUM(processing, completed, failed), error_message | Dedup via `sha256_bytes()` of the file |
-| `pdf_chunks` | id, document_id FK (ON DELETE CASCADE), chunk_index, page_start, page_end, content LONGTEXT, embedding, embedding_dim, embedding_profile JSON NULL; UNIQUE(document_id, chunk_index) | Only completed documents with matching document/chunk/query profiles are searched |
+| `qa_documents` | id, question, answer, `question_hash` UNIQUE, `embedding` LONGBLOB, `embedding_dim`, embedding_profile JSON NULL, source_metadata JSON NULL, created_at, updated_at | JSON/CSV share normalized question keys; originals are retained; search requires a matching embedding profile |
+| `pdf_documents` | id, filename, `document_hash` UNIQUE, file_size, page_count, chunk_count, embedded_chunk_count, embedding_dim, embedding_profile JSON NULL, source_metadata JSON NULL, `status` ENUM(processing, completed, failed), error_message | PDF hashes raw bytes; controlled documents hash canonical format/text/locations |
+| `pdf_chunks` | id, document_id FK (ON DELETE CASCADE), chunk_index, nullable page_start/page_end, content LONGTEXT, embedding, embedding_dim, embedding_profile JSON NULL, source_metadata JSON NULL; UNIQUE(document_id, chunk_index) | Only completed documents with matching profiles are searched; non-PDF imports use source locations instead of pages |
 | `chat_history` | id, user_id, owner_hash NULL, ip_address, user_message, bot_response, `feedback` ENUM(like, dislike) NULL, feedback_at, created_at | One row per `/chat`; `id` is returned as `message_id`; legacy rows retain NULL ownership |
 | `adminlogger` | id, `_level` (source file), `_from` (function), message TEXT, `warninglevel` (1 info, 2 warning, 3 failed), created_at | Written by `logger` |
 | `admin-users` | id, username UNIQUE, password_hash, is_active, is_admin, permissions JSON, session_version, created_at, updated_at | Security changes increment session_version atomically |
@@ -163,7 +163,7 @@ an already-prepared app; it does not implicitly start retention or initialize se
 Env: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`. All defaults and validation live in `settings.SETTING_REGISTRY`; `database.DB_CONFIG` adds the MySQL adapter's charset, `DictCursor` and `autocommit=True`. Development defaults are localhost, 3306, root, an empty password and `chatbot_db`; production requires explicit restricted-account credentials. `interface.py` has no separate database configuration. Use `database.get_conn()`; rows are accessed by column name.
 ### Explicit migrations (F020)
 
-Read `backend/migrations/README.md` before deployment. Run `python -B backend/schema_migrations.py status` for the recorded schema version (unversioned = 0, current = 10), pending/incomplete versions and latest supported version. Empty pre-created databases use `upgrade`; existing databases require stopped writers, a restore-tested pre-upgrade dump and `upgrade --backup PATH`. File existence/nonzero size and SHA-256 are checked/recorded, not backup validity; restore-testing remains an operator requirement. Startup and `setup_admin.py` only require the current ledger and never repair a schema opportunistically.
+Read `backend/migrations/README.md` before deployment. Run `python -B backend/schema_migrations.py status` for the recorded schema version (unversioned = 0, current = 14), pending/incomplete versions and latest supported version. Empty pre-created databases use `upgrade`; existing databases require stopped writers, a restore-tested pre-upgrade dump and `upgrade --backup PATH`. File existence/nonzero size and SHA-256 are checked/recorded, not backup validity; restore-testing remains an operator requirement. Startup and `setup_admin.py` only require the current ledger and never repair a schema opportunistically.
 
 Migrations create the original six tables (1), add account session versions and `admin_sessions` (2), widen legacy log messages (3), add nullable anonymous ownership (4), create durable ingestion jobs/payloads (5), add durable job progress (6), and add nullable embedding profiles to Q&A/PDF documents/chunks (7–9). Documented pre-ledger databases, including those already carrying these changes, are adopted using explicit migration-only table/column guards without rewriting records. Legacy ownership/profiles remain NULL; existing ownership, credentials, permissions, feedback and float32 embedding bytes stay intact. Unsupported legacy column layouts fail before DDL. This is not a repair tool for arbitrary manual schema/type/constraint changes.
 
@@ -355,6 +355,36 @@ Legacy POST `/admin/api/pdf/upload` queues and waits up to 240 seconds for its o
 5. One transaction replaces/inserts `pdf_documents` and its chunks, marks the document completed, records the successful job result and deletes upload bytes. Failure or cancellation rolls everything back, keeping any previous document searchable.
 
 Related: `admin_pdf_documents()` (paginated, `q` search), `admin_pdf_delete(doc_id)` (chunks cascade), `admin_pdf_stats()`.
+
+### 6.6.0 Controlled import adapters (F036)
+
+`services/importers.py` allowlists `.txt`, `.md`, `.csv` and `.docx`. Each adapter
+validates its complete bounded input and emits `PreparedImport` source units or
+Q&A rows with a basename, raw SHA-256, encoding, importer version and explicit
+locations. Strict UTF-8 permits an optional BOM; DOCX accepts a bounded textual
+OOXML subset with ZIP/XML/package validation. Unsupported extensions, binary
+text, malformed CSV quoting, ambiguous/active DOCX content and unsupported
+Markdown blocks fail before embedding or publication. No links or archive paths
+are opened/extracted. See [exact policies and limits](docs/import-formats.md).
+
+Administrator-only `/admin/api/import/preflight` and `/admin/api/import/jobs`
+use the existing CSRF/admission/durable queue and shared preparation; job GET,
+DELETE and retry live under `/admin/api/import/jobs/{job_id}`. The dashboard's
+`admin_import` page displays safe text previews/provenance and polls/cancels/
+retries work. CSV shares JSON question identity and Q&A storage. Other formats
+share the historical PDF document/chunk tables with page_count=0 and NULL chunk
+pages. Each receives nullable JSON `source_metadata` in schema versions 12–14;
+version 11 widens job kinds and page nullability without relabelling old rows.
+Existing collection permissions govern listing/deletion of the imported rows.
+
+Source metadata publishes atomically with vectors/content and job success.
+Document identity hashes canonical format/text/locations, independent of basename,
+BOM, line-ending spelling and DOCX container bytes. CSV keeps first normalized
+questions and exact row provenance; replacement updates answer/vector/provenance,
+while JSON replacement clears stale CSV metadata. Retrieval emits generic
+`document` hits with no invented PDF pages; context and chat sources carry source
+metadata. Background index migration uses the same source inventory and retains
+provenance through cutover/rollback. See [ADR 0010](docs/decisions/0010-controlled-import-formats.md).
 
 ### 6.6.1 Durable ingestion jobs and safe retries (F026/F027)
 

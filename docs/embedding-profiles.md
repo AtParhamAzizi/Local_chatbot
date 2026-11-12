@@ -73,8 +73,9 @@ request. There is no lexical fallback for incompatible PDF vectors. See
 
 Migrations 7–9 add nullable JSON columns to Q&A, PDF documents and PDF chunks.
 They preserve all rows, originals, vectors and timestamps, and never guess a
-profile for existing vectors. Serving now requires schema version 10, which adds
-shadow generations, durable checkpoints and active/previous/request state. Follow the
+profile for existing vectors. Version 10 adds shadow generations, durable
+checkpoints and active/previous/request state. Serving now requires version 14,
+including [controlled import provenance](import-formats.md) in 11–14. Follow the
 [migration guide](../backend/migrations/README.md): stop writers, prepare and
 restore-test a backup, then run the explicit migration CLI. Startup never adds
 columns or backfills identities.

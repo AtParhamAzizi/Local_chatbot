@@ -310,6 +310,16 @@ commands, including administrator setup, logs, and shutdown.
    `STT_DEVICE`, or `STT_COMPUTE_TYPE` to tune it (the defaults are `base`,
    `fa`, `cpu`, and `int8`).
 
+## Controlled knowledge imports
+
+Administrators can use **Text / Markdown / CSV / DOCX** in the dashboard to
+preview and import `.txt`, `.md`, `.csv` Q&A and textual `.docx` files through
+background jobs. Source checksums and format-specific locations accompany
+retrieval results. New uploads require UTF-8 text and the documented DOCX subset;
+arbitrary extensions are rejected. Stop writers and upgrade to schema **14**
+before serving. See [format validation, provenance and limits](docs/import-formats.md)
+and the [backup/migration procedure](backend/migrations/README.md).
+
 ## Run
 
 ### Local development (Windows or Linux)

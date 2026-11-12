@@ -1,5 +1,22 @@
 # Offline unit-test foundation
 
+## Controlled formats (F036)
+
+Run `python -B backend/tests/run_tests.py --pattern test_controlled_imports.py`.
+All four adapters have malformed-file, duplicate, encoding and source-metadata
+cases, including real ZIP/XML parsing and isolated SQLite publication/retrieval.
+The shared job/API/authorization/admission suites cover durable processing and
+boundaries. `test_index_migration.py` checks preservation through index switch
+and rollback. Deterministic vectors establish compatibility, not model quality.
+
+Run `python -B backend/tests/browser_smoke.py --grep 'controlled import' --repeat 2`
+for preview safety, selection invalidation and background job cancel/retry.
+API responses are mocked in those browser journeys. The disposable MySQL runner
+repeats the format scenarios with actual SQL and HTTP job/chat provenance;
+it needs Docker with Linux containers. Local F036 validation passed the format
+and index scenarios twice on disposable MySQL, plus HTTP job/chat provenance
+and schema upgrades. See [format policies](../../docs/import-formats.md).
+
 ## Resumable embedding-index migration (F035)
 
 Run `python -B backend/tests/run_tests.py --pattern test_index_migration.py --repeat 2`.

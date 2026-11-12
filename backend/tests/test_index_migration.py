@@ -84,8 +84,9 @@ class IndexMigrationTests(OfflineCoreFixture, unittest.TestCase):
         self.add_qa(1, 'first question')
         self.add_qa(2, 'second question')
         self.add_qa(3, 'third question')
-        self.sql("INSERT INTO pdf_documents (id, filename, status, embedding_dim, embedding_profile) "
-                 "VALUES (1, 'source.pdf', 'completed', 3, %s)", (self.old.profile.to_json(),))
+        self.sql("INSERT INTO pdf_documents (id, filename, document_hash, file_size, status, embedding_dim, embedding_profile) "
+                 "VALUES (1, 'source.pdf', %s, 6, 'completed', 3, %s)",
+                 (hashlib.sha256(b'source').hexdigest(), self.old.profile.to_json()))
         for index in range(1, 4):
             self.sql('INSERT INTO pdf_chunks (id, document_id, chunk_index, page_start, page_end, content, '
                      'embedding, embedding_dim, embedding_profile) VALUES (%s,1,%s,1,1,%s,%s,3,%s)',
@@ -153,6 +154,34 @@ class IndexMigrationTests(OfflineCoreFixture, unittest.TestCase):
         self.finish()
         self.assertEqual(self.store.state()['active_id'], self.old.profile.identity)
         self.assertEqual(len(self.hits()), 6)
+
+    def test_controlled_import_provenance_survives_index_cutover_and_rollback(self):
+        from test_controlled_imports import samples
+
+        ingestion = importlib.import_module('services.ingestion')
+        processor = ingestion.IngestionService(connect=self.db.connect, embed=self.old.embed,
+                                                hash_question=self.database.hash_question, audit=Mock())
+        for filename, raw in samples().items():
+            processor.ingest_import(raw, filename)
+        before = {table: self.db.rows(table) for table in ('qa_documents', 'pdf_documents', 'pdf_chunks')}
+
+        def assert_sources():
+            vectors = self.service.embed(['query'])
+            options = {'profile': vectors.profile, 'index_id': vectors.profile.identity, 'k': 20}
+            hits = self.scoring._search_qa(vectors.vectors[0], **options)
+            hits += self.scoring._search_pdf(vectors.vectors[0], **options)
+            imported = [hit for hit in hits if hit.get('source_metadata')]
+            self.assertEqual({hit['source_metadata']['format'] for hit in imported}, {'text', 'markdown', 'csv', 'docx'})
+
+        self.request_new()
+        assert_sources()
+        self.finish()
+        assert_sources()
+        self.store.rollback()
+        self.finish()
+        assert_sources()
+        for table, rows in before.items():
+            self.assertEqual(self.db.rows(table), rows)
 
     def test_production_adapters_reject_an_upload_staged_before_cutover(self):
         self.request_new()

@@ -280,7 +280,8 @@ Changing `.env` does not rotate passwords in an existing MySQL volume.
 A recognized saved model ID outranks `GEN_MODEL_ID`; unavailable requests fall
 back to the first config-present catalog entry. Authorized selection resets the
 generator and queues embedding changes for background re-embedding. Apply schema
-version 10; monitor `python -B backend/reembed.py status`, use `retry` after fixing
+version 14 (including index migration in 10 and controlled imports in 11–14);
+monitor `python -B backend/reembed.py status`, use `retry` after fixing
 a failure, or `rollback` to catch up and restore the previous generation. The
 serving model/index remain active until candidate validation and atomic cutover.
 Legacy source text is freshly embedded without assigning identities to old bytes.

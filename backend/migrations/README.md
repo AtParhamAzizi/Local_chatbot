@@ -35,7 +35,7 @@ python -B backend/schema_migrations.py upgrade --backup C:/private-backups/chatb
 python -B backend/schema_migrations.py status
 ```
 
-Successful output includes `"schema_version": 9`, `"latest_version": 9`, empty
+Successful output includes `"schema_version": 14`, `"latest_version": 14`, empty
 `pending` and `incomplete` lists. An unversioned database reports version 0 without
 being modified. `status` is a read-only inspection command and exits successfully
 even when upgrades are pending; application startup requires the latest version
@@ -146,6 +146,15 @@ or tampered history fail both commands. No models are loaded by either command.
 | 8 | `008_pdf_embedding_profile.sql` | Adds nullable JSON embedding metadata to PDF documents; originals/vectors remain intact |
 | 9 | `009_chunk_embedding_profile.sql` | Adds nullable JSON embedding metadata to PDF chunks; old identities remain unknown |
 | 10 | `010_embedding_indexes.sql` | Creates durable shadow generations/vectors and serving/request/rollback state; originals and legacy vectors remain unchanged |
+| 11 | `011_controlled_import_jobs.sql` | Extends job kinds with `import` and permits NULL document chunk pages; existing kinds/pages stay intact |
+| 12 | `012_qa_source_metadata.sql` | Adds nullable Q&A source provenance; legacy rows remain NULL |
+| 13 | `013_document_source_metadata.sql` | Adds nullable document source provenance; legacy rows remain NULL |
+| 14 | `014_chunk_source_metadata.sql` | Adds nullable chunk source provenance; legacy rows remain NULL |
+
+For F036, upgrade through **14** before serving. All new import formats share
+the existing publication and index inventory. Existing PDF pages/content and
+legacy metadata are not relabelled. Version 11 uses repeatable widening ALTERs;
+12–14 guard their ADD steps independently. See [format policies and provenance](../../docs/import-formats.md).
 
 For F035, upgrade through **10** before serving. The background builder freshly
 embeds source text into resumable generations and validates before switching;

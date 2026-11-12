@@ -22,6 +22,8 @@ MAX_PDF_CHUNKS = 256
 MAX_PAGE = 10000
 MAX_BIGINT = 9223372036854775807
 UPLOAD_LIMITS = {
+    '/admin/api/import/jobs': MAX_JSON_UPLOAD_BYTES,
+    '/admin/api/import/preflight': MAX_JSON_UPLOAD_BYTES,
     '/admin/api/upload': MAX_JSON_UPLOAD_BYTES,
     '/admin/api/upload/jobs': MAX_JSON_UPLOAD_BYTES,
     '/admin/api/upload/preflight': MAX_JSON_UPLOAD_BYTES,

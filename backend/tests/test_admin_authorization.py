@@ -23,6 +23,11 @@ with patch.object(sys, 'path', [str(BACKEND_DIR), *sys.path]):
 
 FEATURES = ('json_upload', 'pdf_upload', 'models', 'chats', 'system_reports', 'controller')
 ROUTE_MATRIX = [
+    ('admin_import_preflight', 'POST', '/admin/api/import/preflight', 'administrator'),
+    ('admin_import_submit_job', 'POST', '/admin/api/import/jobs', 'administrator'),
+    ('admin_import_job', 'GET', '/admin/api/import/jobs/' + 'a' * 32, 'administrator'),
+    ('admin_import_job', 'DELETE', '/admin/api/import/jobs/' + 'a' * 32, 'administrator'),
+    ('admin_import_retry_job', 'POST', '/admin/api/import/jobs/' + 'a' * 32 + '/retry', 'administrator'),
     ('admin_login', 'GET', '/login', 'public'),
     ('admin_login', 'POST', '/login', 'public'),
     ('login_css', 'GET', '/login.css', 'public'),
@@ -70,6 +75,7 @@ ROUTE_MATRIX = [
     ('controller_action', 'POST', '/admin/api/controller/action', 'controller'),
 ]
 PAGE_MATRIX = {
+    'admin_import': 'administrator',
     'admin': 'json_upload',
     'admin_pdf': 'pdf_upload',
     'adminmodel': 'models',

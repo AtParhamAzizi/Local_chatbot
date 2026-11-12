@@ -109,7 +109,8 @@ def chat():
         'sources': [
             {
                 'type': h['source_type'],
-                'filename': h.get('filename'),
+                **({'source_metadata': h['source_metadata']} if h.get('source_metadata') else {}),
+                'filename': h.get('filename') or (h.get('source_metadata') or {}).get('filename'),
                 'pages': [h.get('page_start'), h.get('page_end')]
                     if h['source_type'] == 'pdf' else None,
                 'score': round(h['score'], 4),

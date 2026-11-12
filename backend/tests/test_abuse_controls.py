@@ -322,14 +322,14 @@ class AbuseEndpointTests(AbuseEndpointFixture, unittest.TestCase):
         self.assertEqual(self.ui_client.post('/chat', json={'message': ''}).status_code, 400)
 
     def test_uploads_share_one_limit_and_keep_authentication_and_csrf(self):
-        paths = ('/admin/api/upload', '/admin/api/pdf/upload')
+        paths = ('/admin/api/upload', '/admin/api/pdf/upload', '/admin/api/import/jobs', '/admin/api/import/preflight')
         for path in paths:
             self.assertEqual(self.admin_open(path, 'POST').status_code, 401)
         headers = self.authenticated_headers()
         for path in paths:
             self.assertEqual(self.admin_open(path, 'POST').status_code, 403)
         for attempt in range(6):
-            response = self.admin_open(paths[attempt % 2], 'POST', headers=headers, content_type='multipart/form-data')
+            response = self.admin_open(paths[attempt % len(paths)], 'POST', headers=headers, content_type='multipart/form-data')
             self.assertEqual(response.status_code, 400)
         for path in paths:
             self.assertEqual(self.assert_limited(self.admin_open(path, 'POST', headers=headers)), 300)

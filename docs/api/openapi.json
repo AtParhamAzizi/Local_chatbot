@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Local Chatbot API",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "description": "Stable v1 baseline for existing unversioned UI/admin routes. See README.md beside this document for authentication, compatibility and versioning rules. Demo STT/TTS servers and browser assets are excluded."
   },
   "x-api-major": "1",
@@ -2929,6 +2929,401 @@
         },
         "description": "Retry a failed or canceled job from its saved upload within 24 hours. Empty body. Repeating while queued is idempotent. Completed/running jobs or expired/missing checkpoints return 409. Capacity limits apply."
       }
+    },
+    "/admin/api/import/preflight": {
+      "post": {
+        "operationId": "admin_import_preflight",
+        "x-endpoint": "admin_import_preflight",
+        "x-service": "admin",
+        "x-csrf-required": true,
+        "x-permission": "administrator",
+        "servers": [
+          {
+            "url": "http://localhost:8000",
+            "description": "Development only; replace with the deployed HTTPS origin."
+          }
+        ],
+        "security": [
+          {
+            "AdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Required for POST; multipart forms also accept csrf_token."
+          }
+        ],
+        "summary": "Validate an allowlisted import and preview content, provenance, duplicates and processing cost.",
+        "description": "Read-only advisory preview. Content problems return valid=false; duplicate documents block publication unless replacement is selected. The worker always repeats validation. No model work or payload retention. See import-formats.md for enabled format policies.",
+        "responses": {
+          "200": {
+            "description": "Read-only preview, including content validation failures.",
+            "headers": {
+              "API-Version": {
+                "schema": {
+                  "const": "1"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionPreflight"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "One nonempty allowlisted .txt, .md, .csv or .docx file, at most 20971520 bytes. Text/Markdown/CSV require strict UTF-8 (optional BOM); CSV header is question,answer; DOCX accepts a bounded non-macro textual OOXML subset. See import-formats.md.",
+                    "x-max-bytes": 20971520
+                  },
+                  "replace": {
+                    "type": "string",
+                    "enum": [
+                      "true",
+                      "false",
+                      "1",
+                      "0",
+                      "yes",
+                      "no",
+                      "on",
+                      "off"
+                    ],
+                    "default": "false"
+                  },
+                  "csrf_token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/api/import/jobs": {
+      "post": {
+        "operationId": "admin_import_submit_job",
+        "x-endpoint": "admin_import_submit_job",
+        "x-service": "admin",
+        "x-csrf-required": true,
+        "x-permission": "administrator",
+        "servers": [
+          {
+            "url": "http://localhost:8000",
+            "description": "Development only; replace with the deployed HTTPS origin."
+          }
+        ],
+        "security": [
+          {
+            "AdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Required for mutations; multipart forms also accept csrf_token."
+          }
+        ],
+        "summary": "Queue a controlled text, Markdown, CSV Q&A or DOCX import.",
+        "responses": {
+          "202": {
+            "description": "Durably accepted for background processing.",
+            "headers": {
+              "API-Version": {
+                "schema": {
+                  "const": "1"
+                }
+              },
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Poll or cancel this job at this relative URL."
+              },
+              "Retry-After": {
+                "schema": {
+                  "const": "1"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionAccepted"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "One nonempty allowlisted .txt, .md, .csv or .docx file, at most 20971520 bytes. Text/Markdown/CSV require strict UTF-8 (optional BOM); CSV header is question,answer; DOCX accepts a bounded non-macro textual OOXML subset. See import-formats.md.",
+                    "x-max-bytes": 20971520
+                  },
+                  "replace": {
+                    "type": "string",
+                    "enum": [
+                      "true",
+                      "false",
+                      "1",
+                      "0",
+                      "yes",
+                      "no",
+                      "on",
+                      "off"
+                    ],
+                    "default": "false"
+                  },
+                  "csrf_token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "description": "Returns a durable import job. The worker validates the complete file before embedding, then publishes knowledge, source metadata and terminal success in one transaction. Cancel/retry use the same bounded checkpoint policy as JSON/PDF jobs."
+      }
+    },
+    "/admin/api/import/jobs/{job_id}": {
+      "get": {
+        "operationId": "admin_import_job",
+        "x-endpoint": "admin_import_job",
+        "x-service": "admin",
+        "x-csrf-required": false,
+        "x-permission": "administrator",
+        "servers": [
+          {
+            "url": "http://localhost:8000",
+            "description": "Development only; replace with the deployed HTTPS origin."
+          }
+        ],
+        "security": [
+          {
+            "AdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "summary": "Read durable job state, safe error and final ingestion result.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "API-Version": {
+                "schema": {
+                  "const": "1"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJob"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "admin_import_job_cancel",
+        "x-endpoint": "admin_import_job",
+        "x-service": "admin",
+        "x-csrf-required": true,
+        "x-permission": "administrator",
+        "servers": [
+          {
+            "url": "http://localhost:8000",
+            "description": "Development only; replace with the deployed HTTPS origin."
+          }
+        ],
+        "security": [
+          {
+            "AdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Required for mutations; multipart forms also accept csrf_token."
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "summary": "Cancel queued or running work; canceling an already canceled job succeeds.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "API-Version": {
+                "schema": {
+                  "const": "1"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJob"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "description": "Cancel queued or running work. A successful response fences publication immediately; see operations.md for the cooperative compute bound."
+      }
+    },
+    "/admin/api/import/jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "admin_import_retry_job",
+        "x-endpoint": "admin_import_retry_job",
+        "x-service": "admin",
+        "x-csrf-required": true,
+        "x-permission": "administrator",
+        "servers": [
+          {
+            "url": "http://localhost:8000",
+            "description": "Development only; replace with the deployed HTTPS origin."
+          }
+        ],
+        "security": [
+          {
+            "AdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Required for mutations; multipart forms also accept csrf_token."
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "summary": "Retry failed or canceled work from its saved upload checkpoint.",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "202": {
+            "description": "Queued for retry; poll Location.",
+            "headers": {
+              "API-Version": {
+                "schema": {
+                  "const": "1"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJob"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "description": "Retry a failed or canceled job from its saved upload within 24 hours. Empty body. Repeating while queued is idempotent. Completed/running jobs or expired/missing checkpoints return 409. Capacity limits apply."
+      }
     }
   },
   "components": {
@@ -3082,7 +3477,8 @@
             "type": "string",
             "enum": [
               "json",
-              "pdf"
+              "pdf",
+              "import"
             ]
           },
           "filename": {
@@ -3129,6 +3525,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/PreflightPdfSample"
+                },
+                {
+                  "$ref": "#/components/schemas/PreflightDocumentSample"
                 }
               ]
             }
@@ -3145,6 +3544,9 @@
           },
           "extraction": {
             "$ref": "#/components/schemas/PdfExtraction"
+          },
+          "source_metadata": {
+            "$ref": "#/components/schemas/SourceMetadata"
           }
         },
         "required": [
@@ -3272,6 +3674,9 @@
           "answer": {
             "type": "string",
             "maxLength": 240
+          },
+          "source_metadata": {
+            "$ref": "#/components/schemas/SourceMetadata"
           }
         },
         "required": [
@@ -3348,7 +3753,8 @@
             "type": "string",
             "enum": [
               "json",
-              "pdf"
+              "pdf",
+              "import"
             ]
           },
           "status": {
@@ -3373,7 +3779,8 @@
             "type": "string",
             "enum": [
               "json",
-              "pdf"
+              "pdf",
+              "import"
             ]
           },
           "status": {
@@ -3402,6 +3809,12 @@
               },
               {
                 "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ControlledQaImport"
+              },
+              {
+                "$ref": "#/components/schemas/ControlledDocumentImport"
               }
             ]
           },
@@ -3460,7 +3873,8 @@
                     "type": "string",
                     "enum": [
                       "json",
-                      "pdf"
+                      "pdf",
+                      "import"
                     ]
                   },
                   "completed": {
@@ -3602,7 +4016,8 @@
           "type": {
             "enum": [
               "qa",
-              "pdf"
+              "pdf",
+              "document"
             ]
           },
           "filename": {
@@ -3640,6 +4055,9 @@
           },
           "score": {
             "type": "number"
+          },
+          "source_metadata": {
+            "$ref": "#/components/schemas/SourceMetadata"
           }
         },
         "required": [
@@ -5085,6 +5503,218 @@
           "page",
           "per_page",
           "items"
+        ],
+        "additionalProperties": false
+      },
+      "SourceMetadata": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "format": {
+            "enum": [
+              "text",
+              "markdown",
+              "csv",
+              "docx"
+            ]
+          },
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "importer": {
+            "enum": [
+              "text-v1",
+              "markdown-v1",
+              "csv-v1",
+              "docx-v1"
+            ]
+          },
+          "encoding": {
+            "enum": [
+              "utf-8",
+              "utf-8-sig",
+              "ooxml-utf-8"
+            ]
+          },
+          "location": {
+            "$ref": "#/components/schemas/ImportLocation"
+          }
+        },
+        "required": [
+          "version",
+          "format",
+          "filename",
+          "sha256",
+          "importer",
+          "encoding"
+        ],
+        "additionalProperties": false
+      },
+      "ImportLocation": {
+        "type": "object",
+        "properties": {
+          "line_start": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "line_end": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "record": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "paragraph": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "character_start": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "character_end": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "part": {
+            "const": "word/document.xml"
+          },
+          "headings": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "type": "string",
+              "maxLength": 240
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "PreflightDocumentSample": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "source_metadata": {
+            "$ref": "#/components/schemas/SourceMetadata"
+          }
+        },
+        "required": [
+          "text",
+          "source_metadata"
+        ],
+        "additionalProperties": false
+      },
+      "ControlledQaImport": {
+        "type": "object",
+        "properties": {
+          "received": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "inserted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "embedded": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "duration_sec": {
+            "type": "number",
+            "minimum": 0
+          },
+          "errors": {
+            "type": "array",
+            "items": {},
+            "maxItems": 0
+          },
+          "source_metadata": {
+            "$ref": "#/components/schemas/SourceMetadata"
+          }
+        },
+        "required": [
+          "received",
+          "inserted",
+          "updated",
+          "skipped",
+          "embedded",
+          "duration_sec",
+          "errors",
+          "source_metadata"
+        ],
+        "additionalProperties": false
+      },
+      "ControlledDocumentImport": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "document_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "filename": {
+            "type": "string"
+          },
+          "file_size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "page_count": {
+            "const": 0
+          },
+          "chunk_count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "embedded_chunks": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "embedding_dim": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "duration_sec": {
+            "type": "number",
+            "minimum": 0
+          },
+          "source_metadata": {
+            "$ref": "#/components/schemas/SourceMetadata"
+          }
+        },
+        "required": [
+          "success",
+          "document_id",
+          "filename",
+          "file_size",
+          "page_count",
+          "chunk_count",
+          "embedded_chunks",
+          "embedding_dim",
+          "duration_sec",
+          "source_metadata"
         ],
         "additionalProperties": false
       }

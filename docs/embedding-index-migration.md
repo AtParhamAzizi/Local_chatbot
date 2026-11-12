@@ -1,8 +1,9 @@
 # Resumable embedding-index migration (F035)
 
 Embedding selection now builds a shadow index while requests continue using the
-saved serving profile. Apply schema migration **10** before deploying this code;
-follow the [backup and upgrade procedure](../backend/migrations/README.md).
+saved serving profile. Index storage starts at schema **10**; current serving
+requires schema **14**, including [controlled import provenance](import-formats.md).
+Follow the [backup and upgrade procedure](../backend/migrations/README.md).
 Startup performs no DDL. No worker starts during imports or factory assembly.
 
 ## Select, observe and recover

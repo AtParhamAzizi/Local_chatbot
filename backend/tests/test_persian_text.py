@@ -97,7 +97,7 @@ class KnowledgeDatabase(PdfDatabase):
         with closing(sqlite3.connect(self.filename)) as connection:
             connection.execute('''CREATE TABLE qa_documents (
                 id INTEGER PRIMARY KEY, question TEXT, answer TEXT, question_hash TEXT UNIQUE,
-                embedding BLOB, embedding_dim INTEGER, embedding_profile TEXT)''')
+                embedding BLOB, embedding_dim INTEGER, embedding_profile TEXT, source_metadata TEXT)''')
 
     def rows(self, table='qa_documents'):
         assert table in {'qa_documents', 'pdf_chunks', 'pdf_documents'}

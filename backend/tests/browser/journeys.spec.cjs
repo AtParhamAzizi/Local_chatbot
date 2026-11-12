@@ -91,6 +91,76 @@ async function mockPreflight(page, kind, report = preflightReport(kind)) {
     });
 }
 
+test('controlled imports preview every enabled extension with safe provenance and invalidate changed options', async ({ page }) => {
+    await login(page);
+    await page.goto(`${adminURL}/admin/admin_import.html`);
+    const sample = '<script>window.sampleExecuted=true</script>';
+    let publications = 0;
+    await page.route(`${adminURL}/admin/api/import/jobs`, route => {
+        publications++;
+        return route.fulfill({ status: 500, json: { error: 'Unexpected publication' } });
+    });
+    await page.route(`${adminURL}/admin/api/import/preflight`, route => {
+        expect(route.request().headers()['x-csrf-token']).toBeTruthy();
+        return route.fulfill({ json: { ...preflightReport('import'),
+            source_metadata: { filename: 'source', sha256: 'a'.repeat(64) },
+            samples: [{ text: sample, source_metadata: { location: { line_start: 1 } } }] } });
+    });
+    for (const extension of ['txt', 'md', 'csv', 'docx']) {
+        await page.locator('#sourceFile').setInputFiles({ name: `guide.${extension}`, buffer: Buffer.from('content') });
+        await expect(page.locator('#publishButton')).toBeDisabled();
+        await page.locator('#previewButton').click();
+        await expect(page.locator('#publishButton')).toBeEnabled();
+        await expect(page.locator('#preview')).toContainText('line_start');
+        await expect(page.locator('#preview')).toContainText(sample);
+        await expect(page.locator('#preview script')).toHaveCount(0);
+        expect(await page.evaluate(() => window.sampleExecuted)).toBeUndefined();
+        await page.locator('#replaceExisting').setChecked(!await page.locator('#replaceExisting').isChecked());
+        await expect(page.locator('#publishButton')).toBeDisabled();
+        await expect(page.locator('#preview')).toBeEmpty();
+    }
+    expect(publications).toBe(0);
+});
+
+test('controlled import background job can be canceled and retried with saved provenance', async ({ page }) => {
+    await login(page);
+    await page.goto(`${adminURL}/admin/admin_import.html`);
+    const jobId = 'a'.repeat(32);
+    let status = 'running';
+    await page.route(`${adminURL}/admin/api/import/preflight`, route => route.fulfill({ json: preflightReport('import') }));
+    await page.route(`${adminURL}/admin/api/import/jobs`, route => {
+        expect(route.request().method()).toBe('POST');
+        expect(route.request().headers()['x-csrf-token']).toBeTruthy();
+        return route.fulfill({ status: 202, json: { job_id: jobId, kind: 'import', status: 'queued' } });
+    });
+    await page.route(`${adminURL}/admin/api/import/jobs/${jobId}`, route => {
+        if (route.request().method() === 'DELETE') {
+            expect(route.request().headers()['x-csrf-token']).toBeTruthy();
+            status = 'canceled';
+        }
+        return route.fulfill({ json: { job_id: jobId, kind: 'import', filename: 'guide.txt', status,
+            retryable: status === 'canceled', result: status === 'completed' ? { source_metadata: { filename: 'guide.txt', format: 'text' } } : null } });
+    });
+    await page.route(`${adminURL}/admin/api/import/jobs/${jobId}/retry`, route => {
+        expect(route.request().headers()['x-csrf-token']).toBeTruthy();
+        status = 'completed';
+        return route.fulfill({ status: 202, json: { job_id: jobId, status: 'queued' } });
+    });
+    await page.locator('#sourceFile').setInputFiles({ name: 'guide.txt', buffer: Buffer.from('content') });
+    await page.locator('#previewButton').click();
+    await expect(page.locator('#publishButton')).toBeEnabled();
+    await page.locator('#publishButton').click();
+    await expect(page.locator('#sourceFile')).toBeDisabled();
+    await expect(page.locator('#status')).toContainText('running');
+    await page.locator('#cancelButton').click();
+    await expect(page.locator('#sourceFile')).toBeEnabled();
+    await expect(page.locator('#retryButton')).toBeEnabled();
+    await page.locator('#retryButton').click();
+    await expect(page.locator('#status')).toContainText('completed');
+    await expect(page.locator('#result')).toContainText('source_metadata');
+    await expect(page.locator('#retryButton')).toBeDisabled();
+});
+
 for (const kind of ['json', 'pdf']) {
     test(`preflight ${kind} preview is read-only, safe to render and invalidated by changed options or file`, async ({ page }) => {
         await login(page);
@@ -422,7 +492,7 @@ test('login rejects wrong credentials, supports password visibility and revokes 
 });
 
 for (const [username, allowed] of [
-    ['browser-admin', ['admin', 'admin_pdf', 'adminmodel', 'adminchat', 'adminlogger', 'controller', 'admin-user-control']],
+    ['browser-admin', ['admin', 'admin_pdf', 'admin_import', 'adminmodel', 'adminchat', 'adminlogger', 'controller', 'admin-user-control']],
     ['browser-pdf', ['admin_pdf']],
     ['browser-empty', []],
 ]) {

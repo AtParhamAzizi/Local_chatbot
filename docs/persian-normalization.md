@@ -63,7 +63,8 @@ question, hash and ID. It does not merge or delete other aliases. The original
 publication transaction and unique constraint handle new writes.
 
 F033 itself needs no schema migration; F034 added profiles in versions 7–9.
-Serving now requires version 10 for [resumable index rebuilding](embedding-index-migration.md).
+Version 10 adds [resumable index rebuilding](embedding-index-migration.md);
+serving now requires version 14, including [controlled import provenance](import-formats.md).
 Original embedding columns remain unchanged while F035 freshly embeds source
 text into separate profile-keyed generations. Replacement imports also remain
 available; keep the Q&A answer unchanged when refreshing only a base vector.

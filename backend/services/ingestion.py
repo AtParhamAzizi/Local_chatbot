@@ -1,5 +1,6 @@
 """Bounded QA/PDF ingestion without Flask request or response objects."""
 
+import json
 import re
 import time
 from contextlib import ExitStack, contextmanager
@@ -12,6 +13,7 @@ from request_validation import (
 )
 from services import adapters
 from services.embedding_batches import staged_embeddings
+from services.importers import import_chunks, prepare_import
 from services.ocr import LocalOcr, MAX_OCR_PAGES, MIN_WORD_CONFIDENCE, OCR_BUDGET_SECONDS, OcrError, useful_text
 from services.pdf_layout import LayoutPage, extract_page, extract_tables, finish_document
 from settings import setting_value
@@ -156,15 +158,15 @@ class IngestionService:
                 raise IngestionError({'error': 'Request failed.'}, 500) from None
             yield result
 
-    def _prepare_qa(self, raw, *, publication_guard=None, progress=None):
-        self._report('extraction', 'json', 0, 1, progress, publication_guard)
+    def _prepare_qa(self, raw, *, publication_guard=None, progress=None, source='json'):
+        self._report('extraction', source, 0, 1, progress, publication_guard)
         payload = parse_json(raw)
         if not isinstance(payload, list) or not payload:
             raise InvalidRequest('The uploaded JSON must be a non-empty array of question/answer objects.')
         if len(payload) > MAX_IMPORT_ROWS:
             raise PreparationLimit(f'Split the file into arrays of at most {MAX_IMPORT_ROWS} records.')
-        self._report('extraction', 'json', 1, 1, progress, publication_guard)
-        self._report('chunking', 'json', 0, len(payload), progress, publication_guard)
+        self._report('extraction', source, 1, 1, progress, publication_guard)
+        self._report('chunking', source, 0, len(payload), progress, publication_guard)
         rows, seen, issues, record_numbers = [], set(), [], []
         issue_count = 0
         for record_number, item in enumerate(payload, 1):
@@ -198,7 +200,7 @@ class IngestionService:
             seen.add(question_hash)
             rows.append((question, answer, question_hash))
             record_numbers.append(record_number)
-        self._report('chunking', 'json', len(payload), len(payload), progress, publication_guard)
+        self._report('chunking', source, len(payload), len(payload), progress, publication_guard)
         if issues:
             raise PreparationInvalid(issues, truncated=issue_count > len(issues))
         return len(payload), rows, record_numbers
@@ -223,14 +225,16 @@ class IngestionService:
         self.audit(f'JSON import completed: inserted={inserted}, updated={updated}, skipped={skipped}')
         return result
 
-    def _persist_qa(self, rows, vectors, profile, replace, conn, progress, guard):
+    def _persist_qa(self, rows, vectors, profile, replace, conn, progress, guard, sources=None):
         dim, metadata = profile.dimension, profile.to_json()
+        source_kind = 'json' if sources is None else 'import'
         inserted = updated = skipped = 0
         legacy_matches = None
-        self._report('publishing', 'json', 0, len(rows), progress, guard)
+        self._report('publishing', source_kind, 0, len(rows), progress, guard)
         with conn.cursor() as cur:
             for index, ((question, answer, question_hash), blob) in enumerate(zip(rows, vectors)):
-                self._report('publishing', 'json', index, len(rows), progress, guard)
+                source = json.dumps(sources[index], ensure_ascii=False) if sources is not None else None
+                self._report('publishing', source_kind, index, len(rows), progress, guard)
                 cur.execute("SELECT id FROM qa_documents WHERE question_hash = %s", (question_hash,))
                 existing = cur.fetchone()
                 if existing is None:
@@ -241,9 +245,9 @@ class IngestionService:
                     if replace:
                         cur.execute(
                             "UPDATE qa_documents "
-                            "   SET answer=%s, embedding=%s, embedding_dim=%s, embedding_profile=%s "
+                            "   SET answer=%s, embedding=%s, embedding_dim=%s, embedding_profile=%s, source_metadata=%s "
                             " WHERE id=%s",
-                            (answer, blob, dim, metadata, existing['id'])
+                            (answer, blob, dim, metadata, source, existing['id'])
                         )
                         self.audit(f"Updated knowledge-base record id={existing['id']}, embedding_dim={dim}")
                         updated += 1
@@ -252,13 +256,13 @@ class IngestionService:
                     continue
                 cur.execute(
                     "INSERT INTO qa_documents "
-                    "  (question, answer, question_hash, embedding, embedding_dim, embedding_profile) "
-                    "VALUES (%s, %s, %s, %s, %s, %s)",
-                    (question, answer, question_hash, blob, dim, metadata)
+                    "  (question, answer, question_hash, embedding, embedding_dim, embedding_profile, source_metadata) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (question, answer, question_hash, blob, dim, metadata, source)
                 )
                 self.audit(f'Inserted knowledge-base record id={cur.lastrowid}, embedding_dim={dim}')
                 inserted += 1
-        self._report('publishing', 'json', len(rows), len(rows), progress, guard)
+        self._report('publishing', source_kind, len(rows), len(rows), progress, guard)
         return inserted, updated, skipped
 
     def _legacy_qa_matches(self, cursor, keys, guard=None):
@@ -473,6 +477,62 @@ class IngestionService:
                 )
         return result
 
+    def _prepare_import(self, raw, filename, *, publication_guard=None, progress=None):
+        self._report('extraction', 'import', 0, 1, progress, publication_guard)
+        prepared = prepare_import(raw, filename, guard=publication_guard)
+        self._report('extraction', 'import', 1, 1, progress, publication_guard)
+        if prepared.records:
+            payload = json.dumps([{'question': row['question'], 'answer': row['answer']}
+                                  for row in prepared.records], ensure_ascii=False).encode('utf-8')
+            _, rows, numbers = self._prepare_qa(payload, publication_guard=publication_guard, progress=progress, source='import')
+            sources = [{**prepared.metadata, 'location': prepared.records[number - 1]['location']} for number in numbers]
+            return prepared, rows, numbers, sources
+        chunks = import_chunks(prepared, guard=publication_guard)
+        self._report('chunking', 'import', len(chunks), len(chunks), progress, publication_guard)
+        return prepared, chunks, [], []
+
+    def ingest_import(self, raw, filename, *, replace=False, publication_guard=None, progress=None, publication=None):
+        started = self.clock()
+        prepared, records, _, sources = self._prepare_import(
+            raw, filename, publication_guard=publication_guard, progress=progress)
+        if prepared.records:
+            result = {'received': len(prepared.records), 'errors': [], 'source_metadata': prepared.metadata}
+            with self._embeddings(records, text_for=lambda row: row[0], source='import',
+                                  publication_guard=publication_guard, progress=progress) as (vectors, profile):
+                with self._publication(result, publication) as connection:
+                    if self.embed is adapters.embed_batch:
+                        adapters.guard_embedding_publication(connection, profile)
+                    inserted, updated, skipped = self._persist_qa(
+                        records, vectors, profile, replace, connection, progress, publication_guard, sources)
+                    result.update(inserted=inserted, updated=updated,
+                                  skipped=skipped + len(prepared.records) - len(records), embedded=inserted + updated,
+                                  duration_sec=round(self.clock() - started, 2))
+            return result
+        connection = self.connect()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute('SELECT id, filename, status FROM pdf_documents WHERE document_hash = %s',
+                               (prepared.document_hash,))
+                existing = cursor.fetchone()
+        finally:
+            connection.close()
+        if existing and not replace:
+            raise IngestionError({'error': 'This document already exists.', 'duplicate': True,
+                                  'document_id': existing['id']}, 409)
+        with self._embeddings(records, text_for=lambda chunk: chunk['content'], source='import',
+                              publication_guard=publication_guard, progress=progress) as (vectors, profile):
+            result = {'success': True, 'filename': prepared.metadata['filename'], 'file_size': len(raw),
+                      'page_count': 0, 'chunk_count': len(records), 'embedded_chunks': len(records),
+                      'embedding_dim': profile.dimension, 'source_metadata': prepared.metadata,
+                      'duration_sec': round(self.clock() - started, 2)}
+            with self._publication(result, publication) as connection:
+                if self.embed is adapters.embed_batch:
+                    adapters.guard_embedding_publication(connection, profile)
+                result['document_id'] = self._persist_pdf(
+                    raw, prepared.metadata['filename'], prepared.document_hash, 0, records, existing, replace,
+                    vectors, profile, connection, progress, publication_guard, prepared.metadata)
+        return result
+
     def preflight(self, raw, filename, *, kind, replace=False):
         """Inspect the complete bounded upload without embedding, jobs or publication."""
         report = {
@@ -482,8 +542,16 @@ class IngestionService:
         }
         extraction = {}
         try:
-            if kind == 'json':
-                received, rows, record_numbers = self._prepare_qa(raw)
+            prepared = None
+            if kind == 'import':
+                prepared, records, numbers, sources = self._prepare_import(raw, filename)
+                report['source_metadata'] = prepared.metadata
+                report['filename'] = prepared.metadata['filename']
+            if kind == 'json' or (prepared is not None and prepared.records):
+                if prepared is None:
+                    received, rows, record_numbers = self._prepare_qa(raw)
+                else:
+                    received, rows, record_numbers = len(prepared.records), records, numbers
                 connection = self.connect()
                 try:
                     with connection.cursor() as cursor:
@@ -506,14 +574,22 @@ class IngestionService:
                 sample_indexes = sorted({0, len(rows) // 2, len(rows) - 1})
                 report['samples'] = [{'record': record_numbers[index], 'question': rows[index][0][:240],
                                       'answer': rows[index][1][:240]} for index in sample_indexes]
-            elif kind == 'pdf':
-                page_count, chunks, empty_pages = self._prepare_pdf(raw, extraction=extraction)
+                if prepared is not None:
+                    for sample, index in zip(report['samples'], sample_indexes):
+                        sample['source_metadata'] = sources[index]
+            elif kind == 'pdf' or prepared is not None:
+                if prepared is None:
+                    page_count, chunks, empty_pages = self._prepare_pdf(raw, extraction=extraction)
+                    document_hash = self.hash_document(raw)
+                else:
+                    page_count, chunks, empty_pages = None, records, []
+                    document_hash = prepared.document_hash
                 if extraction:
                     report['extraction'] = extraction
                 connection = self.connect()
                 try:
                     with connection.cursor() as cursor:
-                        cursor.execute('SELECT id FROM pdf_documents WHERE document_hash = %s', (self.hash_document(raw),))
+                        cursor.execute('SELECT id FROM pdf_documents WHERE document_hash = %s', (document_hash,))
                         existing = bool(cursor.fetchone())
                 finally:
                     connection.close()
@@ -527,12 +603,15 @@ class IngestionService:
                 sample_indexes = sorted({0, len(chunks) // 2, len(chunks) - 1})
                 report['samples'] = [{'page': chunks[index]['page_start'], 'text': chunks[index]['content'][:240]}
                                      for index in sample_indexes]
+                if prepared is not None:
+                    report['samples'] = [{'text': chunks[index]['content'][:240],
+                                          'source_metadata': chunks[index]['source_metadata']} for index in sample_indexes]
                 report['issues'] = [{'severity': 'warning', 'page': page_number,
                                      'message': 'No extractable text on this page; it will be skipped. Apply OCR if it contains knowledge.'}
                                     for page_number in empty_pages[:20]]
                 report['issues_truncated'] = len(empty_pages) > 20
                 if existing and not replace:
-                    report['issues'].insert(0, {'severity': 'error', 'message': 'This PDF already exists. Enable replacement or select a different PDF.'})
+                    report['issues'].insert(0, {'severity': 'error', 'message': 'This document already exists. Enable replacement or select a different file.'})
                     report['issues_truncated'] = report['issues_truncated'] or len(report['issues']) > 20
                     report['issues'] = report['issues'][:20]
             else:
@@ -542,7 +621,9 @@ class IngestionService:
                 report['extraction'] = extraction
             issues = getattr(error, 'issues', None)
             if issues is None:
-                message = error.description if isinstance(error, InvalidRequest) else 'No usable PDF content. Export a PDF with extractable text.'
+                message = error.description if isinstance(error, InvalidRequest) else (
+                    'The file exceeds import limits. Split it before importing.' if isinstance(error, RequestEntityTooLarge)
+                    else error.payload.get('error', 'No usable document content.'))
                 issues = [{'message': message}]
             report['issues'] = [{'severity': 'error', **issue} for issue in issues]
             report['issues_truncated'] = getattr(error, 'truncated', False)
@@ -558,10 +639,11 @@ class IngestionService:
         return report
 
     def _persist_pdf(self, raw, filename, document_hash, page_count, chunks, existing, replace, vectors, profile,
-                     conn, progress, guard):
+                     conn, progress, guard, source_metadata=None):
         dim, metadata = profile.dimension, profile.to_json()
+        source_kind = 'pdf' if source_metadata is None else 'import'
         document_id = None
-        self._report('publishing', 'pdf', 0, len(chunks), progress, guard)
+        self._report('publishing', source_kind, 0, len(chunks), progress, guard)
         with conn.cursor() as cur:
             if existing and replace:
                 document_id = existing['id']
@@ -584,9 +666,10 @@ class IngestionService:
                     embedded_chunk_count,
                     embedding_dim,
                     status,
-                    embedding_profile
+                    embedding_profile,
+                    source_metadata
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     filename,
@@ -597,13 +680,14 @@ class IngestionService:
                     0,
                     dim,
                     'processing',
-                    metadata
+                    metadata,
+                    json.dumps(source_metadata, ensure_ascii=False) if source_metadata is not None else None
                 )
             )
             document_id = cur.lastrowid
 
             for index, (chunk, blob) in enumerate(zip(chunks, vectors)):
-                self._report('publishing', 'pdf', index, len(chunks), progress, guard)
+                self._report('publishing', source_kind, index, len(chunks), progress, guard)
                 cur.execute(
                     """
                     INSERT INTO pdf_chunks
@@ -615,9 +699,10 @@ class IngestionService:
                         content,
                         embedding,
                         embedding_dim,
-                        embedding_profile
+                        embedding_profile,
+                        source_metadata
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         document_id,
@@ -627,7 +712,8 @@ class IngestionService:
                         chunk['content'],
                         blob,
                         dim,
-                        metadata
+                        metadata,
+                        json.dumps(chunk['source_metadata'], ensure_ascii=False) if 'source_metadata' in chunk else None
                     )
                 )
             # ---------------------------------------------
@@ -646,5 +732,5 @@ class IngestionService:
                     document_id
                 )
             )
-        self._report('publishing', 'pdf', len(chunks), len(chunks), progress, guard)
+        self._report('publishing', source_kind, len(chunks), len(chunks), progress, guard)
         return document_id

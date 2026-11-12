@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ورود قالب‌های متنی</title>
+    <link rel="stylesheet" href="admin_import.css">
+</head>
+<body>
+    <main>
+        <h1>ورود قالب‌های متنی</h1>
+        <p>متن ساده و Markdown با UTF-8، فایل CSV پرسش و پاسخ، یا DOCX متنی را انتخاب کنید. حداکثر حجم ۲۰ مگابایت است.</p>
+        <p>CSV باید دقیقاً دو ستون <bdi>question,answer</bdi> داشته باشد. DOCX شامل تصویر، تغییرات رهگیری‌شده، فیلد، سربرگ یا محتوای فعال پذیرفته نمی‌شود. لینک‌ها بارگیری نمی‌شوند.</p>
+        <form id="importForm">
+            <label for="sourceFile">فایل منبع</label>
+            <input id="sourceFile" type="file" accept=".txt,.md,.csv,.docx" required>
+            <label><input id="replaceExisting" type="checkbox"> جایگزینی محتوای تکراری</label>
+            <div class="actions">
+                <button id="previewButton" type="button">بررسی و پیش‌نمایش</button>
+                <button id="publishButton" type="submit" disabled>ورود در پس‌زمینه</button>
+                <button id="cancelButton" type="button" disabled>لغو</button>
+                <button id="retryButton" type="button" disabled>تلاش دوباره</button>
+            </div>
+        </form>
+        <p id="status" role="status" aria-live="polite">فایل را انتخاب و پیش‌نمایش را بررسی کنید.</p>
+        <section aria-label="پیش‌نمایش و اطلاعات منبع"><pre id="preview"></pre></section>
+        <section aria-label="نتیجه ورود"><pre id="result"></pre></section>
+        <p>رکوردهای CSV در مدیریت پرسش و پاسخ و سندهای دیگر در فهرست سندها قابل حذف هستند. اطلاعات منبع همراه نتایج بازیابی حفظ می‌شود.</p>
+    </main>
+    <script src="../theme.js"></script>
+    <script src="/admin-csrf.js"></script>
+    <script src="admin_import.js"></script>
+</body>
+</html>

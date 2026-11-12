@@ -35,6 +35,12 @@ OPERATION_POLICIES = {
     'pdf.cancel_job': 'pdf_upload',
     'pdf.retry_job': 'pdf_upload',
     'pdf.delete': 'pdf_upload',
+    'import.view': ADMINISTRATOR,
+    'import.preflight': ADMINISTRATOR,
+    'import.upload': ADMINISTRATOR,
+    'import.jobs': ADMINISTRATOR,
+    'import.cancel_job': ADMINISTRATOR,
+    'import.retry_job': ADMINISTRATOR,
     'models.view': 'models',
     'models.list': 'models',
     'models.select': 'models',
@@ -97,6 +103,10 @@ ENDPOINT_OPERATIONS = {
     'admin_pdf_job': {**_read('pdf.jobs'), 'DELETE': 'pdf.cancel_job'},
     'admin_pdf_retry_job': _mutation('pdf.retry_job'),
     'admin_pdf_delete': _mutation('pdf.delete', 'DELETE'),
+    'admin_import_preflight': _mutation('import.preflight'),
+    'admin_import_submit_job': _mutation('import.upload'),
+    'admin_import_job': {**_read('import.jobs'), 'DELETE': 'import.cancel_job'},
+    'admin_import_retry_job': _mutation('import.retry_job'),
     'admin_models': _read('models.list'),
     'admin_set_model': _mutation('models.select'),
     'admin_chat_sessions': _read('chats.sessions'),
@@ -111,6 +121,7 @@ ENDPOINT_OPERATIONS = {
 }
 
 PAGE_OPERATIONS = {
+    'admin_import.html': 'import.view',
     'admin.html': 'qa.view',
     'admin_pdf.html': 'pdf.view',
     'adminmodel.html': 'models.view',

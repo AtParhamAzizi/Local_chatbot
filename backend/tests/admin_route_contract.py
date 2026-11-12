@@ -2,6 +2,10 @@
 
 
 ADMIN_ROUTES = (
+    ('/admin/api/import/preflight', 'admin_import_preflight', ('POST',)),
+    ('/admin/api/import/jobs', 'admin_import_submit_job', ('POST',)),
+    ('/admin/api/import/jobs/<job_id>', 'admin_import_job', ('GET', 'DELETE')),
+    ('/admin/api/import/jobs/<job_id>/retry', 'admin_import_retry_job', ('POST',)),
     ('/', 'admin_index', ('GET',)),
     ('/login', 'admin_login', ('GET', 'POST')),
     ('/logout', 'admin_logout', ('POST',)),
