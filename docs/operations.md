@@ -29,13 +29,17 @@ where runtime state is expected.
 
 ## Hybrid retrieval and rollback (F038)
 
-`RETRIEVAL_STRATEGY=hybrid` is the default. The service captures this setting at
+`RETRIEVAL_STRATEGY=fusion` is the default (F039). It calibrates scores on a shared
+Q&A/document BM25 corpus before thresholding/ranking, without collection caps or
+Q&A-first ties. The service captures this setting at
 construction; change the process environment and restart to apply it. Compose
-passes `${RETRIEVAL_STRATEGY:-hybrid}` from `.env`; recreate the application
-container after changing it. `legacy` restores Q&A cosine and document overlap
+passes `${RETRIEVAL_STRATEGY:-fusion}` from `.env`; recreate the application
+container after changing it. `hybrid` restores F038's separate statistics, scale 8,
+five/eight caps and historical merge. `legacy` restores Q&A cosine and document overlap
 scoring without changing knowledge, embeddings, index generations or schema.
-Invalid strategy values fail settings validation. Re-enable `hybrid` and restart
-to return to the evaluated policy.
+Invalid strategy values fail settings validation. Re-enable `fusion` and restart
+to return to comparable default ranking. Historical strategies retain their
+original source-score comparison behavior.
 
 The lexical index is process-local and rebuilt on the first query for an eligible
 corpus/profile snapshot. Imports, replacements, deletions and embedding cutover
@@ -46,10 +50,12 @@ in addition to fetched vectors: the LRU bounds two cached views, not bytes, and
 concurrent readers may retain evicted views. First-use/corpus-change requests pay
 the build cost. There is no persistent lexical index to migrate or repair.
 
-The checked-in benchmark passed scoring/indexing budgets at 30 and 3,000 rows.
+The historical F038 benchmark passed scoring/indexing budgets at 30 and 3,000 rows.
 It excludes inference and DB I/O and repeats the small source corpus at scale;
 measure chat latency and memory with your actual corpus before increasing load.
-See [policy, evidence, acceptance budgets and replay](hybrid-retrieval.md).
+Those timings do not measure F039's combined merge. See
+[current policy, mixed-source evidence and replay](source-ranking.md) and the
+[historical hybrid timing record](hybrid-retrieval.md).
 
 ## Embedding upload capacity
 

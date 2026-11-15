@@ -1,6 +1,9 @@
 # Indexed Persian hybrid retrieval (F038)
 
-The default `hybrid` strategy combines local embedding cosine with indexed BM25
+F039 supersedes the default scoring/merge with [common-corpus score calibration](source-ranking.md).
+This document and its frozen evidence describe the retained `hybrid` strategy.
+
+The historical `hybrid` strategy combines local embedding cosine with indexed BM25
 for both Q&A and PDF/controlled documents. `RETRIEVAL_STRATEGY=legacy` restores
 the prior Q&A cosine and document overlap policy after restart. No schema,
 knowledge or model changes are needed to switch strategies.

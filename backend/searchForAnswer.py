@@ -154,7 +154,7 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None,
         if semantic_score is None:
             continue
         score = ((semantic_score * 0.82) + (_lexical_overlap(query, r["content"]) * 0.18)
-                 if strategy == 'legacy' or not query else semantic_score)
+                 if strategy == 'legacy' or (strategy == 'hybrid' and not query) else semantic_score)
         results.append({
             "score": score,
             "semantic_score": semantic_score,
@@ -178,7 +178,7 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None,
 
 
 def _require_strategy(strategy):
-    if strategy not in {'hybrid', 'legacy'}:
+    if strategy not in {'fusion', 'hybrid', 'legacy'}:
         raise ValueError('Unknown retrieval strategy')
 
 

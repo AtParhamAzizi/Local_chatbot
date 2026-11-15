@@ -60,6 +60,7 @@ backend/
   searchForAnswer.py  Vector search over qa_documents / pdf_chunks + build_context
   services/lexical_index.py Immutable Persian BM25 postings and bounded compatible-snapshot cache
   services/hybrid_search.py Development-selected shared lexical/vector scoring policy
+  services/source_fusion.py Common-corpus score calibration and source-independent final ranking
   persian_text.py     Shared fa-v1 normalization copies for embeddings, lexical terms and Q&A keys
   embedding_profile.py Immutable embedding metadata, canonical identities and profiled batch validation
   reembed.py           Operator index status/retry/rollback CLI (no model loading)
@@ -75,6 +76,7 @@ backend/
   retrieval_eval.py    Versioned Persian dataset validation, ranking metrics and baseline replay CLI
   retrieval_eval_local.py Explicit local-weight scoring evaluation with independent profiled embeddings
   hybrid_eval.py      Independent local embeddings, development-only policy selection, frozen heldout/latency replay
+  source_fusion_eval.py Development-only common-score calibration and frozen mixed-source replay
   tests/              Offline unittest regressions; mysql/ tests real DB effects; browser/ tests UI journeys
   model/              (gitignored) active embedder: Qwen3-Embedding-0.6B/
   modelgen/           (gitignored) qwen3.5-2B/; Qwen3-4B defaults to modelgen/ itself; Gemma is not in the catalog
@@ -183,8 +185,8 @@ One database-scoped named lock excludes competing migration commands. Each versi
 1. Read JSON `{message}` and `get_client_ip()` (uses only middleware-validated `request.remote_addr`). An empty message returns 400. `chat_sessions.chat_owner_hash(create=True)` establishes or reuses a signed anonymous chat session; the server derives the public `user_id` from its ownership hash. An optional legacy `user_id` string (at most 64 characters) is accepted but ignored; invalid field types still fail validation.
 2. `_retrieve_top(query, k=6)` delegates to `RetrievalService.retrieve(query, limit=6)` (an exception here returns 500):
    - `embed_batch([query])` gives float32 vectors and their immutable embedding profile.
-   - `_search_qa(qvec, k=5, query=query, profile=profile, strategy=strategy)` and `_search_pdf(qvec, k=8, query=query, profile=profile, strategy=strategy)` require that profile before scoring. Both receive the same normalized query and service-captured strategy.
-   - Keep `score >= MIN_SCORE` (0.35), sort descending, take the top k.
+   - `_search_qa` and `_search_pdf` require that profile before scoring. Both receive the same normalized query and service-captured strategy. Default `fusion` requests `k=None` from each collection so all compatible candidates reach the shared scorer.
+   - `source_fusion.fuse` recomputes comparable scores using one BM25 corpus, keeps `score >= MIN_SCORE` (0.35), sorts descending and takes the top k. Historical strategies retain their five-Q&A/eight-document candidates.
 3. No hits: fixed Persian fallback reply (phone 1649), logged as WARNING.
    Hits: `generate_reply(message, hits[:6])`. If generation raises, the reply falls back to `hits[0]['answer']` or `['content']`, then to the fallback text.
 4. `recommended_questions` = `question` of `hits[1:4]` (QA hits only).
@@ -193,7 +195,8 @@ One database-scoped named lock excludes competing migration commands. Each versi
 
 Scoring:
 - Complete profile equality precedes `_cosine_score(qvec, blob, embedding_dim)` and lexical indexing. Unknown/incompatible profiles, invalid BLOBs, dimension mismatches, nonfinite values and zero norms are skipped. Documents also require compatible parent profiles and completed publication.
-- Default `hybrid`: both collections use `0.8 * cosine + 0.2 * BM25/(BM25 + 8)`. Q&A lexical text includes question and answer; documents use content. Collections maintain separate statistics. Within a collection ties use ascending source ID; the final stable merge keeps Q&A first on equal scores.
+- Default `fusion`: both collections use `0.8 * cosine + 0.2 * BM25/(BM25 + 16)` with document frequencies and length normalization computed over their combined eligible corpus. Q&A lexical text includes question and answer; documents use content. Collection-local scores are ignored. Ties use normalized-text SHA-256 then source-identity SHA-256, with no fixed source-type precedence. The scale was selected on development questions only; this is fixed scale calibration, not a relevance probability.
+- `RETRIEVAL_STRATEGY=hybrid` restores F038's separate collection statistics, scale 8, five/eight candidate limits and Q&A-first equal-score merge.
 - `RETRIEVAL_STRATEGY=legacy`, captured when constructing the service, restores Q&A cosine and document `0.82 * cosine + 0.18 * overlap`. Overlap uses shared Persian-normalized, casefolded unique terms. Restart after changing this setting. Low-level calls without query text retain the preceding scoring behavior.
 
 ### 6.1.1 Persian retrieval evaluation (F037)
@@ -222,6 +225,9 @@ production-score parity with deterministic vectors. Real-weight quality runs
 remain manual. See [commands, baseline and limits](docs/retrieval-evaluation.md).
 
 ### 6.1.2 Indexed hybrid retrieval (F038)
+
+This section records the historical `hybrid` policy; F039 below supersedes its
+default scoring/merge while retaining the tokenizer and immutable cache implementation.
 
 `services/lexical_index.py` builds immutable inverted BM25 postings with
 `k1=1.2`, `b=0.75`. Tokenization shares `fa-v1` normalization, casefolds and
@@ -252,6 +258,27 @@ inference and database I/O and duplicate source text at scale. Unanswerable fals
 positives remain 1.0 for both policies; synthetic agent review does not establish
 production abstention or domain quality. See [evidence and replay](docs/hybrid-retrieval.md)
 and [ADR 0011](docs/decisions/0011-indexed-persian-hybrid.md).
+
+### 6.1.3 Comparable ranking across source types (F039)
+
+`services/source_fusion.py` calibrates cosine and BM25 on one shared scale before
+thresholding, ranking or truncation. `source_key` namespaces Q&A and document-table
+IDs, including controlled documents. The combined lexical snapshot is keyed by
+policy, full embedding profile and sorted eligible source/text pairs; no stale
+or incompatible rows bypass the existing search guards. Source quotas and
+per-collection score comparisons do not participate in the default merge.
+
+`source_fusion_eval.py` compares 48 calibrations on F037 development data and
+freezes source hashes/profile/dataset before explicit heldout replay. The selected
+weight 0.2 / scale 16 preserves development recall@6 for every source kind;
+nDCG changes from 0.863962 to 0.858954 and MRR from 0.864583 to 0.862500.
+Heldout recall@6 remains 0.958333, MRR 0.895833 and nDCG 0.888111. Kind-specific
+heldout recall@6 remains Q&A 0.90, PDF 1.00 and controlled documents 1.00. Paired
+source-swap tests win 6/6 for each kind with 20 opposing distractors, and changing
+collection score scales cannot affect results. These are synthetic excerpts and
+cached real local vectors; abstention still fails on all unanswerable cases.
+See [strategy, acceptance and replay](docs/source-ranking.md) and
+[ADR 0012](docs/decisions/0012-comparable-source-ranking.md).
 
 ### 6.2 Generation (`generator.py`)
 

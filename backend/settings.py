@@ -63,7 +63,7 @@ SETTING_REGISTRY = MappingProxyType({
     "APP_ENV": Setting("choice", "production", choices=("production", *sorted(DEVELOPMENT_ENVIRONMENTS)),
                        aliases=("ENVIRONMENT", "FLASK_ENV"), public=True),
     "APP_HOST": Setting("host", "127.0.0.1", public=True),
-    "RETRIEVAL_STRATEGY": Setting("choice", "hybrid", choices=("hybrid", "legacy"), public=True),
+    "RETRIEVAL_STRATEGY": Setting("choice", "fusion", choices=("fusion", "hybrid", "legacy"), public=True),
     "DB_HOST": Setting("text", "localhost"),
     "DB_PORT": Setting("integer", 3306, 1, 65535, public=True),
     "DB_USER": Setting("text", lambda resolver: _development_default(resolver, "root"), required_in_production=True),

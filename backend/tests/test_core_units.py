@@ -195,14 +195,15 @@ class ScoringTests(OfflineCoreFixture, unittest.TestCase):
                     search(np.ones(2, dtype=np.float32), profile=profile(2))
                 connection.close.assert_called_once_with()
 
-    def test_retrieval_uses_embedding_double_threshold_merge_and_top_k(self):
+    def test_historical_hybrid_retrieval_threshold_merge_and_top_k(self):
         retrieval = importlib.import_module('services.retrieval')
         embedder = Mock(return_value=[[1.0, 0.0]])
         qa = [{'id': 1, 'score': 0.35}, {'id': 2, 'score': 0.349}, {'id': 3, 'score': 0.9}]
         pdf = [{'id': 4, 'score': 0.7}, {'id': 5, 'score': 0.1}]
         search_qa = Mock(return_value=qa)
         search_pdf = Mock(return_value=pdf)
-        service = retrieval.RetrievalService(embed=with_profile(embedder), search_qa=search_qa, search_pdf=search_pdf)
+        service = retrieval.RetrievalService(embed=with_profile(embedder), search_qa=search_qa,
+                                             search_pdf=search_pdf, strategy='hybrid')
         self.assertEqual([hit['id'] for hit in service.retrieve('question', limit=2)], [3, 4])
         self.assertEqual([hit['id'] for hit in service.retrieve('question', limit=6)], [3, 4, 1])
         self.assertEqual(embedder.call_args.args, (['question'],))

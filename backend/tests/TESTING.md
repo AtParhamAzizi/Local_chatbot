@@ -1,5 +1,20 @@
 # Offline unit-test foundation
 
+## Comparable source ranking (F039)
+
+Run `python -B backend/tests/run_tests.py --pattern test_source_fusion.py --repeat 2`.
+Tests cover shared-scale arithmetic, ignored collection score scales, source-label
+swaps with unequal collection sizes, table-local ID collisions, deterministic ties,
+weak-match exclusion, no forced source quota, full candidate coverage, snapshot
+edit/delete/profile/order handling, production/evaluator parity, development-only
+selection guards, failed acceptance and evidence recall without cross-kind credit.
+The default guarded suite discovers these cases; no model/database/network is used.
+
+The default `fusion` strategy also runs through existing publication, Persian
+normalization, embedding profile and index-migration tests. Historical F037/F038
+parity tests explicitly retain their original strategies. Actual cached-model
+development/heldout measurements and replay are in [source ranking](../../docs/source-ranking.md).
+
 ## Indexed hybrid retrieval (F038)
 
 Run `python -B backend/tests/run_tests.py --pattern test_hybrid_retrieval.py --repeat 2`.

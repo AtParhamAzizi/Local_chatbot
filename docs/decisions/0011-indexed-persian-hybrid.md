@@ -2,7 +2,8 @@
 
 Date: 2026-11-12
 
-Status: Implemented
+Status: Implemented; default scoring/merge superseded by
+[0012](0012-comparable-source-ranking.md). Retained as the `hybrid` rollback strategy.
 
 ## Context
 

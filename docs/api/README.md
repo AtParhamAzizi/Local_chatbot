@@ -12,6 +12,12 @@ preview/jobs, `kind=import`, `type=document` chat sources and optional source
 provenance. The exact enabled formats, encoding rules, quotas and duplicate
 semantics are defined in [import-formats.md](../import-formats.md).
 
+Chat and source `score` values are ranking values, not relevance probabilities.
+The default `fusion` strategy uses the same calibrated cosine/BM25 scale for
+Q&A and documents before thresholding and sorting. Source types have no fixed
+tie precedence. See [score semantics and evaluation](../source-ranking.md).
+This ranking change adds no fields or routes to the v1 contract.
+
 The UI and admin are separate origins (development ports 5000 and 8000). Each
 OpenAPI operation names its service and development server; substitute the actual
 deployment HTTPS origin. The shared serving process does not combine the two

@@ -11,7 +11,7 @@ class RetrievalService:
         from settings import setting_value
 
         self.strategy = setting_value('RETRIEVAL_STRATEGY') if strategy is None else strategy
-        if self.strategy not in {'hybrid', 'legacy'}:
+        if self.strategy not in {'fusion', 'hybrid', 'legacy'}:
             raise ValueError('Unknown retrieval strategy')
         self.embed = embed
         self.search_qa = search_qa
@@ -26,6 +26,12 @@ class RetrievalService:
         if profile.normalization_version != NORMALIZATION_VERSION:
             raise ValueError('Embedding profile disagrees with retrieval normalization')
         vector = vectors[0]
+        if self.strategy == 'fusion':
+            from services.source_fusion import fuse
+
+            qa_results = self.search_qa(vector, k=None, query=query, profile=profile, strategy=self.strategy)
+            pdf_results = self.search_pdf(vector, k=None, query=query, profile=profile, strategy=self.strategy)
+            return fuse(qa_results + pdf_results, query, profile=profile, min_score=self.min_score, limit=limit)
         qa_results = self.search_qa(vector, k=5, query=query, profile=profile, strategy=self.strategy)
         pdf_results = self.search_pdf(vector, k=8, query=query, profile=profile, strategy=self.strategy)
         combined = [hit for hit in qa_results + pdf_results if hit['score'] >= self.min_score]

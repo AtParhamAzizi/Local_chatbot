@@ -21,7 +21,7 @@ The project now includes a refreshed **Liquid Glass** visual experience:
 
 ## Features
 
-- Hybrid retrieval using local `Qwen/Qwen3-Embedding-0.6B` vectors and an indexed Persian BM25 word policy selected on development questions.
+- Comparable Q&A/document ranking using local `Qwen/Qwen3-Embedding-0.6B` vectors, shared Persian BM25 statistics and development-selected score calibration.
 - Answer generation using the local `Qwen/Qwen3.5-2B` model by default.
 - JSON question-and-answer ingestion through the administrator dashboard.
 - PDF upload, text extraction, chunking, embedding, search, and deletion.
@@ -591,14 +591,15 @@ independent human review remains pending. Replay the fixed lexical baseline with
 with `python -B backend/retrieval_eval.py run`. Explicit local-weight and external
 ranking evaluation commands are documented in the guide.
 
-The default retriever now combines vectors with Persian BM25 postings for Q&A
-questions/answers and PDF/document content. Development-only comparison selected
-word tokens over stop-word filtering and character trigrams. With actual local
-embeddings, held-out recall@6 improved from 0.896 to 0.958 and nDCG@6 from 0.856
-to 0.888. See [hybrid policy, measurements and replay](docs/hybrid-retrieval.md)
-for latency scope and limits. The process caches compatible corpus snapshots;
-dense search still scans MySQL vectors. Set `RETRIEVAL_STRATEGY=legacy` before
-restarting to restore the previous scoring policy.
+The default `fusion` retriever scores Q&A and PDF/document evidence on one shared
+scale, using compatible vectors and a combined Persian BM25 corpus. It removes
+collection candidate caps and Q&A-first ties. Development selected lexical weight
+0.2 and saturation scale 16. Frozen heldout recall@6 (0.958), MRR (0.896), nDCG
+(0.888) and each source kind's recall@6 match the preceding hybrid policy. See
+[score fusion, mixed-source evidence and replay](docs/source-ranking.md) for
+development tradeoffs and limits. The process caches compatible corpus snapshots;
+dense search still scans MySQL vectors. Set `RETRIEVAL_STRATEGY=hybrid` before
+restarting for F038 scoring, or `legacy` for the earlier cosine/overlap policy.
 
 The complete route inventory is in the API contract. These access boundaries
 apply before the handlers:
@@ -727,7 +728,7 @@ In addition to the deployment/session/retention tables, the registry validates:
 | --- | --- |
 | `GEN_DEVICE`, `GEN_QUANTIZATION`, `GEN_MODEL_ID` | Declared choices; explicit `cpu` with `4bit` is rejected |
 | `EMBEDDING_BATCH_SIZE` | Integer, 1-64; default 8 inputs per JSON/PDF embedding call; restart after changing |
-| `RETRIEVAL_STRATEGY` | `hybrid` (default), indexed BM25 plus cosine for Q&A/documents; `legacy` restores Q&A cosine and PDF overlap; restart after changing |
+| `RETRIEVAL_STRATEGY` | `fusion` (default), shared-corpus calibrated cosine/BM25; `hybrid` restores F038 separate statistics; `legacy` restores cosine/PDF overlap; restart after changing |
 | `INGESTION_WORKERS` | Integer, 1-4; default 1 background ingestion worker; restart after changing |
 | `INGESTION_QUEUE_CAPACITY` | Integer, 1-256; default 16 queued plus running jobs; full queues return 503 |
 | `INGESTION_POLL_SECONDS` | Number, 0.05-30; default 1 second between queue/election polls |
