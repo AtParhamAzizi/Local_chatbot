@@ -288,12 +288,13 @@ service. `RERANKER_PROFILE=off` remains the default for small machines; the opt-
 `gtx1050-4gb` profile applies only to `fusion`. An explicit injected service is
 preserved. The wrapper requests six admitted candidates and returns six after
 local Qwen3-Reranker-0.6B scoring. The first-stage similarity remains the HTTP
-and context `score`; the internal mixture determines order. No schema or vector
+and context `score`; weighted reciprocal rank fusion determines order, using
+0.75 model rank / 0.25 first-stage rank and constant 60. No schema or vector
 changes are required.
 
 The separate model loads lazily from local safetensors with remote code disabled.
-CUDA NF4 with FP32 linear computation and FP16 unquantized layers, eager attention,
-single-pair batches, 512 total tokens and 128 query tokens
+CUDA NF4 with FP32 computation, PyTorch SDPA attention, batches of at most three pairs,
+fixed left padding to 512 total tokens and 128 query tokens
 bound work. Only final-position decision logits are calculated and KV caching is
 disabled. Factories share one runtime and a nonblocking lock; busy requests use
 first-stage order. Missing/CUDA/OOM/artifact/output/inference failures disable
@@ -302,7 +303,7 @@ diagnostic. The default path loads no model dependencies or weights.
 
 `reranker_prepare.py` explicitly downloads a pinned optional snapshot;
 `reranker_eval.py` performs offline development selection and frozen heldout
-evaluation with actual local inference, bounded-memory/latency acceptance and a
+evaluation with 50 development fusion alternatives, actual local inference, bounded-memory/latency acceptance and a
 4-bit default-generator coexistence smoke test. Evaluation artifacts preserve
 model/runtime/source identities, candidate scores and timing samples. See
 [configuration, benchmark, limitations and replay](docs/local-reranker.md) and

@@ -100,7 +100,7 @@ class LocalRerankerTests(OfflineCoreFixture, unittest.TestCase):
         original = [{**hit, 'score': .5} for hit in hits(4)]
         result = self.module.order_candidates(original, [.9] * 4, weight=.5)
         self.assertEqual([item['id'] for item in result], [0, 1, 2, 3])
-        self.assertAlmostEqual(result[0]['rerank_score'], .7)
+        self.assertAlmostEqual(result[0]['rerank_score'], 1 / 61)
 
     def test_off_and_historical_strategies_use_original_service(self):
         service = Mock()
@@ -129,7 +129,7 @@ class LocalRerankerTests(OfflineCoreFixture, unittest.TestCase):
         settings = importlib.import_module('settings')
         with self.assertRaises(settings.ConfigurationError):
             settings.setting_value('RERANKER_PROFILE', environ={'RERANKER_PROFILE': 'auto'})
-        for options in ({'candidates': 0}, {'candidates': 25}, {'batch_size': 5}, {'max_length': 1024},
+        for options in ({'candidates': 0}, {'candidates': 25}, {'batch_size': 7}, {'max_length': 1024},
                         {'model_weight': math.nan}, {'device': 'remote'}):
             with self.subTest(options=options), self.assertRaises(ValueError):
                 self.module.RerankerConfig('local', **options)
@@ -145,6 +145,8 @@ class LocalRerankerTests(OfflineCoreFixture, unittest.TestCase):
         self.assertEqual(len(sequences[0]), 512)
         self.assertEqual(sequences[0][-10:], [3] * 10)
         self.assertEqual(len(sequences[1]), 50 + 128 + 1 + 5 + 10)
+        self.assertEqual(runtime.tokenizer.pad.call_args.kwargs['padding'], 'max_length')
+        self.assertEqual(runtime.tokenizer.pad.call_args.kwargs['max_length'], 512)
         runtime.tokenizer.pad.return_value.to.assert_called_once_with('cuda')
 
     def test_forward_batches_use_final_logits_without_generation_or_cache(self):
@@ -203,11 +205,12 @@ class RerankerEvaluationTests(OfflineCoreFixture, unittest.TestCase):
         measure.assert_not_called()
 
     def test_resource_gate_rejects_each_overrun_and_other_hardware(self):
-        resources = {'warm_p95_ms': 4000, 'cold_load_seconds': 30, 'gpu_peak_reserved_mib': 1500,
-                     'process_peak_mib': 3000, 'hardware': {'gpu': 'NVIDIA GeForce GTX 1050', 'gpu_total_mib': 4096},
+        resources = {'warm_p95_ms': 4000, 'cold_load_seconds': 30, 'gpu_peak_reserved_increment_mib': 1500,
+                     'process_peak_increment_upper_bound_mib': 3000,
+                     'hardware': {'gpu': 'NVIDIA GeForce GTX 1050', 'gpu_total_mib': 4096},
                      'coexistence': {'passed': True}}
         self.assertTrue(self.module.resources_pass(resources))
-        for name in ('warm_p95_ms', 'cold_load_seconds', 'gpu_peak_reserved_mib', 'process_peak_mib'):
+        for name in ('warm_p95_ms', 'cold_load_seconds', 'gpu_peak_reserved_increment_mib', 'process_peak_increment_upper_bound_mib'):
             self.assertFalse(self.module.resources_pass({**resources, name: 99999}))
         self.assertFalse(self.module.resources_pass({**resources, 'hardware': {'gpu': 'other', 'gpu_total_mib': 4096}}))
 
@@ -231,11 +234,19 @@ class RerankerEvaluationTests(OfflineCoreFixture, unittest.TestCase):
         heldout = evaluation.read_json(directory / 'f040-heldout.json')
         self.assertEqual(heldout['selection_sha256'], evaluation.canonical_hash(development))
         self.assertEqual(development['development_candidates'][0]['weight'], self.module.MODEL_WEIGHT)
+        self.assertEqual(len(development['development_candidates']), 50)
+        self.assertEqual(development['development_candidates'][0]['method'], 'rrf')
+        self.assertEqual(development['development_candidates'][0]['rank_constant'], self.module.RANK_CONSTANT)
         for split, record in (('development', development), ('heldout', heldout)):
             with self.subTest(split=split):
                 self.assertEqual(record['policy'], self.module.policy())
                 self.assertTrue(record['passed'])
                 self.assertTrue(self.module.resources_pass(record['resources']))
+                coexist = record['resources']['coexistence']
+                self.assertGreater(coexist['generated_tokens'], 0)
+                self.assertLessEqual(coexist['generated_tokens'], 16)
+                self.assertLessEqual(coexist['gpu_peak_reserved_mib'], self.module.GATES['maximum_coexist_gpu_mib'])
+                self.assertLessEqual(coexist['process_peak_mib'], self.module.GATES['maximum_coexist_process_mib'])
                 timings = sorted(sample['milliseconds'] for sample in record['resources']['samples'])
                 self.assertEqual(len(timings), 60)
                 self.assertEqual(record['resources']['warm_p95_ms'], timings[math.ceil(.95 * len(timings)) - 1])

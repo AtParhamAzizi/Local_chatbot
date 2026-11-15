@@ -14,8 +14,9 @@ model storage, resident memory, latency and contention on small machines.
 Keep fusion as the default. Compose an optional reranking retrieval wrapper in
 the UI application factory, preserving injected services and the frozen F039
 implementation. A named CUDA quality profile uses a pinned local
-Qwen3-Reranker-0.6B snapshot with bounded candidates, batches and tokens. Select
-the blend only on development data; require quality and resource gates before
+Qwen3-Reranker-0.6B snapshot with bounded candidates, batches and tokens. Keep
+weights in NF4 and computation in FP32; score six fixed-width pairs in batches of three.
+Select weighted rank fusion only on development data; require quality and resource gates before
 the explicit heldout comparison. Retain actual scores, runtime identities,
 source hashes, memory and latency samples in reviewable reports.
 
@@ -31,7 +32,7 @@ An external inference service changes the privacy/deployment boundary. Loading
 one model per app factory duplicates weights in the shared serving process.
 The chosen option preserves the existing process, database, embedding and HTTP
 schemas. Existing score fields describe first-stage similarity while result
-order reflects the selected mixture. A fixed bounded model operation has no
+order reflects weighted reciprocal rank fusion. A fixed bounded model operation has no
 hard timeout. A benchmark on short synthetic excerpts cannot establish maximum
 generation-context capacity or production relevance.
 

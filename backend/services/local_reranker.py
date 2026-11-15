@@ -12,10 +12,11 @@ from services.source_fusion import lexical_text
 
 POLICY_VERSION = 'qwen-local-reranker-v1'
 CANDIDATE_LIMIT = 6
-BATCH_SIZE = 1
+BATCH_SIZE = 3
 MAX_LENGTH = 512
 QUERY_TOKENS = 128
-MODEL_WEIGHT = 0.5
+MODEL_WEIGHT = 0.75
+RANK_CONSTANT = 60
 TASK = 'Given a web search query, retrieve relevant passages that answer the query'
 PREFIX = ('<|im_start|>system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. '
           'Note that the answer can only be "yes" or "no".<|im_end|>\n<|im_start|>user\n')
@@ -33,7 +34,7 @@ class RerankerConfig:
 
     def __post_init__(self):
         if (self.device not in {'cpu', 'cuda'} or not 1 <= self.candidates <= 24
-                or not 1 <= self.batch_size <= 4 or not 256 <= self.max_length <= 512
+                or not 1 <= self.batch_size <= 6 or not 256 <= self.max_length <= 512
                 or not 0 <= self.model_weight <= 1):
             raise ValueError('Invalid reranker resource limits')
 
@@ -56,7 +57,8 @@ class QwenRerankerRuntime:
         self.torch = torch
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
             str(path), padding_side='left', local_files_only=True, trust_remote_code=False)
-        dtype = torch.float16 if config.device == 'cuda' else torch.float32
+        # Pascal has limited native FP16 throughput. Keep storage packed and compute in FP32.
+        dtype = torch.float32
         options = {}
         if config.device == 'cuda':
             options = {'quantization_config': transformers.BitsAndBytesConfig(
@@ -64,7 +66,7 @@ class QwenRerankerRuntime:
                 bnb_4bit_use_double_quant=True), 'device_map': {'': 'cuda:0'}}
         self.model = transformers.AutoModelForCausalLM.from_pretrained(
             str(path), dtype=dtype, local_files_only=True, trust_remote_code=False,
-            use_safetensors=True, attn_implementation='eager', **options).eval()
+            use_safetensors=True, attn_implementation='sdpa', **options).eval()
         if config.device == 'cpu':
             self.model = self.model.to('cpu')
         if self.model.config.model_type != 'qwen3':
@@ -81,6 +83,8 @@ class QwenRerankerRuntime:
                          'dtype': str(dtype), 'torch': torch.__version__, 'transformers': transformers.__version__,
                          'policy': POLICY_VERSION, 'max_length': config.max_length,
                          'batch_size': config.batch_size, 'query_tokens': QUERY_TOKENS,
+                         'padding': 'max_length-left',
+                         'attention': 'sdpa',
                          'quantization': 'NF4-double-quant-fp32' if config.device == 'cuda' else 'none'}
 
     def encode(self, text, limit=None):
@@ -94,7 +98,8 @@ class QwenRerankerRuntime:
         if budget < 1:
             raise ValueError('Reranker prompt exceeds its token budget')
         sequences = [start + self.encode(normalize_persian(text[:20000]), budget) + self.suffix for text in documents]
-        return self.tokenizer.pad({'input_ids': sequences}, padding=True, return_tensors='pt').to(self.config.device)
+        return self.tokenizer.pad({'input_ids': sequences}, padding='max_length', max_length=self.config.max_length,
+                                  return_tensors='pt').to(self.config.device)
 
     def score(self, query, documents):
         from embedding_profile import require_unchanged_artifacts
@@ -113,11 +118,14 @@ class QwenRerankerRuntime:
         return scores
 
 
-def order_candidates(hits, scores, *, weight=MODEL_WEIGHT):
+def order_candidates(hits, scores, *, weight=MODEL_WEIGHT, rank_constant=RANK_CONSTANT):
     if len(scores) != len(hits) or any(not math.isfinite(score) or not 0 <= score <= 1 for score in scores):
         raise ValueError('Invalid reranker scores')
-    ranked = [{**hit, 'rerank_score': weight * score + (1 - weight) * hit['score']}
-              for hit, score in zip(hits, scores)]
+    model_order = sorted(range(len(hits)), key=lambda index: -scores[index])
+    model_ranks = {index: rank for rank, index in enumerate(model_order, 1)}
+    ranked = [{**hit, 'rerank_score': weight / (rank_constant + model_ranks[index])
+                                    + (1 - weight) / (rank_constant + index + 1)}
+              for index, hit in enumerate(hits)]
     # Stable ties retain the source-independent first-stage ordering.
     ranked.sort(key=lambda hit: -hit['rerank_score'])
     return ranked
