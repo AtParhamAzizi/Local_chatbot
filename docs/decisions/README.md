@@ -25,6 +25,7 @@ unrecorded historical team approval or new feature delivery.
 | [0010](0010-controlled-import-formats.md) | Allowlisted text/Markdown/CSV/DOCX adapters with explicit validation and atomic source provenance |
 | [0011](0011-indexed-persian-hybrid.md) | Development-selected Persian BM25/vector scoring with immutable compatible corpus snapshots and legacy rollback |
 | [0012](0012-comparable-source-ranking.md) | Common-corpus score calibration, source-independent ties and frozen mixed-source evaluation |
+| [0013](0013-optional-local-reranker.md) | Optional bounded local cross-encoder, development selection, hardware cost gates and first-stage fallback |
 
 ## When and how to add one
 

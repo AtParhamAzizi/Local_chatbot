@@ -22,6 +22,7 @@ The project now includes a refreshed **Liquid Glass** visual experience:
 ## Features
 
 - Comparable Q&A/document ranking using local `Qwen/Qwen3-Embedding-0.6B` vectors, shared Persian BM25 statistics and development-selected score calibration.
+- [Optional bounded local reranking](docs/local-reranker.md) with a measured CUDA quality profile and an `off` path for small machines.
 - Answer generation using the local `Qwen/Qwen3.5-2B` model by default.
 - JSON question-and-answer ingestion through the administrator dashboard.
 - PDF upload, text extraction, chunking, embedding, search, and deletion.
@@ -729,6 +730,8 @@ In addition to the deployment/session/retention tables, the registry validates:
 | `GEN_DEVICE`, `GEN_QUANTIZATION`, `GEN_MODEL_ID` | Declared choices; explicit `cpu` with `4bit` is rejected |
 | `EMBEDDING_BATCH_SIZE` | Integer, 1-64; default 8 inputs per JSON/PDF embedding call; restart after changing |
 | `RETRIEVAL_STRATEGY` | `fusion` (default), shared-corpus calibrated cosine/BM25; `hybrid` restores F038 separate statistics; `legacy` restores cosine/PDF overlap; restart after changing |
+| `RERANKER_PROFILE` | `off` (default); `gtx1050-4gb` opts into bounded local reranking with `fusion`; restart after changing; see [benchmark and limits](docs/local-reranker.md) |
+| `RERANKER_MODEL_PATH` | Local optional Qwen3-Reranker-0.6B snapshot; defaults to `model/Qwen3-Reranker-0.6B` relative to `backend/`; no serving downloads |
 | `INGESTION_WORKERS` | Integer, 1-4; default 1 background ingestion worker; restart after changing |
 | `INGESTION_QUEUE_CAPACITY` | Integer, 1-256; default 16 queued plus running jobs; full queues return 503 |
 | `INGESTION_POLL_SECONDS` | Number, 0.05-30; default 1 second between queue/election polls |

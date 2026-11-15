@@ -12,13 +12,14 @@ def create_ui_app(*, retrieval_service=None, speech_service=None):
     from voice import configure_voice
     from speech import configure_speech
     from services.retrieval import RetrievalService
+    from services.local_reranker import optional_reranking
 
     app = Flask('ui', static_folder=FRONTEND_DIR, static_url_path='', template_folder=FRONTEND_DIR)
     configure_security(app, service='ui')
     configure_chat_sessions(app)
     configure_voice(app)
     configure_speech(app, service=speech_service)
-    app.extensions['retrieval_service'] = RetrievalService() if retrieval_service is None else retrieval_service
+    app.extensions['retrieval_service'] = optional_reranking(RetrievalService()) if retrieval_service is None else retrieval_service
     register_ui_routes(app)
     return app
 

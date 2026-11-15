@@ -29,6 +29,9 @@ where runtime state is expected.
 
 ## Hybrid retrieval and rollback (F038)
 
+Optional F040 reranking is configured with `RERANKER_PROFILE` (default `off`).
+See [local preparation, measured hardware profile, fallback and rollback](local-reranker.md).
+
 `RETRIEVAL_STRATEGY=fusion` is the default (F039). It calibrates scores on a shared
 Q&A/document BM25 corpus before thresholding/ranking, without collection caps or
 Q&A-first ties. The service captures this setting at

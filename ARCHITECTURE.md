@@ -280,6 +280,34 @@ cached real local vectors; abstention still fails on all unanswerable cases.
 See [strategy, acceptance and replay](docs/source-ranking.md) and
 [ADR 0012](docs/decisions/0012-comparable-source-ranking.md).
 
+### 6.1.4 Optional local reranking (F040)
+
+`application.create_ui_app()` optionally composes
+`services/local_reranker.RerankingRetrievalService` around the existing retrieval
+service. `RERANKER_PROFILE=off` remains the default for small machines; the opt-in
+`gtx1050-4gb` profile applies only to `fusion`. An explicit injected service is
+preserved. The wrapper requests six admitted candidates and returns six after
+local Qwen3-Reranker-0.6B scoring. The first-stage similarity remains the HTTP
+and context `score`; the internal mixture determines order. No schema or vector
+changes are required.
+
+The separate model loads lazily from local safetensors with remote code disabled.
+CUDA NF4 with FP32 linear computation and FP16 unquantized layers, eager attention,
+single-pair batches, 512 total tokens and 128 query tokens
+bound work. Only final-position decision logits are calculated and KV caching is
+disabled. Factories share one runtime and a nonblocking lock; busy requests use
+first-stage order. Missing/CUDA/OOM/artifact/output/inference failures disable
+reranking until restart and return the original results, with a fixed private
+diagnostic. The default path loads no model dependencies or weights.
+
+`reranker_prepare.py` explicitly downloads a pinned optional snapshot;
+`reranker_eval.py` performs offline development selection and frozen heldout
+evaluation with actual local inference, bounded-memory/latency acceptance and a
+4-bit default-generator coexistence smoke test. Evaluation artifacts preserve
+model/runtime/source identities, candidate scores and timing samples. See
+[configuration, benchmark, limitations and replay](docs/local-reranker.md) and
+[ADR 0013](docs/decisions/0013-optional-local-reranker.md).
+
 ### 6.2 Generation (`generator.py`)
 
 - `generate_reply(question, context_answers)` calls `build_context(results)` (searchForAnswer.py), which labels each source as QA or PDF with its similarity. It builds a Persian prompt that asks for a rewritten answer, not a copy. It prepends `SYSTEM_PROMPT` (Payam Iran assistant, answer only from context, refer support questions to 1649), applies the chat template with `enable_thinking=False`, then calls `model.generate` with sampling. Any `<think>...</think>` block is stripped from the output.

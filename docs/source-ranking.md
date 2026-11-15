@@ -1,5 +1,8 @@
 # Comparable ranking across source types (F039)
 
+[F040 optional local reranking](local-reranker.md) can reorder a bounded set of
+these admitted candidates. The first-stage formula and default remain unchanged.
+
 The default `RETRIEVAL_STRATEGY=fusion` recomputes scores for Q&A, PDFs and
 controlled documents from common evidence. It ignores the collections' local
 `score` fields. Previously, legacy Q&A cosine and PDF overlap scores differed
