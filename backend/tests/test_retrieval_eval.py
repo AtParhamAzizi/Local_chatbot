@@ -245,7 +245,7 @@ class LocalRetrievalEvaluationTests(OfflineCoreFixture, unittest.TestCase):
         cursor = connection.cursor.return_value.__enter__.return_value
         cursor.fetchall.side_effect = [qa_rows, document_rows] * len(self.dataset.questions)
         retrieval = importlib.import_module('services.retrieval').RetrievalService(
-            embed=runtime.embed, search_qa=self.scoring._search_qa, search_pdf=self.scoring._search_pdf)
+            embed=runtime.embed, search_qa=self.scoring._search_qa, search_pdf=self.scoring._search_pdf, strategy='legacy')
         with patch.object(self.scoring, 'get_conn', return_value=connection):
             for question in self.dataset.questions:
                 expected = retrieval.retrieve(question['question'])

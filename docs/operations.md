@@ -27,6 +27,30 @@ separate migration terminal. Set the intended environment in every command's
 launch context. Keep secrets stable/private and application paths writable only
 where runtime state is expected.
 
+## Hybrid retrieval and rollback (F038)
+
+`RETRIEVAL_STRATEGY=hybrid` is the default. The service captures this setting at
+construction; change the process environment and restart to apply it. Compose
+passes `${RETRIEVAL_STRATEGY:-hybrid}` from `.env`; recreate the application
+container after changing it. `legacy` restores Q&A cosine and document overlap
+scoring without changing knowledge, embeddings, index generations or schema.
+Invalid strategy values fail settings validation. Re-enable `hybrid` and restart
+to return to the evaluated policy.
+
+The lexical index is process-local and rebuilt on the first query for an eligible
+corpus/profile snapshot. Imports, replacements, deletions and embedding cutover
+or rollback automatically select the matching snapshot on subsequent reads.
+Only completed, compatible, valid-vector sources enter postings. Existing readers
+retain immutable indexes during rebuilds. Budget RAM for postings and source text
+in addition to fetched vectors: the LRU bounds two cached views, not bytes, and
+concurrent readers may retain evicted views. First-use/corpus-change requests pay
+the build cost. There is no persistent lexical index to migrate or repair.
+
+The checked-in benchmark passed scoring/indexing budgets at 30 and 3,000 rows.
+It excludes inference and DB I/O and repeats the small source corpus at scale;
+measure chat latency and memory with your actual corpus before increasing load.
+See [policy, evidence, acceptance budgets and replay](hybrid-retrieval.md).
+
 ## Embedding upload capacity
 
 Set `EMBEDDING_BATCH_SIZE` before startup (default 8, accepted integers 1-64).

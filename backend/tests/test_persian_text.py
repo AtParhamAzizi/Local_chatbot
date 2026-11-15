@@ -253,11 +253,13 @@ class NormalizationPipelineTests(OfflineCoreFixture, unittest.TestCase):
             hits = [retrieval.retrieve(query) for query in variants]
         self.assertEqual(hits[1:], [hits[0], hits[0]])
         self.assertEqual(self.embed.call_args_list, [unittest.mock.call(['ثبت نام کاربری 123؟'])] * 3)
-        self.assertEqual(hits[0][0]['question'], first)
+        qa = next(hit for hit in hits[0] if hit['source_type'] == 'qa')
+        self.assertEqual(qa['question'], first)
         pdf = next(hit for hit in hits[0] if hit['source_type'] == 'pdf')
         self.assertEqual((pdf['content'], pdf['filename'], pdf['page_start'], pdf['page_end']),
                          (first, 'راهنمای ۱۲۳.pdf', 3, 3))
-        self.assertAlmostEqual(pdf['score'], 1, places=6)
+        self.assertAlmostEqual(pdf['semantic_score'], 1, places=6)
+        self.assertGreater(pdf['lexical_score'], 0)
 
     def test_http_chat_preserves_original_query_history_and_generation_context(self):
         query = 'ثبت\u200cنام كاربري ١٢٣؟'

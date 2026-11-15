@@ -1,0 +1,2663 @@
+{
+  "baseline": {
+    "by_source_kind": {
+      "document": {
+        "answerable": 10,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.9,
+        "ndcg_at_6": 0.7922810782,
+        "questions": 10,
+        "recall": {
+          "1": 0.55,
+          "3": 0.85,
+          "6": 0.85
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      },
+      "pdf": {
+        "answerable": 8,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0.25,
+        "mrr_at_6": 0.875,
+        "ndcg_at_6": 0.8671879188,
+        "questions": 8,
+        "recall": {
+          "1": 0.6875,
+          "3": 0.9375,
+          "6": 0.9375
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      },
+      "qa": {
+        "answerable": 10,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0,
+        "mrr_at_6": 0.9,
+        "ndcg_at_6": 0.8883661222,
+        "questions": 10,
+        "recall": {
+          "1": 0.8,
+          "3": 0.9,
+          "6": 0.9
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      }
+    },
+    "by_tag": {
+      "direct": {
+        "answerable": 6,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 0.9005537139,
+        "questions": 6,
+        "recall": {
+          "1": 0.75,
+          "3": 0.8333333333,
+          "6": 0.8333333333
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      },
+      "multi_source": {
+        "answerable": 6,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.9166666667,
+        "ndcg_at_6": 0.7153135047,
+        "questions": 6,
+        "recall": {
+          "1": 0.4166666667,
+          "3": 0.75,
+          "6": 0.75
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      },
+      "near_match": {
+        "answerable": 6,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.9166666667,
+        "ndcg_at_6": 0.9384882923,
+        "questions": 6,
+        "recall": {
+          "1": 0.8333333333,
+          "3": 1,
+          "6": 1
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      },
+      "orthographic": {
+        "answerable": 6,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "questions": 6,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      },
+      "terminology": {
+        "answerable": 6,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0.3333333333,
+        "mrr_at_6": 0.6666666667,
+        "ndcg_at_6": 0.5865814164,
+        "questions": 6,
+        "recall": {
+          "1": 0.3333333333,
+          "3": 0.75,
+          "6": 0.75
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      },
+      "unanswerable": {
+        "answerable": 0,
+        "answerable_abstention_rate": null,
+        "hard_negative_at_1_rate": 0,
+        "mrr_at_6": null,
+        "ndcg_at_6": null,
+        "questions": 6,
+        "recall": {
+          "1": null,
+          "3": null,
+          "6": null
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1
+      }
+    },
+    "cutoffs": [
+      1,
+      3,
+      6
+    ],
+    "metric_version": "persian-retrieval-metrics-v1",
+    "per_question": {
+      "ho-api-1": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-api-2": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-api-3": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 0,
+        "ndcg_at_6": 0,
+        "recall": {
+          "1": 0,
+          "3": 0,
+          "6": 0
+        }
+      },
+      "ho-api-4": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": true,
+        "mrr_at_6": 0.5,
+        "ndcg_at_6": 0.6309297536,
+        "recall": {
+          "1": 0,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-api-5": {
+        "abstained": false,
+        "answerable": false,
+        "hard_negative_at_1": false,
+        "mrr_at_6": null,
+        "ndcg_at_6": null,
+        "recall": null
+      },
+      "ho-archive-1": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 0.8262346571,
+        "recall": {
+          "1": 0.5,
+          "3": 0.5,
+          "6": 0.5
+        }
+      },
+      "ho-archive-2": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-archive-3": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 0.2754115524,
+        "recall": {
+          "1": 0.5,
+          "3": 0.5,
+          "6": 0.5
+        }
+      },
+      "ho-archive-4": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-archive-5": {
+        "abstained": false,
+        "answerable": false,
+        "hard_negative_at_1": false,
+        "mrr_at_6": null,
+        "ndcg_at_6": null,
+        "recall": null
+      },
+      "ho-language-1": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 0.6131471928,
+        "recall": {
+          "1": 0.5,
+          "3": 0.5,
+          "6": 0.5
+        }
+      },
+      "ho-language-2": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-language-3": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": true,
+        "mrr_at_6": 0.5,
+        "ndcg_at_6": 0.6934264036,
+        "recall": {
+          "1": 0,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-language-4": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-language-5": {
+        "abstained": false,
+        "answerable": false,
+        "hard_negative_at_1": false,
+        "mrr_at_6": null,
+        "ndcg_at_6": null,
+        "recall": null
+      },
+      "ho-maintenance-1": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-maintenance-2": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-maintenance-3": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": true,
+        "mrr_at_6": 0.5,
+        "ndcg_at_6": 0.6309297536,
+        "recall": {
+          "1": 0,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-maintenance-4": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-maintenance-5": {
+        "abstained": false,
+        "answerable": false,
+        "hard_negative_at_1": false,
+        "mrr_at_6": null,
+        "ndcg_at_6": null,
+        "recall": null
+      },
+      "ho-notification-1": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 0.9639404333,
+        "recall": {
+          "1": 0.5,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-notification-2": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-notification-3": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 0.9197207891,
+        "recall": {
+          "1": 0.5,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-notification-4": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-notification-5": {
+        "abstained": false,
+        "answerable": false,
+        "hard_negative_at_1": false,
+        "mrr_at_6": null,
+        "ndcg_at_6": null,
+        "recall": null
+      },
+      "ho-sharing-1": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-sharing-2": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-sharing-3": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-sharing-4": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-sharing-5": {
+        "abstained": false,
+        "answerable": false,
+        "hard_negative_at_1": false,
+        "mrr_at_6": null,
+        "ndcg_at_6": null,
+        "recall": null
+      }
+    },
+    "report_version": 1,
+    "run": {
+      "dataset": {
+        "corpus_sha256": "aecc23cdc145662c0336a9bc66ac4d6eb16095c9cc360a1f7802c500918e28a1",
+        "id": "persian-retrieval",
+        "manifest_sha256": "f06c5c5975d918f872999478113eff7a51b23a5f37a1026c5b25daff96c945e8",
+        "questions_sha256": "5696f2191cc2db54cb0a0ecad43487ac3ec62b896eec70692b7c8da9afcfea5b",
+        "split": "heldout",
+        "version": "1.0.0"
+      },
+      "format_version": 1,
+      "rankings": {
+        "ho-api-1": [
+          {
+            "score": 0.8291431665420532,
+            "source_id": "api-main"
+          },
+          {
+            "score": 0.5134598660469055,
+            "source_id": "api-contrast"
+          },
+          {
+            "score": 0.4956379234790802,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.4898933339118957,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.4873213469982147,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.48275357484817505,
+            "source_id": "search-contrast"
+          }
+        ],
+        "ho-api-2": [
+          {
+            "score": 0.7609127163887024,
+            "source_id": "api-main"
+          },
+          {
+            "score": 0.6059242646260694,
+            "source_id": "api-contrast"
+          },
+          {
+            "score": 0.4450201392173767,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.43737733364105225,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.42112734220244663,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.4168055388602343,
+            "source_id": "notification-support"
+          }
+        ],
+        "ho-api-3": [
+          {
+            "score": 0.6107664108276367,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.5884325504302979,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.5699051022529602,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.5669934749603271,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.5140036940574646,
+            "source_id": "sharing-contrast"
+          },
+          {
+            "score": 0.5007749605178833,
+            "source_id": "api-contrast"
+          }
+        ],
+        "ho-api-4": [
+          {
+            "score": 0.6427293419837952,
+            "source_id": "api-main"
+          },
+          {
+            "score": 0.6335948731349064,
+            "source_id": "api-contrast"
+          },
+          {
+            "score": 0.554068386554718,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.5020318031311035,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.4825277030467987,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.44490997323623066,
+            "source_id": "notification-contrast"
+          }
+        ],
+        "ho-api-5": [
+          {
+            "score": 0.7260729074478149,
+            "source_id": "api-main"
+          },
+          {
+            "score": 0.5198772549629211,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.5103813409805298,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.49481371565298593,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.49331081780520347,
+            "source_id": "api-contrast"
+          },
+          {
+            "score": 0.48561564087867737,
+            "source_id": "upload-main"
+          }
+        ],
+        "ho-archive-1": [
+          {
+            "score": 0.8322182648522513,
+            "source_id": "archive-main"
+          },
+          {
+            "score": 0.6540908813476562,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.6186063289642334,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.6043563485145569,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.5723994374275208,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.5423501133918762,
+            "source_id": "notification-main"
+          }
+        ],
+        "ho-archive-2": [
+          {
+            "score": 0.7810160160064697,
+            "source_id": "archive-main"
+          },
+          {
+            "score": 0.5966235399246216,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.5670157074928284,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.5659171938896179,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.5598575472831726,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.5143015384674072,
+            "source_id": "notification-main"
+          }
+        ],
+        "ho-archive-3": [
+          {
+            "score": 0.5560778946535927,
+            "source_id": "archive-support"
+          },
+          {
+            "score": 0.5027090311050415,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.4775548808915274,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.46879702023097447,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.4661059081554413,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.4579088091850281,
+            "source_id": "password-contrast"
+          }
+        ],
+        "ho-archive-4": [
+          {
+            "score": 0.8713169693946838,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.6445501351356506,
+            "source_id": "archive-main"
+          },
+          {
+            "score": 0.6135123372077942,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.6015325784683228,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.5646181702613831,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.533883810043335,
+            "source_id": "search-contrast"
+          }
+        ],
+        "ho-archive-5": [
+          {
+            "score": 0.6123118329048156,
+            "source_id": "archive-main"
+          },
+          {
+            "score": 0.6095868945121765,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.4940617215633392,
+            "source_id": "sharing-main"
+          },
+          {
+            "score": 0.47134941816329956,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.4599483013153076,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.4525000751018524,
+            "source_id": "search-contrast"
+          }
+        ],
+        "ho-language-1": [
+          {
+            "score": 0.7845150355192332,
+            "source_id": "language-main"
+          },
+          {
+            "score": 0.6086463928222656,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.567619264125824,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.5644195079803467,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.54179447889328,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.5398704409599304,
+            "source_id": "language-contrast"
+          }
+        ],
+        "ho-language-2": [
+          {
+            "score": 0.7676285826242886,
+            "source_id": "language-main"
+          },
+          {
+            "score": 0.6037583947181702,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.6031090021133423,
+            "source_id": "language-contrast"
+          },
+          {
+            "score": 0.5785763527796819,
+            "source_id": "language-support"
+          },
+          {
+            "score": 0.5683270692825317,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.5606905817985535,
+            "source_id": "password-contrast"
+          }
+        ],
+        "ho-language-3": [
+          {
+            "score": 0.5993204116821289,
+            "source_id": "language-contrast"
+          },
+          {
+            "score": 0.48389976987471944,
+            "source_id": "language-main"
+          },
+          {
+            "score": 0.47100376936105576,
+            "source_id": "language-support"
+          },
+          {
+            "score": 0.4625328779220581,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.4594001770019531,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.4324188599219689,
+            "source_id": "ticket-support"
+          }
+        ],
+        "ho-language-4": [
+          {
+            "score": 0.6598871946334839,
+            "source_id": "language-contrast"
+          },
+          {
+            "score": 0.634547448158264,
+            "source_id": "language-main"
+          },
+          {
+            "score": 0.5889626145362854,
+            "source_id": "sharing-contrast"
+          },
+          {
+            "score": 0.5377677607536315,
+            "source_id": "language-support"
+          },
+          {
+            "score": 0.46484819054603577,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.4409521520137787,
+            "source_id": "upload-main"
+          }
+        ],
+        "ho-language-5": [
+          {
+            "score": 0.5151957869529724,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.4716416597366333,
+            "source_id": "ticket-contrast"
+          },
+          {
+            "score": 0.4596943402290344,
+            "source_id": "language-main"
+          },
+          {
+            "score": 0.4484446942806244,
+            "source_id": "sharing-contrast"
+          },
+          {
+            "score": 0.42340484261512756,
+            "source_id": "language-contrast"
+          },
+          {
+            "score": 0.41840845346450806,
+            "source_id": "signup-main"
+          }
+        ],
+        "ho-maintenance-1": [
+          {
+            "score": 0.7430000555515289,
+            "source_id": "maintenance-main"
+          },
+          {
+            "score": 0.5352236032485962,
+            "source_id": "maintenance-contrast"
+          },
+          {
+            "score": 0.48990148305892944,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.4827740490436554,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.4430607855319977,
+            "source_id": "signup-main"
+          },
+          {
+            "score": 0.428555428981781,
+            "source_id": "notification-main"
+          }
+        ],
+        "ho-maintenance-2": [
+          {
+            "score": 0.82153653383255,
+            "source_id": "maintenance-main"
+          },
+          {
+            "score": 0.4981286823749542,
+            "source_id": "maintenance-contrast"
+          },
+          {
+            "score": 0.4537929892539978,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.4519764482975006,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.4266549348831177,
+            "source_id": "signup-main"
+          },
+          {
+            "score": 0.4149104058742523,
+            "source_id": "ticket-contrast"
+          }
+        ],
+        "ho-maintenance-3": [
+          {
+            "score": 0.5711685419082642,
+            "source_id": "maintenance-contrast"
+          },
+          {
+            "score": 0.49699795603752134,
+            "source_id": "maintenance-main"
+          },
+          {
+            "score": 0.43494704365730286,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.40561211109161377,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.3639495372772217,
+            "source_id": "signup-main"
+          },
+          {
+            "score": 0.3603421449661255,
+            "source_id": "upload-main"
+          }
+        ],
+        "ho-maintenance-4": [
+          {
+            "score": 0.6737970113754272,
+            "source_id": "maintenance-contrast"
+          },
+          {
+            "score": 0.5573379707336426,
+            "source_id": "maintenance-main"
+          },
+          {
+            "score": 0.4007269004583358,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.3875598907470703,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.3661867082118988,
+            "source_id": "signup-main"
+          },
+          {
+            "score": 0.3642212729454041,
+            "source_id": "sharing-main"
+          }
+        ],
+        "ho-maintenance-5": [
+          {
+            "score": 0.6306986808776855,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.5391267812252044,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.5383217930793762,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.5348264575004578,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.5238167619705201,
+            "source_id": "archive-main"
+          },
+          {
+            "score": 0.5160686373710632,
+            "source_id": "upload-main"
+          }
+        ],
+        "ho-notification-1": [
+          {
+            "score": 0.8268053531646729,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.6170308589935303,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.6042534543917729,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.5902161598205566,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.5498914122581482,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.5495837400509761,
+            "source_id": "notification-contrast"
+          }
+        ],
+        "ho-notification-2": [
+          {
+            "score": 0.7633435726165771,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.6829537343978882,
+            "source_id": "notification-contrast"
+          },
+          {
+            "score": 0.5734607708454131,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.5610329508781433,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.5262929797172546,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.49969568848609924,
+            "source_id": "archive-contrast"
+          }
+        ],
+        "ho-notification-3": [
+          {
+            "score": 0.645796000957489,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.5501132011413574,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.5349541673660279,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.5321815013885498,
+            "source_id": "ticket-contrast"
+          },
+          {
+            "score": 0.4984416296482086,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.4968355934619903,
+            "source_id": "notification-contrast"
+          }
+        ],
+        "ho-notification-4": [
+          {
+            "score": 0.7441470197268893,
+            "source_id": "notification-contrast"
+          },
+          {
+            "score": 0.6878463625907898,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.5926135778427124,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.5618790813854762,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.5591143369674683,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.5581969022750854,
+            "source_id": "search-contrast"
+          }
+        ],
+        "ho-notification-5": [
+          {
+            "score": 0.7536658048629761,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.602492731809616,
+            "source_id": "notification-contrast"
+          },
+          {
+            "score": 0.5706636178493499,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.5551842451095581,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.5484557151794434,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.527931272983551,
+            "source_id": "password-contrast"
+          }
+        ],
+        "ho-sharing-1": [
+          {
+            "score": 0.8149191418715884,
+            "source_id": "sharing-main"
+          },
+          {
+            "score": 0.5914291143417358,
+            "source_id": "sharing-contrast"
+          },
+          {
+            "score": 0.4856392741203308,
+            "source_id": "language-contrast"
+          },
+          {
+            "score": 0.47081443667411804,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.4673369526863098,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.4449503719806671,
+            "source_id": "ticket-contrast"
+          }
+        ],
+        "ho-sharing-2": [
+          {
+            "score": 0.834647682688453,
+            "source_id": "sharing-main"
+          },
+          {
+            "score": 0.5145749449729919,
+            "source_id": "sharing-contrast"
+          },
+          {
+            "score": 0.4699416756629944,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.4406588673591614,
+            "source_id": "language-contrast"
+          },
+          {
+            "score": 0.4365842640399933,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.41855058512904425,
+            "source_id": "signup-support"
+          }
+        ],
+        "ho-sharing-3": [
+          {
+            "score": 0.612730693101883,
+            "source_id": "sharing-main"
+          },
+          {
+            "score": 0.49107685685157776,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.4757023751735687,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.4648427367210388,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.4572240710258484,
+            "source_id": "sharing-contrast"
+          },
+          {
+            "score": 0.4373173117637634,
+            "source_id": "language-contrast"
+          }
+        ],
+        "ho-sharing-4": [
+          {
+            "score": 0.6498569250106812,
+            "source_id": "sharing-contrast"
+          },
+          {
+            "score": 0.4988935887813568,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.494185797214508,
+            "source_id": "sharing-main"
+          },
+          {
+            "score": 0.48663923144340515,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.45641884207725525,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.45370787382125854,
+            "source_id": "signup-main"
+          }
+        ],
+        "ho-sharing-5": [
+          {
+            "score": 0.6777445584077101,
+            "source_id": "sharing-main"
+          },
+          {
+            "score": 0.5351917743682861,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.5131457448005676,
+            "source_id": "sharing-contrast"
+          },
+          {
+            "score": 0.4927196204662323,
+            "source_id": "language-contrast"
+          },
+          {
+            "score": 0.4864932894706726,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.4259481430053711,
+            "source_id": "password-contrast"
+          }
+        ]
+      },
+      "system": {
+        "document_candidates": 8,
+        "embedding_profile": "{\"dimension\":1024,\"model_id\":\"Qwen/Qwen3-Embedding-0.6B\",\"normalization_version\":\"fa-v1\",\"pooling\":{\"l2_normalize\":true,\"method\":\"last-non-padding-token-v1\"},\"revision\":\"sha256:8f95ad08c86b0cd227cdbc1518312752aced4518bab492aca3e2265db40679c3\",\"runtime\":{\"implementation\":\"hf-auto-float32-cpu-v1\",\"tokenizers\":\"0.23.3\",\"torch\":\"2.7.1+cu118\",\"transformers\":\"5.20.2\"},\"storage_dtype\":\"float32\",\"tokenizer\":{\"add_special_tokens\":true,\"artifact_revision\":\"sha256:8f95ad08c86b0cd227cdbc1518312752aced4518bab492aca3e2265db40679c3\",\"class\":\"Qwen2Tokenizer\",\"max_length\":512,\"padding\":true,\"padding_side\":\"left\",\"truncation\":true},\"version\":1}",
+        "embedding_profile_id": "d3921039d4aa800a39b450a8630564bff1bbae90ca72faa63e83610c203e1c6b",
+        "limit": 6,
+        "minimum_score": 0.35,
+        "name": "pre-f038-cosine-pdf-overlap",
+        "normalization": "fa-v1",
+        "policy": null,
+        "qa_candidates": 5,
+        "qa_lexical_text": null,
+        "tie_break": "source-id-ascending",
+        "tokenizer_version": null,
+        "version": "1"
+      }
+    },
+    "summary": {
+      "answerable": 24,
+      "answerable_abstention_rate": 0,
+      "hard_negative_at_1_rate": 0.1,
+      "mrr_at_6": 0.8958333333,
+      "ndcg_at_6": 0.8564058556,
+      "questions": 30,
+      "recall": {
+        "1": 0.7291666667,
+        "3": 0.8958333333,
+        "6": 0.8958333333
+      },
+      "unanswerable": 6,
+      "unanswerable_false_positive_rate": 1
+    }
+  },
+  "format_version": 1,
+  "hybrid": {
+    "by_source_kind": {
+      "document": {
+        "answerable": 10,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.9,
+        "ndcg_at_6": 0.8683731925,
+        "questions": 10,
+        "recall": {
+          "1": 0.55,
+          "3": 0.85,
+          "6": 1
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      },
+      "pdf": {
+        "answerable": 8,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0.125,
+        "mrr_at_6": 0.9375,
+        "ndcg_at_6": 0.9406226291,
+        "questions": 8,
+        "recall": {
+          "1": 0.8125,
+          "3": 0.9375,
+          "6": 1
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      },
+      "qa": {
+        "answerable": 10,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0.1,
+        "mrr_at_6": 0.85,
+        "ndcg_at_6": 0.8630929754,
+        "questions": 10,
+        "recall": {
+          "1": 0.7,
+          "3": 0.9,
+          "6": 0.9
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      }
+    },
+    "by_tag": {
+      "direct": {
+        "answerable": 6,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 0.9607221698,
+        "questions": 6,
+        "recall": {
+          "1": 0.75,
+          "3": 0.8333333333,
+          "6": 1
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      },
+      "multi_source": {
+        "answerable": 6,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.9166666667,
+        "ndcg_at_6": 0.8421336952,
+        "questions": 6,
+        "recall": {
+          "1": 0.4166666667,
+          "3": 0.75,
+          "6": 1
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      },
+      "near_match": {
+        "answerable": 6,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.9166666667,
+        "ndcg_at_6": 0.9384882923,
+        "questions": 6,
+        "recall": {
+          "1": 0.8333333333,
+          "3": 1,
+          "6": 1
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      },
+      "orthographic": {
+        "answerable": 6,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "questions": 6,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      },
+      "terminology": {
+        "answerable": 6,
+        "answerable_abstention_rate": 0,
+        "hard_negative_at_1_rate": 0.3333333333,
+        "mrr_at_6": 0.6666666667,
+        "ndcg_at_6": 0.653233151,
+        "questions": 6,
+        "recall": {
+          "1": 0.3333333333,
+          "3": 0.75,
+          "6": 0.8333333333
+        },
+        "unanswerable": 0,
+        "unanswerable_false_positive_rate": null
+      },
+      "unanswerable": {
+        "answerable": 0,
+        "answerable_abstention_rate": null,
+        "hard_negative_at_1_rate": 0,
+        "mrr_at_6": null,
+        "ndcg_at_6": null,
+        "questions": 6,
+        "recall": {
+          "1": null,
+          "3": null,
+          "6": null
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1
+      }
+    },
+    "cutoffs": [
+      1,
+      3,
+      6
+    ],
+    "metric_version": "persian-retrieval-metrics-v1",
+    "per_question": {
+      "ho-api-1": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-api-2": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-api-3": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 0,
+        "ndcg_at_6": 0,
+        "recall": {
+          "1": 0,
+          "3": 0,
+          "6": 0
+        }
+      },
+      "ho-api-4": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-api-5": {
+        "abstained": false,
+        "answerable": false,
+        "hard_negative_at_1": false,
+        "mrr_at_6": null,
+        "ndcg_at_6": null,
+        "recall": null
+      },
+      "ho-archive-1": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 0.9327783893,
+        "recall": {
+          "1": 0.5,
+          "3": 0.5,
+          "6": 1
+        }
+      },
+      "ho-archive-2": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-archive-3": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 0.5950427489,
+        "recall": {
+          "1": 0.5,
+          "3": 0.5,
+          "6": 1
+        }
+      },
+      "ho-archive-4": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-archive-5": {
+        "abstained": false,
+        "answerable": false,
+        "hard_negative_at_1": false,
+        "mrr_at_6": null,
+        "ndcg_at_6": null,
+        "recall": null
+      },
+      "ho-language-1": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 0.8315546296,
+        "recall": {
+          "1": 0.5,
+          "3": 0.5,
+          "6": 1
+        }
+      },
+      "ho-language-2": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-language-3": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": true,
+        "mrr_at_6": 0.5,
+        "ndcg_at_6": 0.6934264036,
+        "recall": {
+          "1": 0,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-language-4": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": true,
+        "mrr_at_6": 0.5,
+        "ndcg_at_6": 0.6309297536,
+        "recall": {
+          "1": 0,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-language-5": {
+        "abstained": false,
+        "answerable": false,
+        "hard_negative_at_1": false,
+        "mrr_at_6": null,
+        "ndcg_at_6": null,
+        "recall": null
+      },
+      "ho-maintenance-1": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-maintenance-2": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-maintenance-3": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": true,
+        "mrr_at_6": 0.5,
+        "ndcg_at_6": 0.6309297536,
+        "recall": {
+          "1": 0,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-maintenance-4": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-maintenance-5": {
+        "abstained": false,
+        "answerable": false,
+        "hard_negative_at_1": false,
+        "mrr_at_6": null,
+        "ndcg_at_6": null,
+        "recall": null
+      },
+      "ho-notification-1": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 0.5,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-notification-2": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-notification-3": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 0.5,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-notification-4": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-notification-5": {
+        "abstained": false,
+        "answerable": false,
+        "hard_negative_at_1": false,
+        "mrr_at_6": null,
+        "ndcg_at_6": null,
+        "recall": null
+      },
+      "ho-sharing-1": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-sharing-2": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-sharing-3": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-sharing-4": {
+        "abstained": false,
+        "answerable": true,
+        "hard_negative_at_1": false,
+        "mrr_at_6": 1,
+        "ndcg_at_6": 1,
+        "recall": {
+          "1": 1,
+          "3": 1,
+          "6": 1
+        }
+      },
+      "ho-sharing-5": {
+        "abstained": false,
+        "answerable": false,
+        "hard_negative_at_1": false,
+        "mrr_at_6": null,
+        "ndcg_at_6": null,
+        "recall": null
+      }
+    },
+    "report_version": 1,
+    "run": {
+      "dataset": {
+        "corpus_sha256": "aecc23cdc145662c0336a9bc66ac4d6eb16095c9cc360a1f7802c500918e28a1",
+        "id": "persian-retrieval",
+        "manifest_sha256": "f06c5c5975d918f872999478113eff7a51b23a5f37a1026c5b25daff96c945e8",
+        "questions_sha256": "5696f2191cc2db54cb0a0ecad43487ac3ec62b896eec70692b7c8da9afcfea5b",
+        "split": "heldout",
+        "version": "1.0.0"
+      },
+      "format_version": 1,
+      "rankings": {
+        "ho-api-1": [
+          {
+            "score": 0.7830983034902637,
+            "source_id": "api-main"
+          },
+          {
+            "score": 0.5417434747522873,
+            "source_id": "api-contrast"
+          },
+          {
+            "score": 0.46992248518780916,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.45408704286552787,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.43887165678273704,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.424715921211565,
+            "source_id": "upload-main"
+          }
+        ],
+        "ho-api-2": [
+          {
+            "score": 0.7519384809435606,
+            "source_id": "api-main"
+          },
+          {
+            "score": 0.6163576256738265,
+            "source_id": "api-contrast"
+          },
+          {
+            "score": 0.41750584475470964,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.40148401250548704,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.38958908935597925,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.3837798316586977,
+            "source_id": "archive-support"
+          }
+        ],
+        "ho-api-3": [
+          {
+            "score": 0.5261295219284977,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.5054355190235255,
+            "source_id": "api-contrast"
+          },
+          {
+            "score": 0.5046807213733309,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.4886932935481936,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.47448245396507904,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.4479330412878141,
+            "source_id": "ticket-support"
+          }
+        ],
+        "ho-api-4": [
+          {
+            "score": 0.6497313943181753,
+            "source_id": "api-contrast"
+          },
+          {
+            "score": 0.6111475861106594,
+            "source_id": "api-main"
+          },
+          {
+            "score": 0.5234324030778625,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.45171227775935185,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.45098891305434047,
+            "source_id": "signup-support"
+          },
+          {
+            "score": 0.4458514684408588,
+            "source_id": "password-main"
+          }
+        ],
+        "ho-api-5": [
+          {
+            "score": 0.6825705173813891,
+            "source_id": "api-main"
+          },
+          {
+            "score": 0.5180947358912034,
+            "source_id": "api-contrast"
+          },
+          {
+            "score": 0.5014010786626084,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.46540852882673306,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.4505404388476826,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.43597746333442483,
+            "source_id": "upload-main"
+          }
+        ],
+        "ho-archive-1": [
+          {
+            "score": 0.818447106920455,
+            "source_id": "archive-main"
+          },
+          {
+            "score": 0.5889108892391024,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.5856053371355263,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.5399978640592464,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.5355713655514833,
+            "source_id": "archive-support"
+          },
+          {
+            "score": 0.5224648313035473,
+            "source_id": "ticket-support"
+          }
+        ],
+        "ho-archive-2": [
+          {
+            "score": 0.745340381119573,
+            "source_id": "archive-main"
+          },
+          {
+            "score": 0.5528763522006205,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.5271456772745066,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.504398823074139,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.4950894187192235,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.45531473656130994,
+            "source_id": "archive-support"
+          }
+        ],
+        "ho-archive-3": [
+          {
+            "score": 0.5780869008854528,
+            "source_id": "archive-support"
+          },
+          {
+            "score": 0.4815216372489314,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.47207933547736003,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.47181891351890665,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.447136500178493,
+            "source_id": "archive-main"
+          },
+          {
+            "score": 0.4244048910621855,
+            "source_id": "api-main"
+          }
+        ],
+        "ho-archive-4": [
+          {
+            "score": 0.8200068721386,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.6254420508289769,
+            "source_id": "archive-main"
+          },
+          {
+            "score": 0.5259083833461672,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.5255564184238342,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.47038287210936347,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.4702529083718173,
+            "source_id": "upload-main"
+          }
+        ],
+        "ho-archive-5": [
+          {
+            "score": 0.6049843281763054,
+            "source_id": "archive-main"
+          },
+          {
+            "score": 0.580120185690185,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.48359129612619683,
+            "source_id": "sharing-main"
+          },
+          {
+            "score": 0.4235753967149485,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.4062264241592419,
+            "source_id": "language-contrast"
+          },
+          {
+            "score": 0.40489955706496084,
+            "source_id": "ticket-support"
+          }
+        ],
+        "ho-language-1": [
+          {
+            "score": 0.7429698050502122,
+            "source_id": "language-main"
+          },
+          {
+            "score": 0.5561099145956798,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.5537305275935732,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.5355277872422486,
+            "source_id": "language-contrast"
+          },
+          {
+            "score": 0.5316218082529485,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.514080536245438,
+            "source_id": "language-support"
+          }
+        ],
+        "ho-language-2": [
+          {
+            "score": 0.7463012942630721,
+            "source_id": "language-main"
+          },
+          {
+            "score": 0.6026701739008175,
+            "source_id": "language-contrast"
+          },
+          {
+            "score": 0.578840118976762,
+            "source_id": "language-support"
+          },
+          {
+            "score": 0.5498201291102969,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.5313924920497066,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.5253625068433759,
+            "source_id": "export-contrast"
+          }
+        ],
+        "ho-language-3": [
+          {
+            "score": 0.558894033759502,
+            "source_id": "language-contrast"
+          },
+          {
+            "score": 0.4852261102209035,
+            "source_id": "language-main"
+          },
+          {
+            "score": 0.4682090854033726,
+            "source_id": "language-support"
+          },
+          {
+            "score": 0.4344769117066428,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.4127764243217774,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.40438015367286956,
+            "source_id": "archive-support"
+          }
+        ],
+        "ho-language-4": [
+          {
+            "score": 0.6587115485997166,
+            "source_id": "language-main"
+          },
+          {
+            "score": 0.6533996400528512,
+            "source_id": "language-contrast"
+          },
+          {
+            "score": 0.550648490963993,
+            "source_id": "language-support"
+          },
+          {
+            "score": 0.5422862268933161,
+            "source_id": "sharing-contrast"
+          },
+          {
+            "score": 0.4398724675567298,
+            "source_id": "search-main"
+          },
+          {
+            "score": 0.42246347359925823,
+            "source_id": "upload-main"
+          }
+        ],
+        "ho-language-5": [
+          {
+            "score": 0.47859465542494517,
+            "source_id": "language-main"
+          },
+          {
+            "score": 0.44729882909269064,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.4454094059885525,
+            "source_id": "language-contrast"
+          },
+          {
+            "score": 0.40094156972327444,
+            "source_id": "ticket-contrast"
+          },
+          {
+            "score": 0.3995563190938215,
+            "source_id": "sharing-contrast"
+          },
+          {
+            "score": 0.3949215279365416,
+            "source_id": "language-support"
+          }
+        ],
+        "ho-maintenance-1": [
+          {
+            "score": 0.7218511984263564,
+            "source_id": "maintenance-main"
+          },
+          {
+            "score": 0.5425482611497737,
+            "source_id": "maintenance-contrast"
+          },
+          {
+            "score": 0.44117696409130003,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.41150888006516617,
+            "source_id": "signup-main"
+          },
+          {
+            "score": 0.40987232343143815,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.3629152466709579,
+            "source_id": "upload-main"
+          }
+        ],
+        "ho-maintenance-2": [
+          {
+            "score": 0.7728140795088241,
+            "source_id": "maintenance-main"
+          },
+          {
+            "score": 0.5242432483688912,
+            "source_id": "maintenance-contrast"
+          },
+          {
+            "score": 0.4230768565731677,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.40561360187455175,
+            "source_id": "signup-main"
+          },
+          {
+            "score": 0.3705627419824702,
+            "source_id": "archive-support"
+          },
+          {
+            "score": 0.3674336865667248,
+            "source_id": "sharing-contrast"
+          }
+        ],
+        "ho-maintenance-3": [
+          {
+            "score": 0.5372567207544348,
+            "source_id": "maintenance-contrast"
+          },
+          {
+            "score": 0.47415271073209564,
+            "source_id": "maintenance-main"
+          },
+          {
+            "score": 0.36397486814786945,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.36037227147633033,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.3566685569060354,
+            "source_id": "signup-main"
+          }
+        ],
+        "ho-maintenance-4": [
+          {
+            "score": 0.6659652104956153,
+            "source_id": "maintenance-contrast"
+          },
+          {
+            "score": 0.554830700821931,
+            "source_id": "maintenance-main"
+          },
+          {
+            "score": 0.40640232188490033,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.3572390205375766,
+            "source_id": "signup-main"
+          }
+        ],
+        "ho-maintenance-5": [
+          {
+            "score": 0.5859605772271128,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.5159190578066083,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.4939067022934004,
+            "source_id": "archive-main"
+          },
+          {
+            "score": 0.4867938666966008,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.4696096306293389,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.4648044466937374,
+            "source_id": "maintenance-main"
+          }
+        ],
+        "ho-notification-1": [
+          {
+            "score": 0.7828147509688818,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.5982584848688886,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.5486561749900001,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.5387375057256694,
+            "source_id": "notification-contrast"
+          },
+          {
+            "score": 0.5155068836409737,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.5130547550817353,
+            "source_id": "password-contrast"
+          }
+        ],
+        "ho-notification-2": [
+          {
+            "score": 0.7397810069127353,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.6350394114609267,
+            "source_id": "notification-contrast"
+          },
+          {
+            "score": 0.5571084370730603,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.4705788961255858,
+            "source_id": "export-contrast"
+          },
+          {
+            "score": 0.4569832103845597,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.4430314761411875,
+            "source_id": "archive-contrast"
+          }
+        ],
+        "ho-notification-3": [
+          {
+            "score": 0.6085519079410611,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.565395374988888,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.5076972089915587,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.48929368270199003,
+            "source_id": "notification-contrast"
+          },
+          {
+            "score": 0.48391572464384897,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.47044744509016473,
+            "source_id": "archive-support"
+          }
+        ],
+        "ho-notification-4": [
+          {
+            "score": 0.7349902947284924,
+            "source_id": "notification-contrast"
+          },
+          {
+            "score": 0.6652113136836771,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.5664826223151549,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.5249160393667063,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.5058565279689207,
+            "source_id": "search-contrast"
+          },
+          {
+            "score": 0.5038042548215755,
+            "source_id": "export-contrast"
+          }
+        ],
+        "ho-notification-5": [
+          {
+            "score": 0.7146724831136716,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.5824761093175883,
+            "source_id": "notification-contrast"
+          },
+          {
+            "score": 0.5587336912440107,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.4958811245162179,
+            "source_id": "ticket-support"
+          },
+          {
+            "score": 0.4921844785849456,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.4787983259059789,
+            "source_id": "search-contrast"
+          }
+        ],
+        "ho-sharing-1": [
+          {
+            "score": 0.8165428675148159,
+            "source_id": "sharing-main"
+          },
+          {
+            "score": 0.5831815987786053,
+            "source_id": "sharing-contrast"
+          },
+          {
+            "score": 0.43733812544588185,
+            "source_id": "language-contrast"
+          },
+          {
+            "score": 0.420498390760778,
+            "source_id": "maintenance-main"
+          },
+          {
+            "score": 0.4072920532789945,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.4061781459185865,
+            "source_id": "upload-main"
+          }
+        ],
+        "ho-sharing-2": [
+          {
+            "score": 0.8050015009376674,
+            "source_id": "sharing-main"
+          },
+          {
+            "score": 0.5278108295784604,
+            "source_id": "sharing-contrast"
+          },
+          {
+            "score": 0.43306105184065635,
+            "source_id": "signup-support"
+          },
+          {
+            "score": 0.40937583166034214,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.407689402434949,
+            "source_id": "notification-support"
+          },
+          {
+            "score": 0.4013538000369463,
+            "source_id": "language-contrast"
+          }
+        ],
+        "ho-sharing-3": [
+          {
+            "score": 0.6275549411463552,
+            "source_id": "sharing-main"
+          },
+          {
+            "score": 0.46988548990545304,
+            "source_id": "password-contrast"
+          },
+          {
+            "score": 0.41472632720815117,
+            "source_id": "sharing-contrast"
+          },
+          {
+            "score": 0.40532848891878576,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.3986098826222334,
+            "source_id": "notification-main"
+          },
+          {
+            "score": 0.3944275018585962,
+            "source_id": "archive-contrast"
+          }
+        ],
+        "ho-sharing-4": [
+          {
+            "score": 0.6306007434810943,
+            "source_id": "sharing-contrast"
+          },
+          {
+            "score": 0.5026509022111495,
+            "source_id": "sharing-main"
+          },
+          {
+            "score": 0.4405231846181523,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.4277248979003577,
+            "source_id": "search-main"
+          },
+          {
+            "score": 0.41855966205426576,
+            "source_id": "signup-main"
+          },
+          {
+            "score": 0.40262540690917203,
+            "source_id": "language-contrast"
+          }
+        ],
+        "ho-sharing-5": [
+          {
+            "score": 0.6904460454844155,
+            "source_id": "sharing-main"
+          },
+          {
+            "score": 0.49215469877275425,
+            "source_id": "sharing-contrast"
+          },
+          {
+            "score": 0.4506706437102902,
+            "source_id": "language-contrast"
+          },
+          {
+            "score": 0.42950577135413803,
+            "source_id": "upload-main"
+          },
+          {
+            "score": 0.41174794405830323,
+            "source_id": "archive-contrast"
+          },
+          {
+            "score": 0.41161368193156994,
+            "source_id": "password-contrast"
+          }
+        ]
+      },
+      "system": {
+        "document_candidates": 8,
+        "embedding_profile": "{\"dimension\":1024,\"model_id\":\"Qwen/Qwen3-Embedding-0.6B\",\"normalization_version\":\"fa-v1\",\"pooling\":{\"l2_normalize\":true,\"method\":\"last-non-padding-token-v1\"},\"revision\":\"sha256:8f95ad08c86b0cd227cdbc1518312752aced4518bab492aca3e2265db40679c3\",\"runtime\":{\"implementation\":\"hf-auto-float32-cpu-v1\",\"tokenizers\":\"0.23.3\",\"torch\":\"2.7.1+cu118\",\"transformers\":\"5.20.2\"},\"storage_dtype\":\"float32\",\"tokenizer\":{\"add_special_tokens\":true,\"artifact_revision\":\"sha256:8f95ad08c86b0cd227cdbc1518312752aced4518bab492aca3e2265db40679c3\",\"class\":\"Qwen2Tokenizer\",\"max_length\":512,\"padding\":true,\"padding_side\":\"left\",\"truncation\":true},\"version\":1}",
+        "embedding_profile_id": "d3921039d4aa800a39b450a8630564bff1bbae90ca72faa63e83610c203e1c6b",
+        "limit": 6,
+        "minimum_score": 0.35,
+        "name": "indexed-bm25-hybrid",
+        "normalization": "fa-v1",
+        "policy": {
+          "mode": "words",
+          "scale": 8,
+          "weight": 0.2
+        },
+        "qa_candidates": 5,
+        "qa_lexical_text": "question-and-answer",
+        "tie_break": "source-id-ascending",
+        "tokenizer_version": "fa-lexical-v1",
+        "version": "1"
+      }
+    },
+    "summary": {
+      "answerable": 24,
+      "answerable_abstention_rate": 0,
+      "hard_negative_at_1_rate": 0.1,
+      "mrr_at_6": 0.8958333333,
+      "ndcg_at_6": 0.8881109033,
+      "questions": 30,
+      "recall": {
+        "1": 0.7291666667,
+        "3": 0.8958333333,
+        "6": 0.9583333333
+      },
+      "unanswerable": 6,
+      "unanswerable_false_positive_rate": 1
+    }
+  },
+  "latency": {
+    "measurements": [
+      {
+        "cold_budget_ms": 500,
+        "hybrid": {
+          "cold_ms": 2.1346,
+          "p50_ms": 0.3924,
+          "p95_ms": 0.4461
+        },
+        "legacy": {
+          "cold_ms": 1.0599,
+          "p50_ms": 1.0064,
+          "p95_ms": 1.8172
+        },
+        "passed": true,
+        "samples_per_strategy": 90,
+        "sources": 30,
+        "warm_p95_budget_ms": 6.8172
+      },
+      {
+        "cold_budget_ms": 500,
+        "hybrid": {
+          "cold_ms": 209.9359,
+          "p50_ms": 31.0467,
+          "p95_ms": 36.2197
+        },
+        "legacy": {
+          "cold_ms": 93.3625,
+          "p50_ms": 99.6686,
+          "p95_ms": 180.3302
+        },
+        "passed": true,
+        "samples_per_strategy": 90,
+        "sources": 3000,
+        "warm_p95_budget_ms": 225.41275
+      }
+    ],
+    "platform": "Windows-11-10.0.26300-SP0",
+    "python": "3.13.14",
+    "scope": "in-process scoring and indexing; cached real vectors; excludes model inference and database I/O; duplicated source text at scale"
+  },
+  "passed": true,
+  "policy": {
+    "mode": "words",
+    "scale": 8,
+    "weight": 0.2
+  },
+  "quality_passed": true,
+  "selection_sha256": "337e09559ac0c3fbf519bbee086ed6a97e9b243c47f7acf3289e7a0bee4039b4",
+  "vectors_sha256": "916be6c2eb50d42e753f403e04db02368f2fae875f8f489ef88a731a5d1d0f56"
+}

@@ -1,4 +1,4 @@
-"""Explicit local-model evaluation of the current QA/document scoring policy."""
+"""Frozen pre-F038 QA/document policy for comparable local-model evaluation."""
 
 import math
 import socket

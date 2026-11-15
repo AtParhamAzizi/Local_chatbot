@@ -4,6 +4,7 @@ import numpy as np
 from database import get_conn, logger
 from persian_text import persian_terms
 from embedding_profile import EmbeddingProfile, compatible_profile
+from services.hybrid_search import rerank
 
 
 def _cosine_score(qvec, blob, embedding_dim):
@@ -37,8 +38,9 @@ def _lexical_overlap(query, content):
 
 
 @logger.operation
-def _search_qa(qvec: np.ndarray, k: int = 5, *, profile=None, index_id=None):
+def _search_qa(qvec: np.ndarray, k: int = 5, *, query='', profile=None, index_id=None, strategy='hybrid'):
     _require_query_profile(qvec, profile)
+    _require_strategy(strategy)
     if index_id is not None and index_id != profile.identity:
         raise ValueError('Index identity disagrees with query profile')
     conn = get_conn()
@@ -75,6 +77,7 @@ def _search_qa(qvec: np.ndarray, k: int = 5, *, profile=None, index_id=None):
             continue
         results.append({
             "score": score,
+            "semantic_score": score,
             "source_type": "qa",
             "id": r["id"],
             "question": r["question"],
@@ -86,13 +89,16 @@ def _search_qa(qvec: np.ndarray, k: int = 5, *, profile=None, index_id=None):
             "source_metadata": _source_metadata(r.get('source_metadata')),
         })
 
-    results.sort(key=lambda x: x["score"], reverse=True)
+    if strategy == 'hybrid':
+        rerank(results, query, kind='qa', profile=profile)
+    results.sort(key=lambda hit: (-hit['score'], hit['id']))
     return results[:k]
 
 
 @logger.operation
-def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None, index_id=None):
+def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None, index_id=None, strategy='hybrid'):
     _require_query_profile(qvec, profile)
+    _require_strategy(strategy)
     if index_id is not None and index_id != profile.identity:
         raise ValueError('Index identity disagrees with query profile')
     conn = get_conn()
@@ -147,7 +153,8 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None,
         semantic_score = _cosine_score(qvec, r["embedding"], r["embedding_dim"])
         if semantic_score is None:
             continue
-        score = (semantic_score * 0.82) + (_lexical_overlap(query, r["content"]) * 0.18)
+        score = ((semantic_score * 0.82) + (_lexical_overlap(query, r["content"]) * 0.18)
+                 if strategy == 'legacy' or not query else semantic_score)
         results.append({
             "score": score,
             "semantic_score": semantic_score,
@@ -164,8 +171,15 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None,
             "source_metadata": _source_metadata(r.get('source_metadata')),
         })
 
-    results.sort(key=lambda x: x["score"], reverse=True)
+    if strategy == 'hybrid':
+        rerank(results, query, kind='pdf', profile=profile)
+    results.sort(key=lambda hit: (-hit['score'], hit['id']))
     return results[:k]
+
+
+def _require_strategy(strategy):
+    if strategy not in {'hybrid', 'legacy'}:
+        raise ValueError('Unknown retrieval strategy')
 
 
 def _source_metadata(value):

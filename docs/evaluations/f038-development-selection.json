@@ -1,0 +1,867 @@
+{
+  "acceptance": {
+    "cold_limit": "max(legacy_p95 * 2, 500ms)",
+    "minimum_ndcg_gain": 0.01,
+    "mrr_may_regress": false,
+    "recall_may_regress": false,
+    "scales": [
+      30,
+      3000
+    ],
+    "unanswerable_false_positives_may_increase": false,
+    "warm_p95_limit": "max(legacy_p95 * 1.25, legacy_p95 + 5ms)"
+  },
+  "baseline_summary": {
+    "answerable": 24,
+    "answerable_abstention_rate": 0.0,
+    "hard_negative_at_1_rate": 0.2666666667,
+    "mrr_at_6": 0.7604166667,
+    "ndcg_at_6": 0.7785962326,
+    "questions": 30,
+    "recall": {
+      "1": 0.5208333333,
+      "3": 0.8125,
+      "6": 0.9375
+    },
+    "unanswerable": 6,
+    "unanswerable_false_positive_rate": 1.0
+  },
+  "candidates": [
+    {
+      "policy": {
+        "mode": "words",
+        "scale": 8.0,
+        "weight": 0.2
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8645833333,
+        "ndcg_at_6": 0.8639623958,
+        "questions": 30,
+        "recall": {
+          "1": 0.6666666667,
+          "3": 0.9166666667,
+          "6": 0.9583333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "words",
+        "scale": 8.0,
+        "weight": 0.3
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8541666667,
+        "ndcg_at_6": 0.855404099,
+        "questions": 30,
+        "recall": {
+          "1": 0.6666666667,
+          "3": 0.9166666667,
+          "6": 0.9583333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "words",
+        "scale": 4.0,
+        "weight": 0.2
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.8402777778,
+        "ndcg_at_6": 0.8454815785,
+        "questions": 30,
+        "recall": {
+          "1": 0.625,
+          "3": 0.9166666667,
+          "6": 0.9583333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "words",
+        "scale": 8.0,
+        "weight": 0.1
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8208333333,
+        "ndcg_at_6": 0.828148676,
+        "questions": 30,
+        "recall": {
+          "1": 0.5833333333,
+          "3": 0.8541666667,
+          "6": 0.9583333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "character-3",
+        "scale": 8.0,
+        "weight": 0.2
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8333333333,
+        "ndcg_at_6": 0.8271986621,
+        "questions": 30,
+        "recall": {
+          "1": 0.625,
+          "3": 0.875,
+          "6": 0.9166666667
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "words",
+        "scale": 4.0,
+        "weight": 0.1
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8208333333,
+        "ndcg_at_6": 0.8268817168,
+        "questions": 30,
+        "recall": {
+          "1": 0.5833333333,
+          "3": 0.8333333333,
+          "6": 0.9583333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "character-3",
+        "scale": 4.0,
+        "weight": 0.1
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8208333333,
+        "ndcg_at_6": 0.8264926213,
+        "questions": 30,
+        "recall": {
+          "1": 0.5833333333,
+          "3": 0.8333333333,
+          "6": 0.9583333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "character-3",
+        "scale": 8.0,
+        "weight": 0.1
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8208333333,
+        "ndcg_at_6": 0.8264926213,
+        "questions": 30,
+        "recall": {
+          "1": 0.5833333333,
+          "3": 0.8333333333,
+          "6": 0.9583333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "words",
+        "scale": 4.0,
+        "weight": 0.3
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8159722222,
+        "ndcg_at_6": 0.8201852899,
+        "questions": 30,
+        "recall": {
+          "1": 0.625,
+          "3": 0.875,
+          "6": 0.9166666667
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "filtered-words",
+        "scale": 8.0,
+        "weight": 0.2
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8194444444,
+        "ndcg_at_6": 0.8150352177,
+        "questions": 30,
+        "recall": {
+          "1": 0.625,
+          "3": 0.8333333333,
+          "6": 0.9166666667
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "character-3",
+        "scale": 8.0,
+        "weight": 0.3
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8333333333,
+        "ndcg_at_6": 0.8138806956,
+        "questions": 30,
+        "recall": {
+          "1": 0.625,
+          "3": 0.875,
+          "6": 0.8958333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "words",
+        "scale": 1.0,
+        "weight": 0.1
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.8020833333,
+        "ndcg_at_6": 0.8138138105,
+        "questions": 30,
+        "recall": {
+          "1": 0.5416666667,
+          "3": 0.8541666667,
+          "6": 0.9583333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "words",
+        "scale": 8.0,
+        "weight": 0.4
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.7951388889,
+        "ndcg_at_6": 0.8107563572,
+        "questions": 30,
+        "recall": {
+          "1": 0.6041666667,
+          "3": 0.875,
+          "6": 0.9166666667
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "filtered-words",
+        "scale": 8.0,
+        "weight": 0.1
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8,
+        "ndcg_at_6": 0.8107208617,
+        "questions": 30,
+        "recall": {
+          "1": 0.5416666667,
+          "3": 0.8333333333,
+          "6": 0.9583333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "character-3",
+        "scale": 8.0,
+        "weight": 0.4
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8333333333,
+        "ndcg_at_6": 0.8105357285,
+        "questions": 30,
+        "recall": {
+          "1": 0.625,
+          "3": 0.875,
+          "6": 0.8958333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "words",
+        "scale": 1.0,
+        "weight": 0.2
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.8055555556,
+        "ndcg_at_6": 0.8080352176,
+        "questions": 30,
+        "recall": {
+          "1": 0.5833333333,
+          "3": 0.8958333333,
+          "6": 0.9166666667
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "character-3",
+        "scale": 4.0,
+        "weight": 0.3
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8333333333,
+        "ndcg_at_6": 0.8076450667,
+        "questions": 30,
+        "recall": {
+          "1": 0.625,
+          "3": 0.8541666667,
+          "6": 0.8958333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "words",
+        "scale": 4.0,
+        "weight": 0.4
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.7916666667,
+        "ndcg_at_6": 0.8058824053,
+        "questions": 30,
+        "recall": {
+          "1": 0.6041666667,
+          "3": 0.8541666667,
+          "6": 0.9166666667
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "words",
+        "scale": 1.0,
+        "weight": 0.3
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.8125,
+        "ndcg_at_6": 0.8043508726,
+        "questions": 30,
+        "recall": {
+          "1": 0.625,
+          "3": 0.875,
+          "6": 0.875
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "character-3",
+        "scale": 1.0,
+        "weight": 0.2
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8125,
+        "ndcg_at_6": 0.8042027061,
+        "questions": 30,
+        "recall": {
+          "1": 0.5833333333,
+          "3": 0.8125,
+          "6": 0.9166666667
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "filtered-words",
+        "scale": 4.0,
+        "weight": 0.1
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.7861111111,
+        "ndcg_at_6": 0.8029476781,
+        "questions": 30,
+        "recall": {
+          "1": 0.5416666667,
+          "3": 0.8125,
+          "6": 0.9583333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "character-3",
+        "scale": 4.0,
+        "weight": 0.4
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8333333333,
+        "ndcg_at_6": 0.8006524905,
+        "questions": 30,
+        "recall": {
+          "1": 0.625,
+          "3": 0.875,
+          "6": 0.875
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "character-3",
+        "scale": 4.0,
+        "weight": 0.2
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.8125,
+        "ndcg_at_6": 0.7978513077,
+        "questions": 30,
+        "recall": {
+          "1": 0.5833333333,
+          "3": 0.8541666667,
+          "6": 0.8958333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "filtered-words",
+        "scale": 8.0,
+        "weight": 0.3
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8125,
+        "ndcg_at_6": 0.797629536,
+        "questions": 30,
+        "recall": {
+          "1": 0.625,
+          "3": 0.8333333333,
+          "6": 0.875
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "character-3",
+        "scale": 1.0,
+        "weight": 0.4
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.8194444444,
+        "ndcg_at_6": 0.7954548064,
+        "questions": 30,
+        "recall": {
+          "1": 0.5833333333,
+          "3": 0.8333333333,
+          "6": 0.9166666667
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "character-3",
+        "scale": 1.0,
+        "weight": 0.3
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.8125,
+        "ndcg_at_6": 0.7916156787,
+        "questions": 30,
+        "recall": {
+          "1": 0.5833333333,
+          "3": 0.8333333333,
+          "6": 0.8958333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "filtered-words",
+        "scale": 4.0,
+        "weight": 0.3
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.8055555556,
+        "ndcg_at_6": 0.7892834677,
+        "questions": 30,
+        "recall": {
+          "1": 0.625,
+          "3": 0.8125,
+          "6": 0.875
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "character-3",
+        "scale": 1.0,
+        "weight": 0.1
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.7722222222,
+        "ndcg_at_6": 0.7891617606,
+        "questions": 30,
+        "recall": {
+          "1": 0.5,
+          "3": 0.8333333333,
+          "6": 0.9583333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "words",
+        "scale": 1.0,
+        "weight": 0.4
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.7847222222,
+        "ndcg_at_6": 0.7839718446,
+        "questions": 30,
+        "recall": {
+          "1": 0.5833333333,
+          "3": 0.8541666667,
+          "6": 0.875
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "filtered-words",
+        "scale": 4.0,
+        "weight": 0.2
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.7916666667,
+        "ndcg_at_6": 0.7833066288,
+        "questions": 30,
+        "recall": {
+          "1": 0.5833333333,
+          "3": 0.8333333333,
+          "6": 0.875
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "filtered-words",
+        "scale": 4.0,
+        "weight": 0.4
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.7847222222,
+        "ndcg_at_6": 0.7675915882,
+        "questions": 30,
+        "recall": {
+          "1": 0.6041666667,
+          "3": 0.8125,
+          "6": 0.8541666667
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "filtered-words",
+        "scale": 1.0,
+        "weight": 0.2
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.7638888889,
+        "ndcg_at_6": 0.7585276139,
+        "questions": 30,
+        "recall": {
+          "1": 0.5416666667,
+          "3": 0.8125,
+          "6": 0.875
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "filtered-words",
+        "scale": 1.0,
+        "weight": 0.3
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.7791666667,
+        "ndcg_at_6": 0.7569281277,
+        "questions": 30,
+        "recall": {
+          "1": 0.5833333333,
+          "3": 0.7708333333,
+          "6": 0.8541666667
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "filtered-words",
+        "scale": 1.0,
+        "weight": 0.1
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.75,
+        "ndcg_at_6": 0.7532639509,
+        "questions": 30,
+        "recall": {
+          "1": 0.5,
+          "3": 0.8125,
+          "6": 0.875
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "filtered-words",
+        "scale": 1.0,
+        "weight": 0.4
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.2,
+        "mrr_at_6": 0.7791666667,
+        "ndcg_at_6": 0.7470448896,
+        "questions": 30,
+        "recall": {
+          "1": 0.5833333333,
+          "3": 0.7708333333,
+          "6": 0.8333333333
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    },
+    {
+      "policy": {
+        "mode": "filtered-words",
+        "scale": 8.0,
+        "weight": 0.4
+      },
+      "summary": {
+        "answerable": 24,
+        "answerable_abstention_rate": 0.0,
+        "hard_negative_at_1_rate": 0.1666666667,
+        "mrr_at_6": 0.7708333333,
+        "ndcg_at_6": 0.7467582549,
+        "questions": 30,
+        "recall": {
+          "1": 0.6041666667,
+          "3": 0.7708333333,
+          "6": 0.8125
+        },
+        "unanswerable": 6,
+        "unanswerable_false_positive_rate": 1.0
+      }
+    }
+  ],
+  "development_dataset": {
+    "corpus_sha256": "aecc23cdc145662c0336a9bc66ac4d6eb16095c9cc360a1f7802c500918e28a1",
+    "id": "persian-retrieval",
+    "manifest_sha256": "f06c5c5975d918f872999478113eff7a51b23a5f37a1026c5b25daff96c945e8",
+    "questions_sha256": "8339f82d33d01378b7d4b04cf2ae92d85d5fd9798374f12161ceca563644c32a",
+    "split": "development",
+    "version": "1.0.0"
+  },
+  "embedding_profile": "{\"dimension\":1024,\"model_id\":\"Qwen/Qwen3-Embedding-0.6B\",\"normalization_version\":\"fa-v1\",\"pooling\":{\"l2_normalize\":true,\"method\":\"last-non-padding-token-v1\"},\"revision\":\"sha256:8f95ad08c86b0cd227cdbc1518312752aced4518bab492aca3e2265db40679c3\",\"runtime\":{\"implementation\":\"hf-auto-float32-cpu-v1\",\"tokenizers\":\"0.23.3\",\"torch\":\"2.7.1+cu118\",\"transformers\":\"5.20.2\"},\"storage_dtype\":\"float32\",\"tokenizer\":{\"add_special_tokens\":true,\"artifact_revision\":\"sha256:8f95ad08c86b0cd227cdbc1518312752aced4518bab492aca3e2265db40679c3\",\"class\":\"Qwen2Tokenizer\",\"max_length\":512,\"padding\":true,\"padding_side\":\"left\",\"truncation\":true},\"version\":1}",
+  "embedding_profile_id": "d3921039d4aa800a39b450a8630564bff1bbae90ca72faa63e83610c203e1c6b",
+  "format_version": 1,
+  "implementation": {
+    "bm25_b": 0.75,
+    "bm25_k1": 1.2,
+    "document_lexical_text": "content",
+    "lexical_normalization": "bm25/(bm25+scale)",
+    "lexical_source_sha256": "c07c1240f1d8bf7f2bff6a1f1b6c9137a89be340658fac3eaeea1ac1a13d9d08",
+    "qa_lexical_text": "question-and-answer",
+    "tokenizer_version": "fa-lexical-v1"
+  },
+  "selected": {
+    "policy": {
+      "mode": "words",
+      "scale": 8.0,
+      "weight": 0.2
+    },
+    "summary": {
+      "answerable": 24,
+      "answerable_abstention_rate": 0.0,
+      "hard_negative_at_1_rate": 0.1666666667,
+      "mrr_at_6": 0.8645833333,
+      "ndcg_at_6": 0.8639623958,
+      "questions": 30,
+      "recall": {
+        "1": 0.6666666667,
+        "3": 0.9166666667,
+        "6": 0.9583333333
+      },
+      "unanswerable": 6,
+      "unanswerable_false_positive_rate": 1.0
+    }
+  },
+  "selection_rule": "max nDCG@6, recall@6, MRR@6; min unanswerable false positives, weight, scale, mode",
+  "vectors_sha256": "1761282e069e32e6c41f5b6bb0b033f358ef937c61781543a3120248ee2c5ef1"
+}

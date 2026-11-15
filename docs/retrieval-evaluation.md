@@ -90,7 +90,10 @@ hits. Parity tests compare against actual search functions and
 `RetrievalService` with profiled vectors. Source-ID tie breaking replaces
 unspecified database row ordering for tied scores. This measures retrieval on
 authored excerpts, not extraction, authorization, generation or latency.
-Real-weight runs remain manual; none were performed for this implementation.
+This command deliberately preserves the pre-F038 policy for comparisons.
+F037 itself recorded lexical reference runs only. F038 adds actual local-weight
+development selection and frozen heldout hybrid measurements through a separate
+CLI; see [hybrid policy, evidence and replay](hybrid-retrieval.md).
 
 ## Score a candidate retriever
 

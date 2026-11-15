@@ -21,7 +21,7 @@ The project now includes a refreshed **Liquid Glass** visual experience:
 
 ## Features
 
-- Semantic retrieval using the local `Qwen/Qwen3-Embedding-0.6B` embedding model.
+- Hybrid retrieval using local `Qwen/Qwen3-Embedding-0.6B` vectors and an indexed Persian BM25 word policy selected on development questions.
 - Answer generation using the local `Qwen/Qwen3.5-2B` model by default.
 - JSON question-and-answer ingestion through the administrator dashboard.
 - PDF upload, text extraction, chunking, embedding, search, and deletion.
@@ -591,6 +591,15 @@ independent human review remains pending. Replay the fixed lexical baseline with
 with `python -B backend/retrieval_eval.py run`. Explicit local-weight and external
 ranking evaluation commands are documented in the guide.
 
+The default retriever now combines vectors with Persian BM25 postings for Q&A
+questions/answers and PDF/document content. Development-only comparison selected
+word tokens over stop-word filtering and character trigrams. With actual local
+embeddings, held-out recall@6 improved from 0.896 to 0.958 and nDCG@6 from 0.856
+to 0.888. See [hybrid policy, measurements and replay](docs/hybrid-retrieval.md)
+for latency scope and limits. The process caches compatible corpus snapshots;
+dense search still scans MySQL vectors. Set `RETRIEVAL_STRATEGY=legacy` before
+restarting to restore the previous scoring policy.
+
 The complete route inventory is in the API contract. These access boundaries
 apply before the handlers:
 
@@ -718,6 +727,7 @@ In addition to the deployment/session/retention tables, the registry validates:
 | --- | --- |
 | `GEN_DEVICE`, `GEN_QUANTIZATION`, `GEN_MODEL_ID` | Declared choices; explicit `cpu` with `4bit` is rejected |
 | `EMBEDDING_BATCH_SIZE` | Integer, 1-64; default 8 inputs per JSON/PDF embedding call; restart after changing |
+| `RETRIEVAL_STRATEGY` | `hybrid` (default), indexed BM25 plus cosine for Q&A/documents; `legacy` restores Q&A cosine and PDF overlap; restart after changing |
 | `INGESTION_WORKERS` | Integer, 1-4; default 1 background ingestion worker; restart after changing |
 | `INGESTION_QUEUE_CAPACITY` | Integer, 1-256; default 16 queued plus running jobs; full queues return 503 |
 | `INGESTION_POLL_SECONDS` | Number, 0.05-30; default 1 second between queue/election polls |

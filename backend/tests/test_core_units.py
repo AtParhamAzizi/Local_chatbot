@@ -176,7 +176,7 @@ class ScoringTests(OfflineCoreFixture, unittest.TestCase):
                 for identifier, content in ((1, 'unrelated'), (2, 'alpha beta'))]
         connection = self.connection(rows)
         with patch.object(self.scoring, 'get_conn', return_value=connection):
-            hits = self.scoring._search_pdf(query, k=2, query='alpha beta', profile=profile(2))
+            hits = self.scoring._search_pdf(query, k=2, query='alpha beta', profile=profile(2), strategy='legacy')
         self.assertEqual([hit['id'] for hit in hits], [2, 1])
         self.assertAlmostEqual(hits[0]['score'], 1.0)
         self.assertAlmostEqual(hits[1]['score'], 0.82)
@@ -208,8 +208,8 @@ class ScoringTests(OfflineCoreFixture, unittest.TestCase):
         self.assertEqual(embedder.call_args.args, (['question'],))
         np.testing.assert_array_equal(search_qa.call_args.args[0], [1, 0])
         self.assertEqual(search_qa.call_args.args[0].dtype, np.float32)
-        self.assertEqual(search_qa.call_args.kwargs, {'k': 5, 'profile': profile(2)})
-        self.assertEqual(search_pdf.call_args.kwargs, {'k': 8, 'query': 'question', 'profile': profile(2)})
+        self.assertEqual(search_qa.call_args.kwargs, {'k': 5, 'query': 'question', 'profile': profile(2), 'strategy': 'hybrid'})
+        self.assertEqual(search_pdf.call_args.kwargs, {'k': 8, 'query': 'question', 'profile': profile(2), 'strategy': 'hybrid'})
 
 
 class PermissionUnitTests(OfflineCoreFixture, unittest.TestCase):

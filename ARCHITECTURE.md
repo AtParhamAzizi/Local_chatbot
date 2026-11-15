@@ -14,7 +14,7 @@ A local, Persian-language (RTL) RAG chatbot. Python/Flask, MySQL, local HuggingF
 - **User app** (Flask `ui_app`, port 5000): public chat UI, `/chat`, owner-scoped `/feedback`, voice speech-to-text, local text-to-speech and runtime feature flags.
 - **Admin app** (Flask `admin_app`, port 8000): dashboard shell plus pages for JSON Q&A import, PDF ingestion, model selection, chat history, system logs and a runtime controller.
 - Both share one serving process (`backend/main.py`): development uses two Flask servers; production uses one threaded Gunicorn worker listening on both ports, plus its supervising master. Optional local TTS runs in a separate private subprocess started lazily by that serving process.
-- Knowledge = `qa_documents` (JSON/CSV Q&A) + `pdf_chunks` (PDF and controlled text/Markdown/DOCX sources). Embeddings are float32 BLOBs in MySQL. Search is brute-force cosine in numpy (no vector DB).
+- Knowledge = `qa_documents` (JSON/CSV Q&A) + `pdf_chunks` (PDF and controlled text/Markdown/DOCX sources). Embeddings are float32 BLOBs in MySQL. Search combines brute-force NumPy cosine with cached in-process Persian BM25 postings (no vector DB).
 - Embedding and generator models load from local folders (`local_files_only=True`). Whisper may download on first use unless `STT_LOCAL_FILES_ONLY=1`. TTS needs separate local weights and a voice prompt; its G2P loader may download unless prepared in advance. The Whisper flag does not control TTS.
 
 ## 2. Stack
@@ -58,6 +58,8 @@ backend/
   interface.py        Embedding model (load/embed) + retrieval constants; shared ports/upload limit aliases
   generator.py        Generation LLM (load/generate), SYSTEM_PROMPT, sampling params
   searchForAnswer.py  Vector search over qa_documents / pdf_chunks + build_context
+  services/lexical_index.py Immutable Persian BM25 postings and bounded compatible-snapshot cache
+  services/hybrid_search.py Development-selected shared lexical/vector scoring policy
   persian_text.py     Shared fa-v1 normalization copies for embeddings, lexical terms and Q&A keys
   embedding_profile.py Immutable embedding metadata, canonical identities and profiled batch validation
   reembed.py           Operator index status/retry/rollback CLI (no model loading)
@@ -72,6 +74,7 @@ backend/
   test.py             Ad-hoc retrieval smoke script, not a test suite
   retrieval_eval.py    Versioned Persian dataset validation, ranking metrics and baseline replay CLI
   retrieval_eval_local.py Explicit local-weight scoring evaluation with independent profiled embeddings
+  hybrid_eval.py      Independent local embeddings, development-only policy selection, frozen heldout/latency replay
   tests/              Offline unittest regressions; mysql/ tests real DB effects; browser/ tests UI journeys
   model/              (gitignored) active embedder: Qwen3-Embedding-0.6B/
   modelgen/           (gitignored) qwen3.5-2B/; Qwen3-4B defaults to modelgen/ itself; Gemma is not in the catalog
@@ -180,7 +183,7 @@ One database-scoped named lock excludes competing migration commands. Each versi
 1. Read JSON `{message}` and `get_client_ip()` (uses only middleware-validated `request.remote_addr`). An empty message returns 400. `chat_sessions.chat_owner_hash(create=True)` establishes or reuses a signed anonymous chat session; the server derives the public `user_id` from its ownership hash. An optional legacy `user_id` string (at most 64 characters) is accepted but ignored; invalid field types still fail validation.
 2. `_retrieve_top(query, k=6)` delegates to `RetrievalService.retrieve(query, limit=6)` (an exception here returns 500):
    - `embed_batch([query])` gives float32 vectors and their immutable embedding profile.
-   - `_search_qa(qvec, k=5, profile=profile)` and `_search_pdf(qvec, k=8, query=query, profile=profile)` from searchForAnswer.py require that profile before scoring.
+   - `_search_qa(qvec, k=5, query=query, profile=profile, strategy=strategy)` and `_search_pdf(qvec, k=8, query=query, profile=profile, strategy=strategy)` require that profile before scoring. Both receive the same normalized query and service-captured strategy.
    - Keep `score >= MIN_SCORE` (0.35), sort descending, take the top k.
 3. No hits: fixed Persian fallback reply (phone 1649), logged as WARNING.
    Hits: `generate_reply(message, hits[:6])`. If generation raises, the reply falls back to `hits[0]['answer']` or `['content']`, then to the fallback text.
@@ -189,8 +192,9 @@ One database-scoped named lock excludes competing migration commands. Each versi
 6. Response: `{message_id, feedback_enabled, reply, recommended_questions, score, sources:[{type, filename, pages, score}]}`.
 
 Scoring:
-- QA: complete profile equality precedes `_cosine_score(qvec, blob, embedding_dim)`. Unknown/incompatible profiles, invalid BLOBs, dimension mismatches, nonfinite values and zero norms are skipped.
-- PDF: `0.82 * semantic + 0.18 * _lexical_overlap(query, content)`. `_terms` uses shared Persian normalization plus Unicode casefolding. Overlap = shared terms / query terms; punctuation separates terms.
+- Complete profile equality precedes `_cosine_score(qvec, blob, embedding_dim)` and lexical indexing. Unknown/incompatible profiles, invalid BLOBs, dimension mismatches, nonfinite values and zero norms are skipped. Documents also require compatible parent profiles and completed publication.
+- Default `hybrid`: both collections use `0.8 * cosine + 0.2 * BM25/(BM25 + 8)`. Q&A lexical text includes question and answer; documents use content. Collections maintain separate statistics. Within a collection ties use ascending source ID; the final stable merge keeps Q&A first on equal scores.
+- `RETRIEVAL_STRATEGY=legacy`, captured when constructing the service, restores Q&A cosine and document `0.82 * cosine + 0.18 * overlap`. Overlap uses shared Persian-normalized, casefolded unique terms. Restart after changing this setting. Low-level calls without query text retain the preceding scoring behavior.
 
 ### 6.1.1 Persian retrieval evaluation (F037)
 
@@ -211,11 +215,43 @@ External rankings require complete coverage and matching dataset identities;
 comparison recomputes baseline metrics and rejects incompatible versions/splits.
 
 `--ranker local --model-path PATH` explicitly loads an independent local embedder
-and measures the current scoring policy without a database or serving changes.
+and measures the frozen pre-F038 scoring policy without a database or serving changes.
 It records full embedding profiles and blocks normal Python network access.
 Offline tests cover arithmetic, leakage, drift, malformed predictions and
 production-score parity with deterministic vectors. Real-weight quality runs
 remain manual. See [commands, baseline and limits](docs/retrieval-evaluation.md).
+
+### 6.1.2 Indexed hybrid retrieval (F038)
+
+`services/lexical_index.py` builds immutable inverted BM25 postings with
+`k1=1.2`, `b=0.75`. Tokenization shares `fa-v1` normalization, casefolds and
+keeps Unicode word tokens of length at least two, including numbers and negation.
+There is no stemming or stop-word removal in the selected policy. An explicit
+36-candidate comparison on F037 development questions selected words over
+filtered words and character trigrams, lexical weight 0.2 and saturation scale 8.
+The frozen selection precedes heldout evaluation; existing F037 labels and
+baseline artifacts remain unchanged.
+
+The cache keys on tokenizer/mode, collection, complete embedding profile identity
+and exact eligible `(source_id, lexical_text)` tuples. A committed edit, deletion,
+publication or profile cutover/rollback selects the matching snapshot; incompatible
+rows never enter it. Builds are serialized and publish only complete indexes;
+existing readers retain their snapshot. A two-view LRU normally holds Q&A and
+document indexes. This bounds cached view count, not RAM bytes. Cold builds occur
+on first use, corpus changes, eviction and process restart; there is no schema
+change or separate index service. Dense SQL fetch/scoring and snapshot comparison
+still scan the eligible corpus. Large-corpus RAM and end-to-end latency require
+deployment measurement.
+
+`backend/hybrid_eval.py` separates local embedding preparation, development-only
+selection and frozen heldout evaluation. Actual local Qwen embeddings on v1
+heldout improved recall@6 from 0.8958333333 to 0.9583333333 and nDCG@6 from
+0.8564058556 to 0.8881109033, with unchanged MRR@6. The predeclared scoring/index
+latency gates passed at 30 and 3,000 source rows. Those timings exclude model
+inference and database I/O and duplicate source text at scale. Unanswerable false
+positives remain 1.0 for both policies; synthetic agent review does not establish
+production abstention or domain quality. See [evidence and replay](docs/hybrid-retrieval.md)
+and [ADR 0011](docs/decisions/0011-indexed-persian-hybrid.md).
 
 ### 6.2 Generation (`generator.py`)
 

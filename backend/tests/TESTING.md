@@ -1,5 +1,28 @@
 # Offline unit-test foundation
 
+## Indexed hybrid retrieval (F038)
+
+Run `python -B backend/tests/run_tests.py --pattern test_hybrid_retrieval.py --repeat 2`.
+The cases cover hand-calculated BM25, Persian variants/negation/numbers, warm
+posting lookup without document retokenization, concurrent cold builds, bounded
+snapshot eviction, edit/delete/profile invalidation, failed publication, settings
+rollback, frozen policy/source identity, production/evaluator score parity and
+development/heldout isolation. Failed acceptance returns a nonzero CLI status
+while preserving its report. The default guarded suite discovers these tests.
+
+`python -B backend/tests/run_mysql_tests.py --repeat 2` also runs hybrid
+publication/replacement/deletion scenarios on disposable MySQL, together with
+existing HTTP, import and index cutover/rollback checks. No live database or
+real model is used by those suites.
+
+Real-model quality and latency are separate explicit measurements, not flaky
+unit-test timing assertions. See [F038 recorded results and replay](../../docs/hybrid-retrieval.md).
+The F037 local ranker remains a frozen legacy-policy reference.
+
+Local validation on 2026-11-12 passed all 490 offline cases and all 71 disposable
+MySQL cases twice, plus source syntax/import/bytecode/whitespace checks. The
+recorded actual-model heldout run passed quality and scoring/index latency gates.
+
 ## Persian retrieval evaluation (F037)
 
 Run `python -B backend/tests/run_tests.py --pattern test_retrieval_eval.py --repeat 2`

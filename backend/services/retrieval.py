@@ -7,7 +7,12 @@ from embedding_profile import checked_batch
 
 class RetrievalService:
     def __init__(self, *, embed=adapters.embed_batch, search_qa=adapters.search_qa,
-                 search_pdf=adapters.search_pdf, min_score=0.35):
+                 search_pdf=adapters.search_pdf, min_score=0.35, strategy=None):
+        from settings import setting_value
+
+        self.strategy = setting_value('RETRIEVAL_STRATEGY') if strategy is None else strategy
+        if self.strategy not in {'hybrid', 'legacy'}:
+            raise ValueError('Unknown retrieval strategy')
         self.embed = embed
         self.search_qa = search_qa
         self.search_pdf = search_pdf
@@ -21,8 +26,8 @@ class RetrievalService:
         if profile.normalization_version != NORMALIZATION_VERSION:
             raise ValueError('Embedding profile disagrees with retrieval normalization')
         vector = vectors[0]
-        qa_results = self.search_qa(vector, k=5, profile=profile)
-        pdf_results = self.search_pdf(vector, k=8, query=query, profile=profile)
+        qa_results = self.search_qa(vector, k=5, query=query, profile=profile, strategy=self.strategy)
+        pdf_results = self.search_pdf(vector, k=8, query=query, profile=profile, strategy=self.strategy)
         combined = [hit for hit in qa_results + pdf_results if hit['score'] >= self.min_score]
         combined.sort(key=lambda hit: hit['score'], reverse=True)
         return combined[:limit]
