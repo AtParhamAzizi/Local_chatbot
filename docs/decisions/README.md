@@ -26,6 +26,7 @@ unrecorded historical team approval or new feature delivery.
 | [0011](0011-indexed-persian-hybrid.md) | Development-selected Persian BM25/vector scoring with immutable compatible corpus snapshots and legacy rollback |
 | [0012](0012-comparable-source-ranking.md) | Common-corpus score calibration, source-independent ties and frozen mixed-source evaluation |
 | [0013](0013-optional-local-reranker.md) | Optional bounded local cross-encoder, development selection, hardware cost gates and first-stage fallback |
+| [0014](0014-measured-exact-vector-index.md) | Measured exact flat vector indexes, bounded disposable snapshots and retained MySQL authority |
 
 ## When and how to add one
 

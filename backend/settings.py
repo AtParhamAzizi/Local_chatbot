@@ -64,6 +64,7 @@ SETTING_REGISTRY = MappingProxyType({
                        aliases=("ENVIRONMENT", "FLASK_ENV"), public=True),
     "APP_HOST": Setting("host", "127.0.0.1", public=True),
     "RETRIEVAL_STRATEGY": Setting("choice", "fusion", choices=("fusion", "hybrid", "legacy"), public=True),
+    "VECTOR_SEARCH_BACKEND": Setting("choice", "auto", choices=("auto", "scalar", "flat"), public=True),
     "RERANKER_PROFILE": Setting("choice", "off", choices=("off", "gtx1050-4gb"), public=True),
     "RERANKER_MODEL_PATH": Setting("path", "model/Qwen3-Reranker-0.6B"),
     "DB_HOST": Setting("text", "localhost"),

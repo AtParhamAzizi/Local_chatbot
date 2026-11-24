@@ -297,6 +297,15 @@ and `/chat` respectively; they do not disable `/tts/*` or feedback.
 
 ## Change, back up and recover
 
+Vector search builds disposable exact flat snapshots from 1,000 eligible rows
+per collection. MySQL remains authoritative; restart rebuilds from stored vectors
+on first use. Set `VECTOR_SEARCH_BACKEND=scalar` and restart for rollback.
+Above 50,000 rows per collection or the 512 MiB cached vector-payload budget,
+scoring also falls back to scalar, preserving correctness without a latency
+guarantee. Allow RAM for SQL rows, lexical/text/model state, rebuilds and old
+readers in addition to the cache. Re-run the [scaling benchmark](vector-search-scaling.md)
+on deployment hardware and measure end-to-end/concurrent latency separately.
+
 Before an update, preserve the matching release, private launch configuration,
 model identity/files and a restore-tested DB dump. Never edit applied migration
 files or mark an incomplete ledger row applied manually. Follow the migration

@@ -724,6 +724,22 @@ workflow should be manually dispatched, separate from `Merge checks`, and never
 run unreviewed PR code on a credentialed/self-hosted GPU runner. The older optional
 fixed-port browser compatibility smoke is also outside the primary merge suite.
 
+## Vector-index regression and scaling checks (F041)
+
+`test_vector_index.py` runs in default guarded discovery. It checks exact scoring,
+invalid/profile/parent guards, migrated/base vectors, source edits/deletions,
+mutable buffers, concurrent publication, row/byte limits and allocation fallback.
+It also verifies committed acceptance/source identities and real-vector ranking
+equivalence evidence. Historical F039/F040 source fingerprints remain historical;
+F041 checks the replacement search adapter and current fusion independently.
+
+Run `python -B backend/vector_index_eval.py --output backend/.runtime/f041.json`
+for the full synthetic 30/1,000/10,000/50,000-vector envelope. The benchmark needs
+NumPy only and performs no database, network or model work. Optional
+`--quality-vectors backend/.runtime/f038` replays prepared local-vector caches.
+Timing gates are manual; CI checks committed evidence and correctness. See
+[requirements, replay and limitations](../../docs/vector-search-scaling.md).
+
 ## Dependency-profile regression checks (F017)
 
 The default offline suite includes `test_dependency_profiles.py`. It uses the

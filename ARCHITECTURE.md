@@ -14,7 +14,7 @@ A local, Persian-language (RTL) RAG chatbot. Python/Flask, MySQL, local HuggingF
 - **User app** (Flask `ui_app`, port 5000): public chat UI, `/chat`, owner-scoped `/feedback`, voice speech-to-text, local text-to-speech and runtime feature flags.
 - **Admin app** (Flask `admin_app`, port 8000): dashboard shell plus pages for JSON Q&A import, PDF ingestion, model selection, chat history, system logs and a runtime controller.
 - Both share one serving process (`backend/main.py`): development uses two Flask servers; production uses one threaded Gunicorn worker listening on both ports, plus its supervising master. Optional local TTS runs in a separate private subprocess started lazily by that serving process.
-- Knowledge = `qa_documents` (JSON/CSV Q&A) + `pdf_chunks` (PDF and controlled text/Markdown/DOCX sources). Embeddings are float32 BLOBs in MySQL. Search combines brute-force NumPy cosine with cached in-process Persian BM25 postings (no vector DB).
+- Knowledge = `qa_documents` (JSON/CSV Q&A) + `pdf_chunks` (PDF and controlled text/Markdown/DOCX sources). Embeddings are float32 BLOBs in authoritative MySQL. Search combines scalar/cached exact flat NumPy cosine with Persian BM25 postings (no vector DB).
 - Embedding and generator models load from local folders (`local_files_only=True`). Whisper may download on first use unless `STT_LOCAL_FILES_ONLY=1`. TTS needs separate local weights and a voice prompt; its G2P loader may download unless prepared in advance. The Whisper flag does not control TTS.
 
 ## 2. Stack
@@ -61,6 +61,7 @@ backend/
   services/lexical_index.py Immutable Persian BM25 postings and bounded compatible-snapshot cache
   services/hybrid_search.py Development-selected shared lexical/vector scoring policy
   services/source_fusion.py Common-corpus score calibration and source-independent final ranking
+  services/vector_index.py Exact scalar/flat retrieval-index interface and byte-bounded immutable snapshots
   persian_text.py     Shared fa-v1 normalization copies for embeddings, lexical terms and Q&A keys
   embedding_profile.py Immutable embedding metadata, canonical identities and profiled batch validation
   reembed.py           Operator index status/retry/rollback CLI (no model loading)
@@ -77,6 +78,7 @@ backend/
   retrieval_eval_local.py Explicit local-weight scoring evaluation with independent profiled embeddings
   hybrid_eval.py      Independent local embeddings, development-only policy selection, frozen heldout/latency replay
   source_fusion_eval.py Development-only common-score calibration and frozen mixed-source replay
+  vector_index_eval.py Declared corpus/recall/latency/rebuild gates and vector-index scaling/quality replay
   tests/              Offline unittest regressions; mysql/ tests real DB effects; browser/ tests UI journeys
   model/              (gitignored) active embedder: Qwen3-Embedding-0.6B/
   modelgen/           (gitignored) qwen3.5-2B/; Qwen3-4B defaults to modelgen/ itself; Gemma is not in the catalog
@@ -308,6 +310,35 @@ evaluation with 50 development fusion alternatives, actual local inference, boun
 model/runtime/source identities, candidate scores and timing samples. See
 [configuration, benchmark, limitations and replay](docs/local-reranker.md) and
 [ADR 0013](docs/decisions/0013-optional-local-reranker.md).
+
+### 6.1.5 Measured vector-search scaling (F041)
+
+`services/vector_index.py` defines `RetrievalIndex.scores`, supplying every eligible
+semantic score to the existing policies. `VECTOR_SEARCH_BACKEND=auto` uses scalar
+scoring below 1,000 rows per collection and a cached exact float32 flat matrix
+from that threshold, within 50,000-row/512-MiB vector-payload limits. `scalar`
+rolls back; `flat` exercises small indexes. Oversized snapshots and allocation
+failure use scalar scoring. This remains exhaustive exact search. MySQL stays
+authoritative with unchanged SQL profile/parent, completed-publication and F035
+source-hash guards; SQL still fetches the corpus.
+
+Snapshot identity compares actual sorted IDs/bytes, collection and full profile.
+Edits/deletes/new uploads/cutover select a current view on the next query. Builders
+serialize complete immutable publication; old readers retain their view. The
+two-view LRU bounds retained BLOB, matrix and norm bytes, excluding rebuilds,
+old readers, Python overhead, SQL rows and lexical/text/model memory. First use,
+mutation, eviction and restart rebuild synchronously without model inference.
+F035 re-embedding remains independent.
+
+`vector_index_eval.py` measures 30/1,000/10,000/50,000 rows at dimension 1024 with
+24 clustered/independent queries per size and fresh-byte snapshot checks. The
+recorded local CPU passes recall@6=1.0, score error ≤0.000002, warm vector-component
+p95 ≤150 ms, ≥2× speedup from 1,000 rows, and cold/edit/delete/restart rebuilds
+≤5 seconds. Cached actual local vectors preserve every F039 development/heldout
+ranking. SQL, profile filtering, lexical fusion, models and HTTP are outside
+timing; total serving RSS and concurrent throughput are unqualified. See
+[requirements, evidence and replay](docs/vector-search-scaling.md) and
+[ADR 0014](docs/decisions/0014-measured-exact-vector-index.md).
 
 ### 6.2 Generation (`generator.py`)
 

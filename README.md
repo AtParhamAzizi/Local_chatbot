@@ -602,6 +602,14 @@ development tradeoffs and limits. The process caches compatible corpus snapshots
 dense search still scans MySQL vectors. Set `RETRIEVAL_STRATEGY=hybrid` before
 restarting for F038 scoring, or `legacy` for the earlier cosine/overlap policy.
 
+`VECTOR_SEARCH_BACKEND=auto` keeps scalar scoring below 1,000 eligible rows per
+collection and uses a cached exact NumPy flat index above that crossover, within
+measured row/memory limits. MySQL remains authoritative; SQL still fetches the
+embeddings. The 50,000-vector, 1024-dimension benchmark meets declared recall,
+vector-component latency and rebuild budgets while preserving frozen Persian
+rankings. Use `scalar` for rollback. See [measurements, replay and capacity
+limits](docs/vector-search-scaling.md); these are not end-to-end chat timings.
+
 The complete route inventory is in the API contract. These access boundaries
 apply before the handlers:
 
@@ -730,6 +738,7 @@ In addition to the deployment/session/retention tables, the registry validates:
 | `GEN_DEVICE`, `GEN_QUANTIZATION`, `GEN_MODEL_ID` | Declared choices; explicit `cpu` with `4bit` is rejected |
 | `EMBEDDING_BATCH_SIZE` | Integer, 1-64; default 8 inputs per JSON/PDF embedding call; restart after changing |
 | `RETRIEVAL_STRATEGY` | `fusion` (default), shared-corpus calibrated cosine/BM25; `hybrid` restores F038 separate statistics; `legacy` restores cosine/PDF overlap; restart after changing |
+| `VECTOR_SEARCH_BACKEND` | `auto` (default), exact flat index from 1,000 eligible rows per collection; `scalar` rollback; `flat` exercises small indexes; row/byte limits still apply; see [capacity and benchmark](docs/vector-search-scaling.md) |
 | `RERANKER_PROFILE` | `off` (default); `gtx1050-4gb` opts into bounded local reranking with `fusion`; restart after changing; see [benchmark and limits](docs/local-reranker.md) |
 | `RERANKER_MODEL_PATH` | Local optional Qwen3-Reranker-0.6B snapshot; defaults to `model/Qwen3-Reranker-0.6B` relative to `backend/`; no serving downloads |
 | `INGESTION_WORKERS` | Integer, 1-4; default 1 background ingestion worker; restart after changing |

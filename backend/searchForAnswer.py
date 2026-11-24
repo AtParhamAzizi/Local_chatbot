@@ -5,24 +5,7 @@ from database import get_conn, logger
 from persian_text import persian_terms
 from embedding_profile import EmbeddingProfile, compatible_profile
 from services.hybrid_search import rerank
-
-
-def _cosine_score(qvec, blob, embedding_dim):
-    """Decode and score a stored normalized embedding safely."""
-    if not blob:
-        return None
-    if len(blob) % np.dtype(np.float32).itemsize:
-        return None
-    vec = np.frombuffer(blob, dtype=np.float32)
-    if not embedding_dim or vec.size != int(embedding_dim):
-        return None
-    if vec.size != qvec.size:
-        return None
-    q_norm = float(np.linalg.norm(qvec))
-    v_norm = float(np.linalg.norm(vec))
-    if not np.isfinite(vec).all() or not np.isfinite(qvec).all() or not np.isfinite(q_norm + v_norm) or q_norm == 0 or v_norm == 0:
-        return None
-    return float(np.dot(qvec, vec) / (q_norm * v_norm))
+from services.vector_index import cosine_score as _cosine_score, semantic_scores
 
 
 def _terms(value):
@@ -65,14 +48,18 @@ def _search_qa(qvec: np.ndarray, k: int = 5, *, query='', profile=None, index_id
     finally:
         conn.close()
 
-    results = []
+    eligible = []
     for r in rows:
         if index_id is not None and r.get('migrated_embedding') is not None:
             r = dict(r, embedding=r['migrated_embedding'], embedding_dim=profile.dimension,
                      embedding_profile=profile.to_json())
         if not compatible_profile(r.get('embedding_profile'), profile) or r['embedding_dim'] != profile.dimension:
             continue
-        score = _cosine_score(qvec, r["embedding"], r["embedding_dim"])
+        eligible.append(r)
+    scores = semantic_scores(qvec, eligible, profile=profile, collection='qa')
+    results = []
+    for r in eligible:
+        score = scores.get(r['id'])
         if score is None:
             continue
         results.append({
@@ -140,7 +127,7 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None,
     finally:
         conn.close()
 
-    results = []
+    eligible = []
     for r in rows:
         if index_id is not None and r.get('migrated_embedding') is not None:
             r = dict(r, embedding=r['migrated_embedding'], embedding_dim=profile.dimension,
@@ -150,7 +137,11 @@ def _search_pdf(qvec: np.ndarray, k: int = 10, query: str = '', *, profile=None,
                 or not compatible_profile(r.get('document_embedding_profile'), profile)
                 or r['embedding_dim'] != profile.dimension or r.get('document_embedding_dim') != profile.dimension):
             continue
-        semantic_score = _cosine_score(qvec, r["embedding"], r["embedding_dim"])
+        eligible.append(r)
+    scores = semantic_scores(qvec, eligible, profile=profile, collection='pdf')
+    results = []
+    for r in eligible:
+        semantic_score = scores.get(r['id'])
         if semantic_score is None:
             continue
         score = ((semantic_score * 0.82) + (_lexical_overlap(query, r["content"]) * 0.18)
